@@ -1,0 +1,12 @@
+apiVersion: relocation.openshift.io/v1alpha1
+kind: ClusterConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterconfig
+    app.kubernetes.io/instance: clusterconfig-sample
+    app.kubernetes.io/part-of: cluster-relocation-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: cluster-relocation-service
+  name: clusterconfig-sample
+spec:
+  # TODO(user): Add fields here
