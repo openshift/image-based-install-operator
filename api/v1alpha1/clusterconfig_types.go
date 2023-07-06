@@ -17,25 +17,32 @@ limitations under the License.
 package v1alpha1
 
 import (
+	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ClusterConfigSpec defines the desired state of ClusterConfig
 type ClusterConfigSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	cro.ClusterRelocationSpec `json:",inline"`
 
-	// Foo is an example field of ClusterConfig. Edit clusterconfig_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host
+	// +optional
+	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+
+	// NetworkConfigRef is the reference to a config map containing network configuration files if necessary
+	// +optional
+	NetworkConfigRef *corev1.LocalObjectReference `json:"networkConfigRef,omitempty"`
 }
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
-type ClusterConfigStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+type ClusterConfigStatus struct{}
+
+type BareMetalHostReference struct {
+	// Name identifies the BareMetalHost within a namespace
+	Name string `json:"name"`
+	// Namespace identifies the namespace containing the referenced BareMetalHost
+	Namespace string `json:"namespace"`
 }
 
 //+kubebuilder:object:root=true
