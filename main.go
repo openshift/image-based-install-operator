@@ -33,6 +33,8 @@ import (
 
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	"github.com/carbonin/cluster-relocation-service/controllers"
+	"github.com/kelseyhightower/envconfig"
+	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -89,9 +91,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger := logrus.New()
+	logger.SetReportCaller(true)
+
+	controllerOptions := &controllers.ClusterConfigReconcilerOptions{}
+	if err := envconfig.Process("cluster-relocation-service", controllerOptions); err != nil {
+		setupLog.Error(err, "unable to process envconfig")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.ClusterConfigReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Log:     logger,
+		Scheme:  mgr.GetScheme(),
+		Options: controllerOptions,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterConfig")
 		os.Exit(1)

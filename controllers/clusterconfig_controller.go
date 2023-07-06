@@ -18,43 +18,57 @@ package controllers
 
 import (
 	"context"
+	"net/url"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
+	"github.com/sirupsen/logrus"
 )
+
+type ClusterConfigReconcilerOptions struct {
+	BaseURL string `envconfig:"BASE_URL"`
+}
 
 // ClusterConfigReconciler reconciles a ClusterConfig object
 type ClusterConfigReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Log     logrus.FieldLogger
+	Scheme  *runtime.Scheme
+	Options *ClusterConfigReconcilerOptions
 }
 
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ClusterConfig object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := r.Log.WithFields(logrus.Fields{"name": req.Name, "namespace": req.Namespace})
 
-	// TODO(user): your logic here
+	config := &relocationv1alpha1.ClusterConfig{}
+	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
+		log.WithError(err).Error("failed to get referenced cluster config")
+		return ctrl.Result{}, err
+	}
+
+	imageURL, err := url.JoinPath(r.Options.BaseURL, req.Namespace, req.Name, ".iso")
+	if err != nil {
+		log.WithError(err).Error("failed to create image url")
+		return ctrl.Result{}, err
+	}
+
+	patch := client.MergeFrom(config.DeepCopy())
+	config.Status.ImageURL = imageURL
+	if err := r.Patch(ctx, config, patch); err != nil {
+		log.WithError(err).Error("failed to patch cluster config")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&relocationv1alpha1.ClusterConfig{}).

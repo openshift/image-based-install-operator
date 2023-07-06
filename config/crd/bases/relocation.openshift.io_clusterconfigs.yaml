@@ -215,6 +215,9 @@ spec:
             type: object
           status:
             description: ClusterConfigStatus defines the observed state of ClusterConfig
+            properties:
+              imageURL:
+                type: string
             type: object
         type: object
     served: true
