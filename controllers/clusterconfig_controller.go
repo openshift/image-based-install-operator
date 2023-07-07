@@ -18,18 +18,30 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
+	"github.com/diskfs/go-diskfs"
+	"github.com/diskfs/go-diskfs/disk"
+	"github.com/diskfs/go-diskfs/filesystem"
+	"github.com/diskfs/go-diskfs/filesystem/iso9660"
 	"github.com/sirupsen/logrus"
 )
 
 type ClusterConfigReconcilerOptions struct {
-	BaseURL string `envconfig:"BASE_URL"`
+	BaseURL   string `envconfig:"BASE_URL"`
+	DataDir   string `envconfig:"DATA_DIR" default:"/data"`
+	ServerDir string `envconfig:"SERVER_DIR" default:"/data/server"`
 }
 
 // ClusterConfigReconciler reconciles a ClusterConfig object
@@ -53,14 +65,22 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	imageURL, err := url.JoinPath(r.Options.BaseURL, req.Namespace, req.Name, ".iso")
+	path := filepath.Join(req.Namespace, fmt.Sprintf("%s.iso", req.Name))
+	filename := filepath.Join(r.Options.ServerDir, path)
+	if err := r.createConfigISO(ctx, config, filename); err != nil {
+		log.WithError(err).Error("failed to create image for config")
+		return ctrl.Result{}, err
+	}
+	log.Info("ISO created for config")
+
+	u, err := url.JoinPath(r.Options.BaseURL, path)
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		return ctrl.Result{}, err
 	}
 
 	patch := client.MergeFrom(config.DeepCopy())
-	config.Status.ImageURL = imageURL
+	config.Status.ImageURL = u
 	if err := r.Patch(ctx, config, patch); err != nil {
 		log.WithError(err).Error("failed to patch cluster config")
 		return ctrl.Result{}, err
@@ -70,7 +90,124 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := os.MkdirAll(r.Options.DataDir, 0700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(r.Options.ServerDir, 0700); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&relocationv1alpha1.ClusterConfig{}).
 		Complete(r)
+}
+
+func (r *ClusterConfigReconciler) createConfigISO(ctx context.Context, config *relocationv1alpha1.ClusterConfig, isoPath string) error {
+	// TODO: this will need sync with http server
+	isoWorkDir, err := os.MkdirTemp(r.Options.DataDir, "iso-work-dir-")
+	if err != nil {
+		return fmt.Errorf("failed to create iso work dir: %w", err)
+	}
+	// if anything fails remove the workdir, if create succeeds it will remove the workdir so this will be a noop
+	defer os.RemoveAll(isoWorkDir)
+
+	if err := r.createInputData(ctx, config, isoWorkDir); err != nil {
+		return fmt.Errorf("failed to write input data: %w", err)
+	}
+	if err := create(isoPath, isoWorkDir, "relocation-config"); err != nil {
+		return fmt.Errorf("failed to create iso: %w", err)
+	}
+	return nil
+}
+
+// createInputData writes the required info based on the cluster config to the iso work dir
+func (r *ClusterConfigReconciler) createInputData(ctx context.Context, config *relocationv1alpha1.ClusterConfig, dir string) error {
+	crs := config.Spec.ClusterRelocationSpec
+
+	data, err := json.Marshal(crs)
+	if err != nil {
+		return fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cluster-relocation-spec.json"), data, 0644); err != nil {
+		return fmt.Errorf("failed to write cluster relocation spec: %w", err)
+	}
+
+	if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(dir, "api-cert-secret.json")); err != nil {
+		return fmt.Errorf("failed to write api cert secret: %w", err)
+	}
+
+	if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(dir, "ingress-cert-secret.json")); err != nil {
+		return fmt.Errorf("failed to write ingress cert secret: %w", err)
+	}
+
+	if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(dir, "pull-secret-secret.json")); err != nil {
+		return fmt.Errorf("failed to write pull secret: %w", err)
+	}
+
+	// TODO: create network config when we know what this looks like
+	// no sense in spending time working on a CM if it's not going to be one in the end
+
+	return nil
+}
+
+func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *corev1.SecretReference, file string) error {
+	if ref == nil {
+		return nil
+	}
+
+	s := &corev1.Secret{}
+	key := types.NamespacedName{Name: ref.Name, Namespace: ref.Namespace}
+	if err := r.Get(ctx, key, s); err != nil {
+		return err
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// create builds an iso file at outPath with the given volumeLabel using the contents of the working directory
+func create(outPath string, workDir string, volumeLabel string) error {
+	if err := os.MkdirAll(filepath.Dir(outPath), 0700); err != nil {
+		return err
+	}
+
+	// Use the minimum iso size that will satisfy diskfs validations here.
+	// This value doesn't determine the final image size, but is used
+	// to truncate the initial file. This value would be relevant if
+	// we were writing to a particular partition on a device, but we are
+	// not so the minimum iso size will work for us here
+	minISOSize := 38 * 1024
+	d, err := diskfs.Create(outPath, int64(minISOSize), diskfs.Raw, diskfs.SectorSizeDefault)
+	if err != nil {
+		return err
+	}
+
+	d.LogicalBlocksize = 2048
+	fspec := disk.FilesystemSpec{
+		Partition:   0,
+		FSType:      filesystem.TypeISO9660,
+		VolumeLabel: volumeLabel,
+		WorkDir:     workDir,
+	}
+	fs, err := d.CreateFilesystem(fspec)
+	if err != nil {
+		return err
+	}
+
+	iso, ok := fs.(*iso9660.FileSystem)
+	if !ok {
+		return fmt.Errorf("not an iso9660 filesystem")
+	}
+
+	options := iso9660.FinalizeOptions{
+		RockRidge:        true,
+		VolumeIdentifier: volumeLabel,
+	}
+
+	return iso.Finalize(options)
 }
