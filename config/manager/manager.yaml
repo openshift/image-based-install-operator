@@ -55,6 +55,9 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
       - command:
         - /server
         image: quay.io/carbonin/cluster-relocation-service:latest
@@ -74,6 +77,12 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        emptyDir: {}
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
 ---
