@@ -16,6 +16,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o server cmd/server/main.go
 
 FROM registry.access.redhat.com/ubi8/ubi-micro:8.8
+
+ARG DATA_DIR=/data
+RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
+
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /workspace/server .
