@@ -14,7 +14,7 @@ import (
 
 var Options struct {
 	ServerDir     string `envconfig:"SERVER_DIR" default:"/data/server"`
-	Port          string `envconfig:"PORT" default:"8080"`
+	Port          string `envconfig:"PORT" default:"8000"`
 	HTTPSKeyFile  string `envconfig:"HTTPS_KEY_FILE"`
 	HTTPSCertFile string `envconfig:"HTTPS_CERT_FILE"`
 }
