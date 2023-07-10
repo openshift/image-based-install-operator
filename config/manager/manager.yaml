@@ -61,7 +61,7 @@ spec:
         name: server
         ports:
         - name: config-server
-          containerPort: 8080
+          containerPort: 8000
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -96,7 +96,7 @@ metadata:
   namespace: cluster-relocation
 spec:
   ports:
-  - port: 8080
+  - port: 8000
     protocol: TCP
     name: config-server
   selector:
