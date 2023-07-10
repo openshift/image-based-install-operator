@@ -73,7 +73,7 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	log.Info("ISO created for config")
 
-	u, err := url.JoinPath(r.Options.BaseURL, path)
+	u, err := url.JoinPath(r.Options.BaseURL, "images", path)
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		return ctrl.Result{}, err
@@ -81,7 +81,7 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	patch := client.MergeFrom(config.DeepCopy())
 	config.Status.ImageURL = u
-	if err := r.Patch(ctx, config, patch); err != nil {
+	if err := r.Status().Patch(ctx, config, patch); err != nil {
 		log.WithError(err).Error("failed to patch cluster config")
 		return ctrl.Result{}, err
 	}

@@ -94,5 +94,29 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the image url in status", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-config",
+				Namespace: "test-namespace",
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				ClusterRelocationSpec: cro.ClusterRelocationSpec{
+					Domain:  "thing.example.com",
+					SSHKeys: []string{"ssh-rsa sshkeyhere foo@example.com"},
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: config.ObjectMeta.Namespace,
+			Name:      config.ObjectMeta.Name,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		Expect(config.Status.ImageURL).To(Equal("https://example.com/images/test-namespace/test-config.iso"))
 	})
 })
