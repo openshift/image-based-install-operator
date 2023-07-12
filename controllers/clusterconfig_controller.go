@@ -29,12 +29,16 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	"github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -55,6 +59,7 @@ type ClusterConfigReconciler struct {
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;update;patch
 
 func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithFields(logrus.Fields{"name": req.Name, "namespace": req.Namespace})
@@ -73,10 +78,22 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	log.Info("ISO created for config")
 
+	if r.Options.BaseURL == "" {
+		log.Warn("Base URL is not set, exiting reconcile before setting URL")
+		return ctrl.Result{}, nil
+	}
+
 	u, err := url.JoinPath(r.Options.BaseURL, "images", path)
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		return ctrl.Result{}, err
+	}
+
+	if config.Spec.BareMetalHostRef != nil {
+		if err := r.setBMHImage(ctx, config.Spec.BareMetalHostRef, u); err != nil {
+			log.WithError(err).Error("failed to set BareMetalHost image")
+			return ctrl.Result{}, err
+		}
 	}
 
 	patch := client.MergeFrom(config.DeepCopy())
@@ -89,6 +106,43 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, nil
 }
 
+func (r *ClusterConfigReconciler) mapBMHToCC(ctx context.Context, obj client.Object) []reconcile.Request {
+	bmh := &bmh_v1alpha1.BareMetalHost{}
+	bmhName := obj.GetName()
+	bmhNamespace := obj.GetNamespace()
+
+	if err := r.Get(ctx, types.NamespacedName{Name: bmhName, Namespace: bmhNamespace}, bmh); err != nil {
+		return []reconcile.Request{}
+	}
+	ccList := &relocationv1alpha1.ClusterConfigList{}
+	if err := r.List(ctx, ccList); err != nil {
+		return []reconcile.Request{}
+	}
+	if len(ccList.Items) == 0 {
+		return []reconcile.Request{}
+	}
+
+	requests := []reconcile.Request{}
+	for _, cc := range ccList.Items {
+		if cc.Spec.BareMetalHostRef == nil {
+			continue
+		}
+		if cc.Spec.BareMetalHostRef.Name == bmhName && cc.Spec.BareMetalHostRef.Namespace == bmhNamespace {
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: cc.Namespace,
+					Name:      cc.Name,
+				},
+			}
+			requests = append(requests, req)
+		}
+	}
+	if len(requests) > 1 {
+		r.Log.Warn("found multiple ClusterConfigs referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
+	}
+	return requests
+}
+
 func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := os.MkdirAll(r.Options.DataDir, 0700); err != nil {
 		return err
@@ -98,7 +152,31 @@ func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&relocationv1alpha1.ClusterConfig{}).
+		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToCC)).
 		Complete(r)
+}
+
+func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *relocationv1alpha1.BareMetalHostReference, url string) error {
+	bmh := &bmh_v1alpha1.BareMetalHost{}
+	key := types.NamespacedName{
+		Name:      bmhRef.Name,
+		Namespace: bmhRef.Namespace,
+	}
+	if err := r.Get(ctx, key, bmh); err != nil {
+		return err
+	}
+	patch := client.MergeFrom(bmh.DeepCopy())
+
+	bmh.Spec.Image = &bmh_v1alpha1.Image{}
+	liveIso := "live-iso"
+	bmh.Spec.Online = true
+	bmh.Spec.Image.URL = url
+	bmh.Spec.Image.DiskFormat = &liveIso
+	if err := r.Patch(ctx, bmh, patch); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *ClusterConfigReconciler) createConfigISO(ctx context.Context, config *relocationv1alpha1.ClusterConfig, isoPath string) error {
