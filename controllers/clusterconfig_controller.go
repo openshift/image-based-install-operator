@@ -253,6 +253,9 @@ func create(outPath string, workDir string, volumeLabel string) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0700); err != nil {
 		return err
 	}
+	if err := os.RemoveAll(outPath); err != nil {
+		return err
+	}
 
 	// Use the minimum iso size that will satisfy diskfs validations here.
 	// This value doesn't determine the final image size, but is used
