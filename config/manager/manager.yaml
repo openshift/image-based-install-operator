@@ -31,6 +31,17 @@ spec:
         - --leader-elect
         image: quay.io/carbonin/cluster-relocation-service:latest
         name: manager
+        env:
+        - name: SERVICE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_NAME
+          value: cluster-relocation-config
+        - name: SERVICE_PORT
+          value: "8000"
+        - name: SERVICE_SCHEME
+          value: "http"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -85,18 +96,6 @@ spec:
         emptyDir: {}
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: cluster-relocation-config
-  namespace: cluster-relocation
-spec:
-  to:
-    kind: Service
-    name: cluster-relocation-config
-  port:
-    targetPort: config-server
 ---
 apiVersion: v1
 kind: Service

@@ -43,9 +43,12 @@ import (
 )
 
 type ClusterConfigReconcilerOptions struct {
-	BaseURL   string `envconfig:"BASE_URL"`
-	DataDir   string `envconfig:"DATA_DIR" default:"/data"`
-	ServerDir string `envconfig:"SERVER_DIR" default:"/data/server"`
+	ServiceName      string `envconfig:"SERVICE_NAME"`
+	ServiceNamespace string `envconfig:"SERVICE_NAMESPACE"`
+	ServicePort      string `envconfig:"SERVICE_PORT"`
+	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
+	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
+	ServerDir        string `envconfig:"SERVER_DIR" default:"/data/server"`
 }
 
 // ClusterConfigReconciler reconciles a ClusterConfig object
@@ -54,6 +57,7 @@ type ClusterConfigReconciler struct {
 	Log     logrus.FieldLogger
 	Scheme  *runtime.Scheme
 	Options *ClusterConfigReconcilerOptions
+	BaseURL string
 }
 
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs,verbs=get;list;watch;create;update;patch;delete
@@ -78,12 +82,7 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	log.Info("ISO created for config")
 
-	if r.Options.BaseURL == "" {
-		log.Warn("Base URL is not set, exiting reconcile before setting URL")
-		return ctrl.Result{}, nil
-	}
-
-	u, err := url.JoinPath(r.Options.BaseURL, "images", path)
+	u, err := url.JoinPath(r.BaseURL, "images", path)
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		return ctrl.Result{}, err
@@ -94,13 +93,6 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.WithError(err).Error("failed to set BareMetalHost image")
 			return ctrl.Result{}, err
 		}
-	}
-
-	patch := client.MergeFrom(config.DeepCopy())
-	config.Status.ImageURL = u
-	if err := r.Status().Patch(ctx, config, patch); err != nil {
-		log.WithError(err).Error("failed to patch cluster config")
-		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -143,6 +135,18 @@ func (r *ClusterConfigReconciler) mapBMHToCC(ctx context.Context, obj client.Obj
 	return requests
 }
 
+func serviceURL(opts *ClusterConfigReconcilerOptions) string {
+	host := fmt.Sprintf("%s.%s", opts.ServiceName, opts.ServiceNamespace)
+	if opts.ServicePort != "" {
+		host = fmt.Sprintf("%s:%s", host, opts.ServicePort)
+	}
+	u := url.URL{
+		Scheme: opts.ServiceScheme,
+		Host:   host,
+	}
+	return u.String()
+}
+
 func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := os.MkdirAll(r.Options.DataDir, 0700); err != nil {
 		return err
@@ -150,6 +154,11 @@ func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := os.MkdirAll(r.Options.ServerDir, 0700); err != nil {
 		return err
 	}
+	if r.Options.ServiceName == "" || r.Options.ServiceNamespace == "" || r.Options.ServiceScheme == "" {
+		return fmt.Errorf("SERVICE_NAME, SERVICE_NAMESPACE, and SERVICE_SCHEME must be set")
+	}
+	r.BaseURL = serviceURL(r.Options)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&relocationv1alpha1.ClusterConfig{}).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToCC)).

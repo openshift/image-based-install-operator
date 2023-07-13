@@ -37,7 +37,6 @@ type ClusterConfigSpec struct {
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
 type ClusterConfigStatus struct {
-	ImageURL string `json:"imageURL,omitempty"`
 }
 
 type BareMetalHostReference struct {

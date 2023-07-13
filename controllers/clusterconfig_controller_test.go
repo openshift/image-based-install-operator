@@ -48,13 +48,16 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		r = &ClusterConfigReconciler{
-			Client: c,
-			Scheme: scheme.Scheme,
-			Log:    logrus.New(),
+			Client:  c,
+			Scheme:  scheme.Scheme,
+			Log:     logrus.New(),
+			BaseURL: "http://service.namespace",
 			Options: &ClusterConfigReconcilerOptions{
-				BaseURL:   "https://example.com/",
-				DataDir:   dataDir,
-				ServerDir: serverDir,
+				ServiceName:      "service",
+				ServiceNamespace: "namespace",
+				ServiceScheme:    "http",
+				DataDir:          dataDir,
+				ServerDir:        serverDir,
 			},
 		}
 	})
@@ -172,27 +175,6 @@ var _ = Describe("Reconcile", func() {
 		validateISOSecretContent(fs, "/pull-secret-secret.json", pullSecretData)
 	})
 
-	It("sets the image url in status", func() {
-		config := &relocationv1alpha1.ClusterConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
-			},
-		}
-		Expect(c.Create(ctx, config)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: configNamespace,
-			Name:      configName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		Expect(c.Get(ctx, key, config)).To(Succeed())
-		Expect(config.Status.ImageURL).To(Equal(fmt.Sprintf("https://example.com/images/%s/%s.iso", configNamespace, configName)))
-	})
-
 	It("configures a referenced BMH", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
@@ -232,7 +214,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(bmh.Spec.Image.URL).To(Equal(fmt.Sprintf("https://example.com/images/%s/%s.iso", configNamespace, configName)))
+		Expect(bmh.Spec.Image.URL).To(Equal(fmt.Sprintf("http://service.namespace/images/%s/%s.iso", configNamespace, configName)))
 		Expect(bmh.Spec.Image.DiskFormat).To(HaveValue(Equal("live-iso")))
 		Expect(bmh.Spec.Online).To(BeTrue())
 	})
@@ -331,5 +313,25 @@ var _ = Describe("mapBMHToCC", func() {
 		Expect(c.Create(ctx, config)).To(Succeed())
 		requests := r.mapBMHToCC(ctx, bmh)
 		Expect(len(requests)).To(Equal(0))
+	})
+})
+
+var _ = Describe("serviceURL", func() {
+	It("creates the correct url without a port", func() {
+		opts := &ClusterConfigReconcilerOptions{
+			ServiceName:      "name",
+			ServiceNamespace: "namespace",
+			ServiceScheme:    "http",
+		}
+		Expect(serviceURL(opts)).To(Equal("http://name.namespace"))
+	})
+	It("creates the correct url with a port", func() {
+		opts := &ClusterConfigReconcilerOptions{
+			ServiceName:      "name",
+			ServiceNamespace: "namespace",
+			ServiceScheme:    "http",
+			ServicePort:      "8080",
+		}
+		Expect(serviceURL(opts)).To(Equal("http://name.namespace:8080"))
 	})
 })
