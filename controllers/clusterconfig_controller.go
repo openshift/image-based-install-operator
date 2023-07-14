@@ -67,6 +67,8 @@ type ClusterConfigReconciler struct {
 
 func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithFields(logrus.Fields{"name": req.Name, "namespace": req.Namespace})
+	log.Info("Running reconcile ...")
+	defer log.Info("Reconcile complete")
 
 	config := &relocationv1alpha1.ClusterConfig{}
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
@@ -176,13 +178,29 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 	}
 	patch := client.MergeFrom(bmh.DeepCopy())
 
-	bmh.Spec.Image = &bmh_v1alpha1.Image{}
+	dirty := false
+	if !bmh.Spec.Online {
+		bmh.Spec.Online = true
+		dirty = true
+	}
+	if bmh.Spec.Image == nil {
+		bmh.Spec.Image = &bmh_v1alpha1.Image{}
+		dirty = true
+	}
+	if bmh.Spec.Image.URL != url {
+		bmh.Spec.Image.URL = url
+		dirty = true
+	}
 	liveIso := "live-iso"
-	bmh.Spec.Online = true
-	bmh.Spec.Image.URL = url
-	bmh.Spec.Image.DiskFormat = &liveIso
-	if err := r.Patch(ctx, bmh, patch); err != nil {
-		return err
+	if bmh.Spec.Image.DiskFormat == nil || *bmh.Spec.Image.DiskFormat != liveIso {
+		bmh.Spec.Image.DiskFormat = &liveIso
+		dirty = true
+	}
+
+	if dirty {
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return err
+		}
 	}
 
 	return nil
