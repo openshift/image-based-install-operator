@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/RHsyseng/cluster-relocation-operator v0.9.1
 	github.com/diskfs/go-diskfs v1.3.0
+	github.com/gofrs/flock v0.8.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/metal3-io/baremetal-operator/apis v0.3.1
 	github.com/onsi/ginkgo/v2 v2.9.5

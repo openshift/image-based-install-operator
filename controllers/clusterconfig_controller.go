@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +39,7 @@ import (
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	"github.com/gofrs/flock"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/sirupsen/logrus"
 )
@@ -48,7 +50,6 @@ type ClusterConfigReconcilerOptions struct {
 	ServicePort      string `envconfig:"SERVICE_PORT"`
 	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
 	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
-	ServerDir        string `envconfig:"SERVER_DIR" default:"/data/server"`
 }
 
 // ClusterConfigReconciler reconciles a ClusterConfig object
@@ -76,15 +77,17 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	path := filepath.Join(req.Namespace, fmt.Sprintf("%s.iso", req.Name))
-	filename := filepath.Join(r.Options.ServerDir, path)
-	if err := r.createConfigISO(ctx, config, filename); err != nil {
-		log.WithError(err).Error("failed to create image for config")
+	requeue, err := r.writeInputData(ctx, config)
+	if err != nil {
+		log.WithError(err).Error("failed to write input data")
 		return ctrl.Result{}, err
 	}
-	log.Info("ISO created for config")
+	if requeue {
+		log.Info("requeueing due to lock contention")
+		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	}
 
-	u, err := url.JoinPath(r.BaseURL, "images", path)
+	u, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		return ctrl.Result{}, err
@@ -150,12 +153,6 @@ func serviceURL(opts *ClusterConfigReconcilerOptions) string {
 }
 
 func (r *ClusterConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := os.MkdirAll(r.Options.DataDir, 0700); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(r.Options.ServerDir, 0700); err != nil {
-		return err
-	}
 	if r.Options.ServiceName == "" || r.Options.ServiceNamespace == "" || r.Options.ServiceScheme == "" {
 		return fmt.Errorf("SERVICE_NAME, SERVICE_NAMESPACE, and SERVICE_SCHEME must be set")
 	}
@@ -206,52 +203,56 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 	return nil
 }
 
-func (r *ClusterConfigReconciler) createConfigISO(ctx context.Context, config *relocationv1alpha1.ClusterConfig, isoPath string) error {
-	// TODO: this will need sync with http server
-	isoWorkDir, err := os.MkdirTemp(r.Options.DataDir, "iso-work-dir-")
+// writeInputData writes the required info based on the cluster config to the config cache dir
+func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *relocationv1alpha1.ClusterConfig) (bool, error) {
+	configDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name)
+	filesDir := filepath.Join(configDir, "files")
+	if err := os.MkdirAll(filesDir, 0700); err != nil {
+		return false, err
+	}
+
+	lockPath := filepath.Join(configDir, "lock")
+	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+		fmt.Printf("writing lock file %s\n", lockPath)
+		if err := os.WriteFile(lockPath, []byte{}, 0700); err != nil {
+			return false, err
+		}
+	}
+	lock := flock.New(lockPath)
+	locked, err := lock.TryLock()
 	if err != nil {
-		return fmt.Errorf("failed to create iso work dir: %w", err)
+		return false, fmt.Errorf("failed to acquire file lock: %w", err)
 	}
-	// if anything fails remove the workdir, if create succeeds it will remove the workdir so this will be a noop
-	defer os.RemoveAll(isoWorkDir)
+	if !locked {
+		return true, nil
+	}
+	defer lock.Unlock()
 
-	if err := r.createInputData(ctx, config, isoWorkDir); err != nil {
-		return fmt.Errorf("failed to write input data: %w", err)
-	}
-	if err := create(isoPath, isoWorkDir, "relocation-config"); err != nil {
-		return fmt.Errorf("failed to create iso: %w", err)
-	}
-	return nil
-}
-
-// createInputData writes the required info based on the cluster config to the iso work dir
-func (r *ClusterConfigReconciler) createInputData(ctx context.Context, config *relocationv1alpha1.ClusterConfig, dir string) error {
 	crs := config.Spec.ClusterRelocationSpec
-
 	data, err := json.Marshal(crs)
 	if err != nil {
-		return fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
+		return false, fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "cluster-relocation-spec.json"), data, 0644); err != nil {
-		return fmt.Errorf("failed to write cluster relocation spec: %w", err)
-	}
-
-	if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(dir, "api-cert-secret.json")); err != nil {
-		return fmt.Errorf("failed to write api cert secret: %w", err)
+	if err := os.WriteFile(filepath.Join(filesDir, "cluster-relocation-spec.json"), data, 0644); err != nil {
+		return false, fmt.Errorf("failed to write cluster relocation spec: %w", err)
 	}
 
-	if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(dir, "ingress-cert-secret.json")); err != nil {
-		return fmt.Errorf("failed to write ingress cert secret: %w", err)
+	if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
+		return false, fmt.Errorf("failed to write api cert secret: %w", err)
 	}
 
-	if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(dir, "pull-secret-secret.json")); err != nil {
-		return fmt.Errorf("failed to write pull secret: %w", err)
+	if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
+		return false, fmt.Errorf("failed to write ingress cert secret: %w", err)
+	}
+
+	if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
+		return false, fmt.Errorf("failed to write pull secret: %w", err)
 	}
 
 	// TODO: create network config when we know what this looks like
 	// no sense in spending time working on a CM if it's not going to be one in the end
 
-	return nil
+	return false, nil
 }
 
 func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *corev1.SecretReference, file string) error {

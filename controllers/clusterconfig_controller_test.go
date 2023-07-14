@@ -4,14 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
 	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
-	"github.com/diskfs/go-diskfs"
-	"github.com/diskfs/go-diskfs/filesystem"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,7 +26,6 @@ var _ = Describe("Reconcile", func() {
 	var (
 		c               client.Client
 		dataDir         string
-		serverDir       string
 		r               *ClusterConfigReconciler
 		ctx             = context.Background()
 		configName      = "test-config"
@@ -44,8 +40,6 @@ var _ = Describe("Reconcile", func() {
 		var err error
 		dataDir, err = os.MkdirTemp("", "clusterconfig_controller_test_data")
 		Expect(err).NotTo(HaveOccurred())
-		serverDir, err = os.MkdirTemp("", "clusterconfig_controller_test_server")
-		Expect(err).NotTo(HaveOccurred())
 
 		r = &ClusterConfigReconciler{
 			Client:  c,
@@ -57,14 +51,12 @@ var _ = Describe("Reconcile", func() {
 				ServiceNamespace: "namespace",
 				ServiceScheme:    "http",
 				DataDir:          dataDir,
-				ServerDir:        serverDir,
 			},
 		}
 	})
 
 	AfterEach(func() {
 		Expect(os.RemoveAll(dataDir)).To(Succeed())
-		Expect(os.RemoveAll(serverDir)).To(Succeed())
 	})
 
 	createSecret := func(name string, data map[string][]byte) {
@@ -78,18 +70,15 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Create(ctx, s)).To(Succeed())
 	}
 
-	validateISOSecretContent := func(fs filesystem.FileSystem, file string, data map[string][]byte) {
-		f, err := fs.OpenFile(file, os.O_RDONLY)
-		Expect(err).NotTo(HaveOccurred())
-
-		content, err := io.ReadAll(f)
+	validateSecretContent := func(file string, data map[string][]byte) {
+		content, err := os.ReadFile(filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", file))
 		Expect(err).NotTo(HaveOccurred())
 		secret := &corev1.Secret{}
 		Expect(json.Unmarshal(content, secret)).To(Succeed())
 		Expect(secret.Data).To(Equal(data))
 	}
 
-	It("creates an iso with the correct relocation content", func() {
+	It("creates the correct relocation content", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configName,
@@ -112,15 +101,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		isoPath := filepath.Join(serverDir, configNamespace, fmt.Sprintf("%s.iso", configName))
-		d, err := diskfs.Open(isoPath, diskfs.WithOpenMode(diskfs.ReadOnly))
-		Expect(err).NotTo(HaveOccurred())
-		fs, err := d.GetFilesystem(0)
-		Expect(err).NotTo(HaveOccurred())
-		f, err := fs.OpenFile("/cluster-relocation-spec.json", os.O_RDONLY)
-		Expect(err).NotTo(HaveOccurred())
-
-		content, err := io.ReadAll(f)
+		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation-spec.json")
+		content, err := os.ReadFile(specPath)
 		Expect(err).NotTo(HaveOccurred())
 		relocationSpec := &cro.ClusterRelocationSpec{}
 		Expect(json.Unmarshal(content, relocationSpec)).To(Succeed())
@@ -164,15 +146,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		isoPath := filepath.Join(serverDir, configNamespace, fmt.Sprintf("%s.iso", configName))
-		d, err := diskfs.Open(isoPath, diskfs.WithOpenMode(diskfs.ReadOnly))
-		Expect(err).NotTo(HaveOccurred())
-		fs, err := d.GetFilesystem(0)
-		Expect(err).NotTo(HaveOccurred())
-
-		validateISOSecretContent(fs, "/api-cert-secret.json", apiCertData)
-		validateISOSecretContent(fs, "/ingress-cert-secret.json", ingressCertData)
-		validateISOSecretContent(fs, "/pull-secret-secret.json", pullSecretData)
+		validateSecretContent("/api-cert-secret.json", apiCertData)
+		validateSecretContent("/ingress-cert-secret.json", ingressCertData)
+		validateSecretContent("/pull-secret-secret.json", pullSecretData)
 	})
 
 	It("configures a referenced BMH", func() {
