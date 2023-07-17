@@ -11,6 +11,7 @@ RUN go mod download
 COPY cmd/ cmd/
 COPY api/ api/
 COPY controllers/ controllers/
+COPY internal/ internal/
 COPY vendor/ vendor/
 
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/manager/main.go

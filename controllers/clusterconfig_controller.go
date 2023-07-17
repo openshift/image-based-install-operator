@@ -39,7 +39,7 @@ import (
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
-	"github.com/gofrs/flock"
+	"github.com/carbonin/cluster-relocation-service/internal/filelock"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/sirupsen/logrus"
 )
@@ -211,46 +211,38 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 		return false, err
 	}
 
-	lockPath := filepath.Join(configDir, "lock")
-	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		fmt.Printf("writing lock file %s\n", lockPath)
-		if err := os.WriteFile(lockPath, []byte{}, 0700); err != nil {
-			return false, err
+	locked, err := filelock.WithWriteLock(configDir, func() error {
+		crs := config.Spec.ClusterRelocationSpec
+		data, err := json.Marshal(crs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
 		}
-	}
-	lock := flock.New(lockPath)
-	locked, err := lock.TryLock()
+		if err := os.WriteFile(filepath.Join(filesDir, "cluster-relocation-spec.json"), data, 0644); err != nil {
+			return fmt.Errorf("failed to write cluster relocation spec: %w", err)
+		}
+
+		if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
+			return fmt.Errorf("failed to write api cert secret: %w", err)
+		}
+
+		if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
+			return fmt.Errorf("failed to write ingress cert secret: %w", err)
+		}
+
+		if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
+			return fmt.Errorf("failed to write pull secret: %w", err)
+		}
+
+		// TODO: create network config when we know what this looks like
+		// no sense in spending time working on a CM if it's not going to be one in the end
+		return nil
+	})
 	if err != nil {
 		return false, fmt.Errorf("failed to acquire file lock: %w", err)
 	}
 	if !locked {
 		return true, nil
 	}
-	defer lock.Unlock()
-
-	crs := config.Spec.ClusterRelocationSpec
-	data, err := json.Marshal(crs)
-	if err != nil {
-		return false, fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(filesDir, "cluster-relocation-spec.json"), data, 0644); err != nil {
-		return false, fmt.Errorf("failed to write cluster relocation spec: %w", err)
-	}
-
-	if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
-		return false, fmt.Errorf("failed to write api cert secret: %w", err)
-	}
-
-	if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
-		return false, fmt.Errorf("failed to write ingress cert secret: %w", err)
-	}
-
-	if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
-		return false, fmt.Errorf("failed to write pull secret: %w", err)
-	}
-
-	// TODO: create network config when we know what this looks like
-	// no sense in spending time working on a CM if it's not going to be one in the end
 
 	return false, nil
 }
