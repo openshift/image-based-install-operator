@@ -35,10 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
-	"github.com/diskfs/go-diskfs"
-	"github.com/diskfs/go-diskfs/disk"
-	"github.com/diskfs/go-diskfs/filesystem"
-	"github.com/diskfs/go-diskfs/filesystem/iso9660"
 	"github.com/carbonin/cluster-relocation-service/internal/filelock"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/sirupsen/logrus"
@@ -266,49 +262,4 @@ func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *co
 	}
 
 	return nil
-}
-
-// create builds an iso file at outPath with the given volumeLabel using the contents of the working directory
-func create(outPath string, workDir string, volumeLabel string) error {
-	if err := os.MkdirAll(filepath.Dir(outPath), 0700); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(outPath); err != nil {
-		return err
-	}
-
-	// Use the minimum iso size that will satisfy diskfs validations here.
-	// This value doesn't determine the final image size, but is used
-	// to truncate the initial file. This value would be relevant if
-	// we were writing to a particular partition on a device, but we are
-	// not so the minimum iso size will work for us here
-	minISOSize := 38 * 1024
-	d, err := diskfs.Create(outPath, int64(minISOSize), diskfs.Raw, diskfs.SectorSizeDefault)
-	if err != nil {
-		return err
-	}
-
-	d.LogicalBlocksize = 2048
-	fspec := disk.FilesystemSpec{
-		Partition:   0,
-		FSType:      filesystem.TypeISO9660,
-		VolumeLabel: volumeLabel,
-		WorkDir:     workDir,
-	}
-	fs, err := d.CreateFilesystem(fspec)
-	if err != nil {
-		return err
-	}
-
-	iso, ok := fs.(*iso9660.FileSystem)
-	if !ok {
-		return fmt.Errorf("not an iso9660 filesystem")
-	}
-
-	options := iso9660.FinalizeOptions{
-		RockRidge:        true,
-		VolumeIdentifier: volumeLabel,
-	}
-
-	return iso.Finalize(options)
 }

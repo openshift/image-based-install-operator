@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/carbonin/cluster-relocation-service/internal/imageserver"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/sirupsen/logrus"
 )
 
 var Options struct {
-	ServerDir     string `envconfig:"SERVER_DIR" default:"/data/server"`
+	DataDir       string `envconfig:"DATA_DIR" default:"/data"`
 	Port          string `envconfig:"PORT" default:"8000"`
 	HTTPSKeyFile  string `envconfig:"HTTPS_KEY_FILE"`
 	HTTPSCertFile string `envconfig:"HTTPS_CERT_FILE"`
@@ -28,11 +30,17 @@ func main() {
 		log.Fatalf("Failed to process config: %s", err)
 	}
 
-	if err := os.MkdirAll(Options.ServerDir, 0700); err != nil {
-		log.Fatalf("Failed to create server dir: %s", err)
+	workDir := filepath.Join(Options.DataDir, "iso-workdir")
+	if err := os.MkdirAll(workDir, 0700); err != nil {
+		log.Fatalf("Failed to create work dir: %s", err)
 	}
 
-	http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(Options.ServerDir))))
+	s := &imageserver.Handler{
+		Log:        log,
+		WorkDir:    workDir,
+		ConfigsDir: filepath.Join(Options.DataDir, "namespaces"),
+	}
+	http.Handle("/images/", s)
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%s", Options.Port),
 	}
@@ -57,11 +65,11 @@ func main() {
 	<-stop
 
 	if err := server.Shutdown(context.Background()); err != nil {
-		log.WithError(err).Errorf("shutdown failed")
+		log.WithError(err).Error("shutdown failed")
 		if err := server.Close(); err != nil {
 			log.WithError(err).Fatal("emergency shutdown failed")
 		}
 	} else {
-		log.Infof("server terminated gracefully")
+		log.Info("server terminated gracefully")
 	}
 }
