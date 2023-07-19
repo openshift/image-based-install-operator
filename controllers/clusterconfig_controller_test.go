@@ -101,12 +101,16 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation-spec.json")
+		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation.json")
 		content, err := os.ReadFile(specPath)
 		Expect(err).NotTo(HaveOccurred())
-		relocationSpec := &cro.ClusterRelocationSpec{}
-		Expect(json.Unmarshal(content, relocationSpec)).To(Succeed())
-		Expect(*relocationSpec).To(Equal(config.Spec.ClusterRelocationSpec))
+		relocation := &cro.ClusterRelocation{}
+		Expect(json.Unmarshal(content, relocation)).To(Succeed())
+		Expect(relocation.Spec).To(Equal(config.Spec.ClusterRelocationSpec))
+		Expect(relocation.Name).To(Equal(configName))
+		Expect(relocation.Namespace).To(Equal(configNamespace))
+		Expect(relocation.Kind).To(Equal("ClusterRelocation"))
+		Expect(relocation.APIVersion).To(Equal("rhsyseng.github.io/v1beta1"))
 	})
 
 	It("creates the referenced secrets", func() {

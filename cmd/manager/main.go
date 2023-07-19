@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	"github.com/carbonin/cluster-relocation-service/controllers"
 	"github.com/kelseyhightower/envconfig"
@@ -49,6 +50,7 @@ func init() {
 
 	utilruntime.Must(relocationv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(cro.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

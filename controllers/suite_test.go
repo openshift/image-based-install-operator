@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/scheme"
 
+	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -35,6 +36,7 @@ func TestAPIs(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	Expect(cro.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(relocationv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(bmh_v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 })

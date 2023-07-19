@@ -26,6 +26,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	"github.com/carbonin/cluster-relocation-service/internal/filelock"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
@@ -208,24 +210,19 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	}
 
 	locked, err := filelock.WithWriteLock(configDir, func() error {
-		crs := config.Spec.ClusterRelocationSpec
-		data, err := json.Marshal(crs)
-		if err != nil {
-			return fmt.Errorf("failed to marshal cluster relocation spec: %w", err)
-		}
-		if err := os.WriteFile(filepath.Join(filesDir, "cluster-relocation-spec.json"), data, 0644); err != nil {
-			return fmt.Errorf("failed to write cluster relocation spec: %w", err)
+		if err := r.writeClusterRelocation(config, filepath.Join(filesDir, "cluster-relocation.json")); err != nil {
+			return err
 		}
 
-		if err := r.writeSecretToFile(ctx, crs.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
 			return fmt.Errorf("failed to write api cert secret: %w", err)
 		}
 
-		if err := r.writeSecretToFile(ctx, crs.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
 			return fmt.Errorf("failed to write ingress cert secret: %w", err)
 		}
 
-		if err := r.writeSecretToFile(ctx, crs.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
@@ -241,6 +238,40 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	}
 
 	return false, nil
+}
+
+func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alpha1.ClusterConfig, file string) error {
+	cr := &cro.ClusterRelocation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      config.Name,
+			Namespace: config.Namespace,
+		},
+		Spec: config.Spec.ClusterRelocationSpec,
+	}
+
+	gvks, unversioned, err := r.Scheme.ObjectKinds(cr)
+	if err != nil {
+		return err
+	}
+	if unversioned || len(gvks) == 0 {
+		return fmt.Errorf("unable to find API version for ClusterRelocation")
+	}
+	// if there are multiple assume the last is the most recent
+	gvk := gvks[len(gvks)-1]
+	cr.TypeMeta = metav1.TypeMeta{
+		APIVersion: gvk.GroupVersion().String(),
+		Kind:       gvk.Kind,
+	}
+
+	data, err := json.Marshal(cr)
+	if err != nil {
+		return fmt.Errorf("failed to marshal cluster relocation: %w", err)
+	}
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cluster relocation: %w", err)
+	}
+
+	return nil
 }
 
 func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *corev1.SecretReference, file string) error {
