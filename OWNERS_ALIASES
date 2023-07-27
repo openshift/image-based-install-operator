@@ -1,0 +1,12 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+aliases:
+  approvers:
+    - romfreiman
+    - filanov
+    - gamli75
+    - oourfali
+    - osherdp
+    - avishayt
+    - carbonin
+    - eranco74
