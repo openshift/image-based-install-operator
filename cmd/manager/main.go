@@ -32,10 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
-	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
-	"github.com/carbonin/cluster-relocation-service/controllers"
 	"github.com/kelseyhightower/envconfig"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	"github.com/openshift/cluster-relocation-service/controllers"
 	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )

@@ -10,11 +10,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/carbonin/cluster-relocation-service/internal/filelock"
 	"github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	"github.com/openshift/cluster-relocation-service/internal/filelock"
 	"github.com/sirupsen/logrus"
 )
 
@@ -54,7 +54,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// if anything fails remove the workdir, if create succeeds it will remove the workdir so this will be a noop
 	defer os.RemoveAll(isoWorkDir)
 
-	// TODO: carbonin improve this to wait for some timout (use ctx?) instead of erroring on a lock failure immediately
+	// TODO: openshift improve this to wait for some timout (use ctx?) instead of erroring on a lock failure immediately
 	locked, err := filelock.WithReadLock(configDir, func() error {
 		return copyDir(isoWorkDir, filesDir)
 	})

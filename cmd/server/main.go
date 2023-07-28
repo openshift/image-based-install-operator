@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/carbonin/cluster-relocation-service/internal/imageserver"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/openshift/cluster-relocation-service/internal/imageserver"
 	"github.com/sirupsen/logrus"
 )
 
