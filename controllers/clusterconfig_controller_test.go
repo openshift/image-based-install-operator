@@ -70,8 +70,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Create(ctx, s)).To(Succeed())
 	}
 
+	outputFilePath := func(file string) string {
+		return filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", file)
+	}
+
 	validateSecretContent := func(file string, data map[string][]byte) {
-		content, err := os.ReadFile(filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", file))
+		content, err := os.ReadFile(outputFilePath(file))
 		Expect(err).NotTo(HaveOccurred())
 		secret := &corev1.Secret{}
 		Expect(json.Unmarshal(content, secret)).To(Succeed())
@@ -101,8 +105,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation.json")
-		content, err := os.ReadFile(specPath)
+		content, err := os.ReadFile(outputFilePath("cluster-relocation.json"))
 		Expect(err).NotTo(HaveOccurred())
 		relocation := &cro.ClusterRelocation{}
 		Expect(json.Unmarshal(content, relocation)).To(Succeed())
@@ -161,6 +164,55 @@ var _ = Describe("Reconcile", func() {
 		validateSecretContent("/ingress-cert-secret.json", ingressCertData)
 		validateSecretContent("/pull-secret-secret.json", pullSecretData)
 		validateSecretContent("/acm-secret.json", acmSecretData)
+	})
+
+	It("creates files for references nmconnection files", func() {
+		netConfigName := "netconfig"
+		netConfigData := map[string]string{
+			"eth0.nmconnection": "some\nconnection\nstring",
+			"eth1.nmconnection": "other\nconnection\nstring",
+			"file":              "stuff",
+		}
+		s := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      netConfigName,
+				Namespace: "test-namespace",
+			},
+			Data: netConfigData,
+		}
+		Expect(c.Create(ctx, s)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				NetworkConfigRef: &corev1.LocalObjectReference{
+					Name: netConfigName,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath("eth0.nmconnection"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(content).To(Equal([]byte("some\nconnection\nstring")))
+
+		content, err = os.ReadFile(outputFilePath("eth1.nmconnection"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(content).To(Equal([]byte("other\nconnection\nstring")))
+
+		_, err = os.Stat(outputFilePath("file"))
+		Expect(os.IsNotExist(err)).To(BeTrue())
 	})
 
 	It("configures a referenced BMH", func() {
