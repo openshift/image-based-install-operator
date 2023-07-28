@@ -30,7 +30,8 @@ type ClusterConfigSpec struct {
 	// +optional
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
 
-	// NetworkConfigRef is the reference to a config map containing network configuration files if necessary
+	// NetworkConfigRef is the reference to a config map containing network configuration files if necessary.
+	// Keys should be of the form *.nmconnection and each represent an nmconnection file to be applied to the host.
 	// +optional
 	NetworkConfigRef *corev1.LocalObjectReference `json:"networkConfigRef,omitempty"`
 }

@@ -371,7 +371,9 @@ spec:
                 x-kubernetes-map-type: atomic
               networkConfigRef:
                 description: NetworkConfigRef is the reference to a config map containing
-                  network configuration files if necessary
+                  network configuration files if necessary. Keys should be of the
+                  form *.nmconnection and each represent an nmconnection file to be
+                  applied to the host.
                 properties:
                   name:
                     description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names

@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -233,8 +234,24 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 			}
 		}
 
-		// TODO: create network config when we know what this looks like
-		// no sense in spending time working on a CM if it's not going to be one in the end
+		if config.Spec.NetworkConfigRef != nil {
+			cm := &corev1.ConfigMap{}
+			key := types.NamespacedName{Name: config.Spec.NetworkConfigRef.Name, Namespace: config.Namespace}
+			if err := r.Get(ctx, key, cm); err != nil {
+				return err
+			}
+
+			for name, content := range cm.Data {
+				if !strings.HasSuffix(name, ".nmconnection") {
+					r.Log.Warnf("Ignoring file name %s without .nmconnection suffix", name)
+					continue
+				}
+				if err := os.WriteFile(filepath.Join(filesDir, name), []byte(content), 0644); err != nil {
+					return fmt.Errorf("failed to write network connection file: %w", err)
+				}
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
