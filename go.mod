@@ -1,4 +1,4 @@
-module github.com/carbonin/cluster-relocation-service
+module github.com/openshift/cluster-relocation-service
 
 go 1.19
 

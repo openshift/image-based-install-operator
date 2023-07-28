@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 
 	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
-	relocationv1alpha1 "github.com/carbonin/cluster-relocation-service/api/v1alpha1"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
