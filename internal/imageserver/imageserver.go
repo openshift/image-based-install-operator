@@ -75,7 +75,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if err := create(outPath, isoWorkDir, "relocation-config"); err != nil {
+	if err := create(outPath, isoWorkDir, "ZTC SNO"); err != nil {
 		h.Log.WithError(err).Error("failed to create iso")
 		w.WriteHeader(http.StatusInternalServerError)
 		return

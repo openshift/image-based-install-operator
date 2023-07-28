@@ -102,6 +102,8 @@ var _ = Describe("ServeHttp", func() {
 		fs, err := d.GetFilesystem(0)
 		Expect(err).NotTo(HaveOccurred())
 
+		Expect(fs.Label()).To(HavePrefix("ZTC SNO"))
+
 		isoFile, err := fs.OpenFile("/file1", os.O_RDONLY)
 		Expect(err).NotTo(HaveOccurred())
 		content, err := io.ReadAll(isoFile)
