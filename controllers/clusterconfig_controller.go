@@ -226,6 +226,12 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
+		if config.Spec.ACMRegistration != nil {
+			if err := r.writeSecretToFile(ctx, &config.Spec.ACMRegistration.ACMSecret, filepath.Join(filesDir, "acm-secret.json")); err != nil {
+				return fmt.Errorf("failed to write ACM secret: %w", err)
+			}
+		}
+
 		// TODO: create network config when we know what this looks like
 		// no sense in spending time working on a CM if it's not going to be one in the end
 		return nil
