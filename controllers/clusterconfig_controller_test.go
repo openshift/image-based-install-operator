@@ -117,9 +117,11 @@ var _ = Describe("Reconcile", func() {
 		apiCertData := map[string][]byte{"apicert": []byte("apicert")}
 		ingressCertData := map[string][]byte{"ingresscert": []byte("ingresscert")}
 		pullSecretData := map[string][]byte{"pullsecret": []byte("pullsecret")}
+		acmSecretData := map[string][]byte{"acmsecret": []byte("acmsecret")}
 		createSecret("api-cert", apiCertData)
 		createSecret("ingress-cert", ingressCertData)
 		createSecret("pull-secret", pullSecretData)
+		createSecret("acm-secret", acmSecretData)
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
@@ -137,6 +139,11 @@ var _ = Describe("Reconcile", func() {
 					PullSecretRef: &corev1.SecretReference{
 						Name: "pull-secret", Namespace: configNamespace,
 					},
+					ACMRegistration: &cro.ACMRegistration{
+						ACMSecret: corev1.SecretReference{
+							Name: "acm-secret", Namespace: configNamespace,
+						},
+					},
 				},
 			},
 		}
@@ -153,6 +160,7 @@ var _ = Describe("Reconcile", func() {
 		validateSecretContent("/api-cert-secret.json", apiCertData)
 		validateSecretContent("/ingress-cert-secret.json", ingressCertData)
 		validateSecretContent("/pull-secret-secret.json", pullSecretData)
+		validateSecretContent("/acm-secret.json", acmSecretData)
 	})
 
 	It("configures a referenced BMH", func() {
