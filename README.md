@@ -9,22 +9,22 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
 
 ### Running on the cluster
-1. Install Instances of Custom Resources:
+1. Build and push your image to the location specified by `IMG`:
 
 ```sh
-kubectl apply -f config/samples/
+make build-image push IMG=<some-registry>/cluster-relocation-service:tag
 ```
 
-2. Build and push your image to the location specified by `IMG`:
-
-```sh
-make docker-build docker-push IMG=<some-registry>/cluster-relocation-service:tag
-```
-
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+2. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
 make deploy IMG=<some-registry>/cluster-relocation-service:tag
+```
+
+3. Create a cluster config resource
+
+```sh
+kubectl apply -f config/samples/relocation_v1alpha1_clusterconfig.yaml
 ```
 
 ### Uninstall CRDs
