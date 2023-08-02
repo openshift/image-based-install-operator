@@ -24,58 +24,64 @@ var _ = Describe("WithWriteLock", func() {
 	})
 
 	It("succeeds with no other locks", func() {
-		locked, err := WithWriteLock(dir, func() error { return nil })
+		locked, lerr, ferr := WithWriteLock(dir, func() error { return nil })
 		Expect(locked).To(BeTrue())
-		Expect(err).ToNot(HaveOccurred())
+		Expect(lerr).ToNot(HaveOccurred())
+		Expect(ferr).ToNot(HaveOccurred())
 	})
 
 	It("returns the inner function error", func() {
 		origError := fmt.Errorf("error")
-		locked, err := WithWriteLock(dir, func() error { return origError })
+		locked, lerr, ferr := WithWriteLock(dir, func() error { return origError })
 		Expect(locked).To(BeTrue())
-		Expect(err).To(HaveOccurred())
-		Expect(err).To(Equal(origError))
+		Expect(lerr).ToNot(HaveOccurred())
+		Expect(ferr).To(HaveOccurred())
+		Expect(ferr).To(Equal(origError))
 	})
 
 	It("fails when a write lock is held already", func() {
 		c := make(chan int)
 
-		l1, err := WithWriteLock(dir, func() error {
+		l1, lerr, ferr := WithWriteLock(dir, func() error {
 			go func() {
 				defer func() { c <- 1 }()
-				l2, err := WithWriteLock(dir, func() error { return nil })
+				l2, lerr2, ferr2 := WithWriteLock(dir, func() error { return nil })
 				Expect(l2).To(BeFalse())
-				Expect(err).ToNot(HaveOccurred())
+				Expect(lerr2).ToNot(HaveOccurred())
+				Expect(ferr2).ToNot(HaveOccurred())
 			}()
 			<-c
 			return nil
 		})
 		Expect(l1).To(BeTrue())
-		Expect(err).NotTo(HaveOccurred())
+		Expect(lerr).NotTo(HaveOccurred())
+		Expect(ferr).NotTo(HaveOccurred())
 	})
 
 	It("fails when a read lock is held already", func() {
 		c := make(chan int)
 
-		l1, err := WithReadLock(dir, func() error {
+		l1, lerr, ferr := WithReadLock(dir, func() error {
 			go func() {
 				defer func() { c <- 1 }()
-				l2, err := WithWriteLock(dir, func() error { return nil })
+				l2, lerr2, ferr2 := WithWriteLock(dir, func() error { return nil })
 				Expect(l2).To(BeFalse())
-				Expect(err).ToNot(HaveOccurred())
+				Expect(lerr2).ToNot(HaveOccurred())
+				Expect(ferr2).ToNot(HaveOccurred())
 			}()
 			<-c
 			return nil
 		})
 		Expect(l1).To(BeTrue())
-		Expect(err).NotTo(HaveOccurred())
+		Expect(lerr).NotTo(HaveOccurred())
+		Expect(ferr).NotTo(HaveOccurred())
 	})
 
 	It("fails if the directory doesn't exist", func() {
 		Expect(os.RemoveAll(dir)).To(Succeed())
-		locked, err := WithWriteLock(dir, func() error { return nil })
+		locked, lerr, _ := WithWriteLock(dir, func() error { return nil })
 		Expect(locked).To(BeFalse())
-		Expect(err).To(HaveOccurred())
+		Expect(lerr).To(HaveOccurred())
 	})
 })
 
@@ -94,58 +100,64 @@ var _ = Describe("WithReadLock", func() {
 	})
 
 	It("succeeds with no other locks", func() {
-		locked, err := WithReadLock(dir, func() error { return nil })
+		locked, lerr, ferr := WithReadLock(dir, func() error { return nil })
 		Expect(locked).To(BeTrue())
-		Expect(err).ToNot(HaveOccurred())
+		Expect(lerr).ToNot(HaveOccurred())
+		Expect(ferr).ToNot(HaveOccurred())
 	})
 
 	It("returns the inner function error", func() {
 		origError := fmt.Errorf("error")
-		locked, err := WithReadLock(dir, func() error { return origError })
+		locked, lerr, ferr := WithReadLock(dir, func() error { return origError })
 		Expect(locked).To(BeTrue())
-		Expect(err).To(HaveOccurred())
-		Expect(err).To(Equal(origError))
+		Expect(lerr).ToNot(HaveOccurred())
+		Expect(ferr).To(HaveOccurred())
+		Expect(ferr).To(Equal(origError))
 	})
 
 	It("succeeds when a read lock is held already", func() {
 		c := make(chan int)
 
-		l1, err := WithReadLock(dir, func() error {
+		l1, lerr, ferr := WithReadLock(dir, func() error {
 			go func() {
 				defer func() { c <- 1 }()
-				l2, err := WithReadLock(dir, func() error { return nil })
+				l2, lerr2, ferr2 := WithReadLock(dir, func() error { return nil })
 				Expect(l2).To(BeTrue())
-				Expect(err).ToNot(HaveOccurred())
+				Expect(lerr2).ToNot(HaveOccurred())
+				Expect(ferr2).ToNot(HaveOccurred())
 			}()
 			<-c
 			return nil
 		})
 		Expect(l1).To(BeTrue())
-		Expect(err).NotTo(HaveOccurred())
+		Expect(lerr).NotTo(HaveOccurred())
+		Expect(ferr).NotTo(HaveOccurred())
 	})
 
 	It("fails when a write lock is held already", func() {
 		c := make(chan int)
 
-		l1, err := WithWriteLock(dir, func() error {
+		l1, lerr, ferr := WithWriteLock(dir, func() error {
 			go func() {
 				defer func() { c <- 1 }()
-				l2, err := WithReadLock(dir, func() error { return nil })
+				l2, lerr2, ferr2 := WithReadLock(dir, func() error { return nil })
 				Expect(l2).To(BeFalse())
-				Expect(err).ToNot(HaveOccurred())
+				Expect(lerr2).ToNot(HaveOccurred())
+				Expect(ferr2).ToNot(HaveOccurred())
 			}()
 			<-c
 			return nil
 		})
 		Expect(l1).To(BeTrue())
-		Expect(err).NotTo(HaveOccurred())
+		Expect(lerr).NotTo(HaveOccurred())
+		Expect(ferr).NotTo(HaveOccurred())
 	})
 
 	It("fails if the directory doesn't exist", func() {
 		Expect(os.RemoveAll(dir)).To(Succeed())
-		locked, err := WithReadLock(dir, func() error { return nil })
+		locked, lerr, _ := WithReadLock(dir, func() error { return nil })
 		Expect(locked).To(BeFalse())
-		Expect(err).To(HaveOccurred())
+		Expect(lerr).To(HaveOccurred())
 	})
 })
 
