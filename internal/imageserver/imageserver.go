@@ -54,12 +54,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// if anything fails remove the workdir, if create succeeds it will remove the workdir so this will be a noop
 	defer os.RemoveAll(isoWorkDir)
 
-	// TODO: openshift improve this to wait for some timout (use ctx?) instead of erroring on a lock failure immediately
-	locked, err := filelock.WithReadLock(configDir, func() error {
+	// TODO: improve this to wait for some timout (use ctx?) instead of erroring on a lock failure immediately
+	locked, lockErr, funcErr := filelock.WithReadLock(configDir, func() error {
 		return copyDir(isoWorkDir, filesDir)
 	})
-	if err != nil {
-		h.Log.WithError(err).Error("failed to acquire file lock")
+	if lockErr != nil {
+		h.Log.WithError(lockErr).Error("failed to acquire file lock")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if funcErr != nil {
+		h.Log.WithError(funcErr).Error("failed to acquire file lock")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

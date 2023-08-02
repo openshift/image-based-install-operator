@@ -24,39 +24,41 @@ func lockForDir(dir string) (*flock.Flock, error) {
 }
 
 // WithWriteLock runs the given function while holding a write lock on the directory `dir`
-// It returns a bool indicating whether the lock was acquired and any error that occurred acquiring the lock or running the function
-func WithWriteLock(dir string, f func() error) (bool, error) {
+// It returns a bool indicating whether the lock was acquired, any error that occurred acquiring
+// the lock, and the error value returned by the wrapped function
+func WithWriteLock(dir string, f func() error) (bool, error, error) {
 	lock, err := lockForDir(dir)
 	if err != nil {
-		return false, err
+		return false, err, nil
 	}
 	locked, err := lock.TryLock()
 	if err != nil {
-		return false, err
+		return false, err, nil
 	}
 	if !locked {
-		return false, nil
+		return false, nil, nil
 	}
 	defer lock.Unlock()
 
-	return true, f()
+	return true, nil, f()
 }
 
 // WithReadLock runs the given function while holding a read lock on the directory `dir`
-// It returns a bool indicating whether the lock was acquired and any error that occurred acquiring the lock or running the function
-func WithReadLock(dir string, f func() error) (bool, error) {
+// It returns a bool indicating whether the lock was acquired, any error that occurred acquiring
+// the lock, and the error value returned by the wrapped function
+func WithReadLock(dir string, f func() error) (bool, error, error) {
 	lock, err := lockForDir(dir)
 	if err != nil {
-		return false, err
+		return false, err, nil
 	}
 	locked, err := lock.TryRLock()
 	if err != nil {
-		return false, err
+		return false, err, nil
 	}
 	if !locked {
-		return false, nil
+		return false, nil, nil
 	}
 	defer lock.Unlock()
 
-	return true, f()
+	return true, nil, f()
 }
