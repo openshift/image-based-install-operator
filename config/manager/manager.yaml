@@ -29,7 +29,7 @@ spec:
         - /manager
         args:
         - --leader-elect
-        image: quay.io/carbonin/cluster-relocation-service:latest
+        image: controller:latest
         name: manager
         env:
         - name: SERVICE_NAMESPACE
@@ -71,7 +71,7 @@ spec:
           mountPath: /data
       - command:
         - /server
-        image: quay.io/carbonin/cluster-relocation-service:latest
+        image: controller:latest
         name: server
         ports:
         - name: config-server
