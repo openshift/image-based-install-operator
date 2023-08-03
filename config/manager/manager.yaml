@@ -41,7 +41,7 @@ spec:
         - name: SERVICE_PORT
           value: "8000"
         - name: SERVICE_SCHEME
-          value: "http"
+          value: "https"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -73,6 +73,13 @@ spec:
         - /server
         image: controller:latest
         name: server
+        env:
+        - name: HTTPS_KEY_FILE
+          value: /certs/tls.key
+        - name: HTTPS_CERT_FILE
+          value: /certs/tls.crt
+        - name: PORT
+          value: "8000"
         ports:
         - name: config-server
           containerPort: 8000
@@ -91,9 +98,14 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /data
+        - name: certs
+          mountPath: /certs
       volumes:
       - name: data
         emptyDir: {}
+      - name: certs
+        secret:
+          secretName: cluster-relocation-server
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
 ---
@@ -102,6 +114,8 @@ kind: Service
 metadata:
   name: cluster-relocation-config
   namespace: cluster-relocation
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: cluster-relocation-server
 spec:
   ports:
   - port: 8000
