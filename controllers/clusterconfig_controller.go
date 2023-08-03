@@ -28,12 +28,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -63,12 +65,13 @@ type ClusterConfigReconciler struct {
 }
 
 const (
-	detachedAnnotation    = "baremetalhost.metal3.io/detached"
-	clusterRelocationName = "cluster"
-	relocationNamespace   = "cluster-relocation"
-	clusterConfigDir      = "cluster-configuration"
-	manifestsDir          = "extra-manifests"
-	networkConfigDir      = "network-configuration"
+	detachedAnnotation         = "baremetalhost.metal3.io/detached"
+	clusterRelocationName      = "cluster"
+	relocationNamespace        = "cluster-relocation"
+	clusterConfigDir           = "cluster-configuration"
+	manifestsDir               = "extra-manifests"
+	networkConfigDir           = "network-configuration"
+	clusterConfigFinalizerName = "clusterconfig." + relocationv1alpha1.Group + "/deprovision"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -84,8 +87,15 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	config := &relocationv1alpha1.ClusterConfig{}
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
-		log.WithError(err).Error("failed to get referenced cluster config")
-		return ctrl.Result{}, err
+		log.WithError(err).Error("failed to get cluster config")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if res, stop, err := r.handleFinalizer(ctx, log, config); !res.IsZero() || stop || err != nil {
+		if err != nil {
+			log.Error(err)
+		}
+		return res, err
 	}
 
 	if res, err := r.writeInputData(ctx, log, config); !res.IsZero() || err != nil {
@@ -275,15 +285,29 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 	return nil
 }
 
+// configDirs returns the lock directory and the files directory for the given cluster config
+func (r *ClusterConfigReconciler) configDirs(config *relocationv1alpha1.ClusterConfig) (string, string, error) {
+	lockDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name)
+	filesDir := filepath.Join(lockDir, "files")
+	if err := os.MkdirAll(filesDir, 0700); err != nil {
+		return "", "", err
+	}
+
+	return lockDir, filesDir, nil
+}
+
 // writeInputData writes the required info based on the cluster config to the config cache dir
 func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, config *relocationv1alpha1.ClusterConfig) (ctrl.Result, error) {
-	configDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name)
-	clusterConfigPath := filepath.Join(configDir, "files", clusterConfigDir)
+	lockDir, filesDir, err := r.configDirs(config)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	clusterConfigPath := filepath.Join(filesDir, clusterConfigDir)
 	if err := os.MkdirAll(clusterConfigPath, 0700); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	locked, lockErr, funcErr := filelock.WithWriteLock(configDir, func() error {
+	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
 		if err := r.writeNamespace(filepath.Join(clusterConfigPath, "namespace.json")); err != nil {
 			return err
 		}
@@ -315,7 +339,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus
 		}
 
 		if config.Spec.ExtraManifestsRef != nil {
-			manifestsPath := filepath.Join(configDir, "files", manifestsDir)
+			manifestsPath := filepath.Join(filesDir, manifestsDir)
 			if err := os.MkdirAll(manifestsPath, 0700); err != nil {
 				return err
 			}
@@ -338,7 +362,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus
 		}
 
 		if config.Spec.NetworkConfigRef != nil {
-			networkConfigPath := filepath.Join(configDir, "files", networkConfigDir)
+			networkConfigPath := filepath.Join(filesDir, networkConfigDir)
 			if err := os.MkdirAll(networkConfigPath, 0700); err != nil {
 				return err
 			}
@@ -484,4 +508,73 @@ func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *co
 	}
 
 	return nil
+}
+
+func (r *ClusterConfigReconciler) handleFinalizer(ctx context.Context, log logrus.FieldLogger, config *relocationv1alpha1.ClusterConfig) (ctrl.Result, bool, error) {
+	if config.DeletionTimestamp.IsZero() {
+		patch := client.MergeFrom(config.DeepCopy())
+		if controllerutil.AddFinalizer(config, clusterConfigFinalizerName) {
+			// update and requeue if the finalizer was added
+			return ctrl.Result{Requeue: true}, true, r.Patch(ctx, config, patch)
+		}
+		return ctrl.Result{}, false, nil
+	}
+
+	removeFinalizer := func() error {
+		log.Info("removing cluster config finalizer")
+		patch := client.MergeFrom(config.DeepCopy())
+		if controllerutil.RemoveFinalizer(config, clusterConfigFinalizerName) {
+			return r.Patch(ctx, config, patch)
+		}
+		return nil
+	}
+
+	lockDir, _, err := r.configDirs(config)
+	if err != nil {
+		return ctrl.Result{}, true, err
+	}
+
+	if _, err := os.Stat(lockDir); err == nil {
+		locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
+			log.Info("removing files for cluster config")
+			return os.RemoveAll(lockDir)
+		})
+		if lockErr != nil {
+			return ctrl.Result{}, true, fmt.Errorf("failed to acquire file lock: %w", lockErr)
+		}
+		if funcErr != nil {
+			return ctrl.Result{}, true, fmt.Errorf("failed to write input data: %w", funcErr)
+		}
+		if !locked {
+			log.Info("requeueing due to lock contention")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, true, nil
+		}
+	} else if !os.IsNotExist(err) {
+		return ctrl.Result{}, true, fmt.Errorf("failed to stat config directory %s: %w", lockDir, err)
+	}
+
+	if bmhRef := config.Spec.BareMetalHostRef; bmhRef != nil {
+		bmh := &bmh_v1alpha1.BareMetalHost{}
+		key := types.NamespacedName{
+			Name:      bmhRef.Name,
+			Namespace: bmhRef.Namespace,
+		}
+		if err := r.Get(ctx, key, bmh); err != nil {
+			if !errors.IsNotFound(err) {
+				return ctrl.Result{}, true, fmt.Errorf("failed to get BareMetalHost %s: %w", key, err)
+			}
+			log.Warnf("Referenced BareMetalHost %s does not exist", key)
+			return ctrl.Result{}, true, removeFinalizer()
+		}
+		patch := client.MergeFrom(bmh.DeepCopy())
+		if bmh.Spec.Image != nil {
+			log.Info("removing image from BareMetalHost %s", key)
+			bmh.Spec.Image = nil
+			if err := r.Patch(ctx, bmh, patch); err != nil {
+				return ctrl.Result{}, true, fmt.Errorf("failed to patch BareMetalHost %s: %w", key, err)
+			}
+		}
+	}
+
+	return ctrl.Result{}, true, removeFinalizer()
 }

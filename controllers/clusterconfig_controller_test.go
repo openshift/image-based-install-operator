@@ -95,8 +95,9 @@ var _ = Describe("Reconcile", func() {
 	It("creates a namespace file", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ClusterRelocationSpec: cro.ClusterRelocationSpec{
@@ -128,8 +129,9 @@ var _ = Describe("Reconcile", func() {
 	It("creates the correct relocation content", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ClusterRelocationSpec: cro.ClusterRelocationSpec{
@@ -172,8 +174,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ClusterRelocationSpec: cro.ClusterRelocationSpec{
@@ -239,8 +242,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				NetworkConfigRef: &corev1.LocalObjectReference{
@@ -285,8 +289,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ExtraManifestsRef: &corev1.LocalObjectReference{
@@ -322,8 +327,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ExtraManifestsRef: &corev1.LocalObjectReference{
@@ -357,8 +363,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
@@ -415,8 +422,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
@@ -445,11 +453,22 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Annotations[detachedAnnotation]).To(Equal("clusterconfig-controller"))
 	})
 
+	It("doesn't error for a missing clusterconfig", func() {
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+
 	It("sets the image ready condition", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ClusterRelocationSpec: cro.ClusterRelocationSpec{
@@ -492,8 +511,9 @@ var _ = Describe("Reconcile", func() {
 
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
@@ -523,8 +543,9 @@ var _ = Describe("Reconcile", func() {
 	It("sets the host configured condition to false when the host is missing", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      configName,
-				Namespace: configNamespace,
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
@@ -664,5 +685,196 @@ var _ = Describe("serviceURL", func() {
 			ServicePort:      "8080",
 		}
 		Expect(serviceURL(opts)).To(Equal("http://name.namespace:8080"))
+	})
+})
+
+var _ = Describe("handleFinalizer", func() {
+	var (
+		c               client.Client
+		dataDir         string
+		r               *ClusterConfigReconciler
+		ctx             = context.Background()
+		configName      = "test-config"
+		configNamespace = "test-namespace"
+	)
+
+	BeforeEach(func() {
+		c = fakeclient.NewClientBuilder().
+			WithScheme(scheme.Scheme).
+			WithStatusSubresource(&relocationv1alpha1.ClusterConfig{}).
+			Build()
+		var err error
+		dataDir, err = os.MkdirTemp("", "clusterconfig_controller_test_data")
+		Expect(err).NotTo(HaveOccurred())
+
+		r = &ClusterConfigReconciler{
+			Client: c,
+			Scheme: scheme.Scheme,
+			Log:    logrus.New(),
+			Options: &ClusterConfigReconcilerOptions{
+				DataDir: dataDir,
+			},
+		}
+	})
+
+	AfterEach(func() {
+		Expect(os.RemoveAll(dataDir)).To(Succeed())
+	})
+
+	It("adds the finalizer if the config is not being deleted", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+		res, stop, err := r.handleFinalizer(ctx, r.Log, config)
+		Expect(res).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		key := types.NamespacedName{
+			Name:      configName,
+			Namespace: configNamespace,
+		}
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		Expect(config.GetFinalizers()).To(ContainElement(clusterConfigFinalizerName))
+	})
+
+	It("noops if the finalizer is already present", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+		res, stop, err := r.handleFinalizer(ctx, r.Log, config)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeFalse())
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("deletes the local files when the config is deleted", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		// mark config as deleted to call the finalizer handler
+		now := metav1.Now()
+		config.ObjectMeta.DeletionTimestamp = &now
+
+		filesDir := filepath.Join(dataDir, "namespaces", config.Namespace, config.Name, "files")
+		testFilePath := filepath.Join(filesDir, "testfile")
+		Expect(os.MkdirAll(filesDir, 0700)).To(Succeed())
+		Expect(os.WriteFile(testFilePath, []byte("stuff"), 0644)).To(Succeed())
+
+		res, stop, err := r.handleFinalizer(ctx, r.Log, config)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		_, err = os.Stat(testFilePath)
+		Expect(os.IsNotExist(err)).To(BeTrue())
+
+		key := types.NamespacedName{
+			Name:      configName,
+			Namespace: configNamespace,
+		}
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		Expect(config.GetFinalizers()).ToNot(ContainElement(clusterConfigFinalizerName))
+	})
+
+	It("removes the BMH image url when the config is deleted", func() {
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				Image: &bmh_v1alpha1.Image{
+					URL: "https://service.example.com/namespace/name.iso",
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		// mark config as deleted to call the finalizer handler
+		now := metav1.Now()
+		config.ObjectMeta.DeletionTimestamp = &now
+
+		res, stop, err := r.handleFinalizer(ctx, r.Log, config)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		bmhKey := types.NamespacedName{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Get(ctx, bmhKey, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+
+		configKey := types.NamespacedName{
+			Name:      configName,
+			Namespace: configNamespace,
+		}
+		Expect(c.Get(ctx, configKey, config)).To(Succeed())
+		Expect(config.GetFinalizers()).ToNot(ContainElement(clusterConfigFinalizerName))
+	})
+
+	It("removes the finalizer if the referenced BMH doesn't exist", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		// mark config as deleted to call the finalizer handler
+		now := metav1.Now()
+		config.ObjectMeta.DeletionTimestamp = &now
+
+		res, stop, err := r.handleFinalizer(ctx, r.Log, config)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		configKey := types.NamespacedName{
+			Name:      configName,
+			Namespace: configNamespace,
+		}
+		Expect(c.Get(ctx, configKey, config)).To(Succeed())
+		Expect(config.GetFinalizers()).ToNot(ContainElement(clusterConfigFinalizerName))
 	})
 })
