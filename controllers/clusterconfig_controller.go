@@ -59,6 +59,8 @@ type ClusterConfigReconciler struct {
 	BaseURL string
 }
 
+const detachedAnnotation = "baremetalhost.metal3.io/detached"
+
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs/status,verbs=get;update;patch
@@ -190,6 +192,14 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 	liveIso := "live-iso"
 	if bmh.Spec.Image.DiskFormat == nil || *bmh.Spec.Image.DiskFormat != liveIso {
 		bmh.Spec.Image.DiskFormat = &liveIso
+		dirty = true
+	}
+
+	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateProvisioned {
+		if bmh.ObjectMeta.Annotations == nil {
+			bmh.ObjectMeta.Annotations = make(map[string]string)
+		}
+		bmh.ObjectMeta.Annotations[detachedAnnotation] = "clusterconfig-controller"
 		dirty = true
 	}
 

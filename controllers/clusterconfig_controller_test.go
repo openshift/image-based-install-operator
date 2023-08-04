@@ -169,6 +169,11 @@ var _ = Describe("Reconcile", func() {
 				Name:      "test-bmh",
 				Namespace: "test-bmh-namespace",
 			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateAvailable,
+				},
+			},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -205,6 +210,61 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Image.URL).To(Equal(fmt.Sprintf("http://service.namespace/images/%s/%s.iso", configNamespace, configName)))
 		Expect(bmh.Spec.Image.DiskFormat).To(HaveValue(Equal("live-iso")))
 		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+	})
+
+	It("sets detached on a referenced BMH after it is provisioned", func() {
+		liveISO := "live-iso"
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				Image: &bmh_v1alpha1.Image{
+					URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", configNamespace, configName),
+					DiskFormat: &liveISO,
+				},
+				Online: true,
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateProvisioned,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: configNamespace,
+				Name:      configName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Annotations[detachedAnnotation]).To(Equal("clusterconfig-controller"))
 	})
 })
 
