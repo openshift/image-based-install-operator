@@ -63,6 +63,7 @@ type ClusterConfigReconciler struct {
 const (
 	detachedAnnotation    = "baremetalhost.metal3.io/detached"
 	clusterRelocationName = "cluster"
+	relocationNamespace   = "cluster-relocation"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -225,6 +226,10 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	}
 
 	locked, err := filelock.WithWriteLock(configDir, func() error {
+		if err := writeNamespace(filepath.Join(filesDir, "namespace.json")); err != nil {
+			return err
+		}
+
 		if err := r.writeClusterRelocation(config, filepath.Join(filesDir, "cluster-relocation.json")); err != nil {
 			return err
 		}
@@ -296,13 +301,31 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	return false, nil
 }
 
+func writeNamespace(file string) error {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: relocationNamespace,
+		},
+	}
+	data, err := json.Marshal(ns)
+	if err != nil {
+		return fmt.Errorf("failed to marshal namespace: %w", err)
+	}
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		return fmt.Errorf("failed to write namespace: %w", err)
+	}
+
+	return nil
+}
+
 func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alpha1.ClusterConfig, file string) error {
 	cr := &cro.ClusterRelocation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterRelocationName,
 			Namespace: config.Namespace,
 		},
-		Spec: config.Spec.ClusterRelocationSpec,
+		// initialize with a deep copy to avoid changing the secret ref values of the original config
+		Spec: *config.Spec.ClusterRelocationSpec.DeepCopy(),
 	}
 
 	gvks, unversioned, err := r.Scheme.ObjectKinds(cr)
@@ -317,6 +340,21 @@ func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alp
 	cr.TypeMeta = metav1.TypeMeta{
 		APIVersion: gvk.GroupVersion().String(),
 		Kind:       gvk.Kind,
+	}
+
+	// override ClusterRelocation and Secret reference namespaces
+	cr.Namespace = relocationNamespace
+	if cr.Spec.ACMRegistration != nil {
+		cr.Spec.ACMRegistration.ACMSecret.Namespace = relocationNamespace
+	}
+	if cr.Spec.APICertRef != nil {
+		cr.Spec.APICertRef.Namespace = relocationNamespace
+	}
+	if cr.Spec.IngressCertRef != nil {
+		cr.Spec.IngressCertRef.Namespace = relocationNamespace
+	}
+	if cr.Spec.PullSecretRef != nil {
+		cr.Spec.PullSecretRef.Namespace = relocationNamespace
 	}
 
 	data, err := json.Marshal(cr)
@@ -340,6 +378,10 @@ func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *co
 	if err := r.Get(ctx, key, s); err != nil {
 		return err
 	}
+
+	// override namespace
+	s.Namespace = relocationNamespace
+
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err

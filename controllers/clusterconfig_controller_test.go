@@ -30,6 +30,7 @@ var _ = Describe("Reconcile", func() {
 		ctx             = context.Background()
 		configName      = "test-config"
 		configNamespace = "test-namespace"
+		secretNamespace = "secret-namespace"
 	)
 
 	BeforeEach(func() {
@@ -63,7 +64,7 @@ var _ = Describe("Reconcile", func() {
 		s := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
-				Namespace: "test-namespace",
+				Namespace: secretNamespace,
 			},
 			Data: data,
 		}
@@ -79,6 +80,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		secret := &corev1.Secret{}
 		Expect(json.Unmarshal(content, secret)).To(Succeed())
+
+		Expect(secret.Namespace).To(Equal(relocationNamespace))
 		Expect(secret.Data).To(Equal(data))
 	}
 
@@ -87,6 +90,37 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(content)).To(Equal(data))
 	}
+
+	It("creates a namespace file", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				ClusterRelocationSpec: cro.ClusterRelocationSpec{
+					Domain:  "thing.example.com",
+					SSHKeys: []string{"ssh-rsa sshkeyhere foo@example.com"},
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "namespace.json")
+		content, err := os.ReadFile(specPath)
+		Expect(err).NotTo(HaveOccurred())
+		ns := &corev1.Namespace{}
+		Expect(json.Unmarshal(content, ns)).To(Succeed())
+		Expect(ns.Name).To(Equal(relocationNamespace))
+	})
 
 	It("creates the correct relocation content", func() {
 		config := &relocationv1alpha1.ClusterConfig{
@@ -115,9 +149,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		relocation := &cro.ClusterRelocation{}
 		Expect(json.Unmarshal(content, relocation)).To(Succeed())
+
 		Expect(relocation.Spec).To(Equal(config.Spec.ClusterRelocationSpec))
 		Expect(relocation.Name).To(Equal(clusterRelocationName))
-		Expect(relocation.Namespace).To(Equal(configNamespace))
+		Expect(relocation.Namespace).To(Equal(relocationNamespace))
 		Expect(relocation.Kind).To(Equal("ClusterRelocation"))
 		Expect(relocation.APIVersion).To(Equal("rhsyseng.github.io/v1beta1"))
 	})
@@ -140,17 +175,17 @@ var _ = Describe("Reconcile", func() {
 			Spec: relocationv1alpha1.ClusterConfigSpec{
 				ClusterRelocationSpec: cro.ClusterRelocationSpec{
 					APICertRef: &corev1.SecretReference{
-						Name: "api-cert", Namespace: configNamespace,
+						Name: "api-cert", Namespace: secretNamespace,
 					},
 					IngressCertRef: &corev1.SecretReference{
-						Name: "ingress-cert", Namespace: configNamespace,
+						Name: "ingress-cert", Namespace: secretNamespace,
 					},
 					PullSecretRef: &corev1.SecretReference{
-						Name: "pull-secret", Namespace: configNamespace,
+						Name: "pull-secret", Namespace: secretNamespace,
 					},
 					ACMRegistration: &cro.ACMRegistration{
 						ACMSecret: corev1.SecretReference{
-							Name: "acm-secret", Namespace: configNamespace,
+							Name: "acm-secret", Namespace: secretNamespace,
 						},
 					},
 				},
@@ -165,6 +200,17 @@ var _ = Describe("Reconcile", func() {
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
+
+		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation.json")
+		content, err := os.ReadFile(specPath)
+		Expect(err).NotTo(HaveOccurred())
+		relocation := &cro.ClusterRelocation{}
+		Expect(json.Unmarshal(content, relocation)).To(Succeed())
+
+		Expect(relocation.Spec.APICertRef.Namespace).To(Equal(relocationNamespace))
+		Expect(relocation.Spec.IngressCertRef.Namespace).To(Equal(relocationNamespace))
+		Expect(relocation.Spec.PullSecretRef.Namespace).To(Equal(relocationNamespace))
+		Expect(relocation.Spec.ACMRegistration.ACMSecret.Namespace).To(Equal(relocationNamespace))
 
 		validateSecretContent("/api-cert-secret.json", apiCertData)
 		validateSecretContent("/ingress-cert-secret.json", ingressCertData)
