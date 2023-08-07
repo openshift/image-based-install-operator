@@ -261,7 +261,7 @@ spec:
                 x-kubernetes-map-type: atomic
               bareMetalHostRef:
                 description: BareMetalHostRef identifies a BareMetalHost object to
-                  be used to attach the configuration to the host
+                  be used to attach the configuration to the host.
                 properties:
                   name:
                     description: Name identifies the BareMetalHost within a namespace
@@ -294,6 +294,16 @@ spec:
               domain:
                 description: Domain defines the new base domain for the cluster.
                 type: string
+              extraManifestsRef:
+                description: ExtraManifestsRef is a reference to a config map containing
+                  additional manifests to be applied to the relocated cluster.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               imageDigestMirrors:
                 description: ImageDigestMirrors is used to configured a mirror registry
                   on the cluster.

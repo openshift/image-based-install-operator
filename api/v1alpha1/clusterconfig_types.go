@@ -26,7 +26,7 @@ import (
 type ClusterConfigSpec struct {
 	cro.ClusterRelocationSpec `json:",inline"`
 
-	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host
+	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
 	// +optional
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
 
@@ -34,6 +34,10 @@ type ClusterConfigSpec struct {
 	// Keys should be of the form *.nmconnection and each represent an nmconnection file to be applied to the host.
 	// +optional
 	NetworkConfigRef *corev1.LocalObjectReference `json:"networkConfigRef,omitempty"`
+
+	// ExtraManifestsRef is a reference to a config map containing additional manifests to be applied to the relocated cluster.
+	// +optional
+	ExtraManifestsRef *corev1.LocalObjectReference `json:"extraManifestsRef,omitempty"`
 }
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
