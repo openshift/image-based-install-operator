@@ -244,6 +244,25 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 			}
 		}
 
+		if config.Spec.ExtraManifestsRef != nil {
+			cm := &corev1.ConfigMap{}
+			key := types.NamespacedName{Name: config.Spec.ExtraManifestsRef.Name, Namespace: config.Namespace}
+			if err := r.Get(ctx, key, cm); err != nil {
+				return err
+			}
+
+			manifestsDir := filepath.Join(filesDir, "extra-manifests")
+			if err := os.Mkdir(manifestsDir, 0700); err != nil && !os.IsExist(err) {
+				return fmt.Errorf("failed to create extra-manifests directory: %w", err)
+			}
+
+			for name, content := range cm.Data {
+				if err := os.WriteFile(filepath.Join(manifestsDir, name), []byte(content), 0644); err != nil {
+					return fmt.Errorf("failed to write extra manifest file: %w", err)
+				}
+			}
+		}
+
 		if config.Spec.NetworkConfigRef != nil {
 			cm := &corev1.ConfigMap{}
 			key := types.NamespacedName{Name: config.Spec.NetworkConfigRef.Name, Namespace: config.Namespace}

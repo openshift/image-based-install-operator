@@ -82,6 +82,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(secret.Data).To(Equal(data))
 	}
 
+	validateExtraManifestContent := func(file string, data string) {
+		content, err := os.ReadFile(filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "extra-manifests", file))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(content)).To(Equal(data))
+	}
+
 	It("creates the correct relocation content", func() {
 		config := &relocationv1alpha1.ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
@@ -213,6 +219,44 @@ var _ = Describe("Reconcile", func() {
 
 		_, err = os.Stat(outputFilePath("file"))
 		Expect(os.IsNotExist(err)).To(BeTrue())
+	})
+
+	It("creates extra manifests", func() {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "manifests",
+				Namespace: configNamespace,
+			},
+			Data: map[string]string{
+				"manifest1.yaml": "stuff",
+				"manifest2.yaml": "foo",
+			},
+		}
+		Expect(c.Create(ctx, cm)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				ExtraManifestsRef: &corev1.LocalObjectReference{
+					Name: "manifests",
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		validateExtraManifestContent("manifest1.yaml", "stuff")
+		validateExtraManifestContent("manifest2.yaml", "foo")
 	})
 
 	It("configures a referenced BMH", func() {
