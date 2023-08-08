@@ -14,6 +14,7 @@ import (
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -317,6 +318,111 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Annotations[detachedAnnotation]).To(Equal("clusterconfig-controller"))
+	})
+
+	It("sets the image ready condition", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				ClusterRelocationSpec: cro.ClusterRelocationSpec{
+					Domain:  "thing.example.com",
+					SSHKeys: []string{"ssh-rsa sshkeyhere foo@example.com"},
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		cond := meta.FindStatusCondition(config.Status.Conditions, relocationv1alpha1.ImageReadyCondition)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(relocationv1alpha1.ImageReadyReason))
+		Expect(cond.Message).To(Equal(relocationv1alpha1.ImageReadyMessage))
+	})
+
+	It("sets the host configured condition when the host can be configured", func() {
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateAvailable,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		cond := meta.FindStatusCondition(config.Status.Conditions, relocationv1alpha1.HostConfiguredCondition)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionSucceededReason))
+		Expect(cond.Message).To(Equal(relocationv1alpha1.HostConfigurationSucceededMessage))
+	})
+
+	It("sets the host configured condition to false when the host is missing", func() {
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configName,
+				Namespace: configNamespace,
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: configNamespace,
+			Name:      configName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		cond := meta.FindStatusCondition(config.Status.Conditions, relocationv1alpha1.HostConfiguredCondition)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionFailedReason))
 	})
 })
 
