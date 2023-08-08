@@ -28,6 +28,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,27 +91,86 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	requeue, err := r.writeInputData(ctx, config)
 	if err != nil {
 		log.WithError(err).Error("failed to write input data")
+		if updateErr := r.setImageReadyCondition(ctx, config, err); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update cluster config status")
+		}
 		return ctrl.Result{}, err
 	}
 	if requeue {
 		log.Info("requeueing due to lock contention")
+		if updateErr := r.setImageReadyCondition(ctx, config, fmt.Errorf("could not acquire lock for image data")); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update cluster config status")
+		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
 	u, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
+		if updateErr := r.setImageReadyCondition(ctx, config, err); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update cluster config status")
+		}
+		return ctrl.Result{}, err
+	}
+
+	if err := r.setImageReadyCondition(ctx, config, nil); err != nil {
+		log.WithError(err).Error("failed to update cluster config status")
 		return ctrl.Result{}, err
 	}
 
 	if config.Spec.BareMetalHostRef != nil {
 		if err := r.setBMHImage(ctx, config.Spec.BareMetalHostRef, u); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
+			if updateErr := r.setHostConfiguredCondition(ctx, config, err); updateErr != nil {
+				log.WithError(updateErr).Error("failed to update cluster config status")
+			}
+			return ctrl.Result{}, err
+		}
+		if err := r.setHostConfiguredCondition(ctx, config, nil); err != nil {
+			log.WithError(err).Error("failed to update cluster config status")
 			return ctrl.Result{}, err
 		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterConfigReconciler) setImageReadyCondition(ctx context.Context, config *relocationv1alpha1.ClusterConfig, err error) error {
+	cond := metav1.Condition{
+		Type:    relocationv1alpha1.ImageReadyCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  relocationv1alpha1.ImageReadyReason,
+		Message: relocationv1alpha1.ImageReadyMessage,
+	}
+
+	if err != nil {
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = relocationv1alpha1.ImageNotReadyReason
+		cond.Message = err.Error()
+	}
+
+	patch := client.MergeFrom(config.DeepCopy())
+	meta.SetStatusCondition(&config.Status.Conditions, cond)
+	return r.Status().Patch(ctx, config, patch)
+}
+
+func (r *ClusterConfigReconciler) setHostConfiguredCondition(ctx context.Context, config *relocationv1alpha1.ClusterConfig, err error) error {
+	cond := metav1.Condition{
+		Type:    relocationv1alpha1.HostConfiguredCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  relocationv1alpha1.HostConfiguraionSucceededReason,
+		Message: relocationv1alpha1.HostConfigurationSucceededMessage,
+	}
+
+	if err != nil {
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = relocationv1alpha1.HostConfiguraionFailedReason
+		cond.Message = err.Error()
+	}
+
+	patch := client.MergeFrom(config.DeepCopy())
+	meta.SetStatusCondition(&config.Status.Conditions, cond)
+	return r.Status().Patch(ctx, config, patch)
 }
 
 func (r *ClusterConfigReconciler) mapBMHToCC(ctx context.Context, obj client.Object) []reconcile.Request {

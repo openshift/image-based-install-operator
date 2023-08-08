@@ -22,6 +22,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ImageReadyCondition = "ImageReady"
+	ImageNotReadyReason = "NotReady"
+	ImageReadyReason    = "Ready"
+	ImageReadyMessage   = "Image is ready for use"
+
+	HostConfiguredCondition           = "HostConfigured"
+	HostConfiguraionFailedReason      = "HostConfigurationFailed"
+	HostConfiguraionSucceededReason   = "HostConfigurationSucceeded"
+	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
+)
+
 // ClusterConfigSpec defines the desired state of ClusterConfig
 type ClusterConfigSpec struct {
 	cro.ClusterRelocationSpec `json:",inline"`
@@ -42,6 +54,7 @@ type ClusterConfigSpec struct {
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
 type ClusterConfigStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 type BareMetalHostReference struct {
