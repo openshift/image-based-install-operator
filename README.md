@@ -27,15 +27,8 @@ make deploy IMG=<some-registry>/cluster-relocation-service:tag
 kubectl apply -f config/samples/relocation_v1alpha1_clusterconfig.yaml
 ```
 
-### Uninstall CRDs
-To delete the CRDs from the cluster:
-
-```sh
-make uninstall
-```
-
 ### Undeploy controller
-UnDeploy the controller from the cluster:
+To delete the CRDs and to remove the controller from the cluster:
 
 ```sh
 make undeploy
