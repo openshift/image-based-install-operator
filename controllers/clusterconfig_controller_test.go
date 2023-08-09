@@ -110,7 +110,7 @@ var _ = Describe("Reconcile", func() {
 		relocation := &cro.ClusterRelocation{}
 		Expect(json.Unmarshal(content, relocation)).To(Succeed())
 		Expect(relocation.Spec).To(Equal(config.Spec.ClusterRelocationSpec))
-		Expect(relocation.Name).To(Equal(configName))
+		Expect(relocation.Name).To(Equal(clusterRelocationName))
 		Expect(relocation.Namespace).To(Equal(configNamespace))
 		Expect(relocation.Kind).To(Equal("ClusterRelocation"))
 		Expect(relocation.APIVersion).To(Equal("rhsyseng.github.io/v1beta1"))

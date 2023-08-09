@@ -60,7 +60,10 @@ type ClusterConfigReconciler struct {
 	BaseURL string
 }
 
-const detachedAnnotation = "baremetalhost.metal3.io/detached"
+const (
+	detachedAnnotation    = "baremetalhost.metal3.io/detached"
+	clusterRelocationName = "cluster"
+)
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=clusterconfigs,verbs=get;list;watch;create;update;patch;delete
@@ -277,7 +280,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alpha1.ClusterConfig, file string) error {
 	cr := &cro.ClusterRelocation{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      config.Name,
+			Name:      clusterRelocationName,
 			Namespace: config.Namespace,
 		},
 		Spec: config.Spec.ClusterRelocationSpec,
