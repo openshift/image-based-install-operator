@@ -69,6 +69,8 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /data
+        - name: webhook-certs
+          mountPath: /webhook-certs
       - command:
         - /server
         image: controller:latest
@@ -106,6 +108,9 @@ spec:
       - name: certs
         secret:
           secretName: cluster-relocation-server
+      - name: webhook-certs
+        secret:
+          secretName: webhook-certs
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
 ---
