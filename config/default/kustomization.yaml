@@ -5,5 +5,6 @@ bases:
 - ../crd
 - ../rbac
 - ../manager
+- ../webhook
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
 #- ../prometheus

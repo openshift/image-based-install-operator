@@ -35,8 +35,6 @@ func (r *ClusterConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/validate-relocation-openshift-io-v1alpha1-clusterconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=relocation.openshift.io,resources=clusterconfigs,verbs=create;update,versions=v1alpha1,name=vclusterconfig.kb.io,admissionReviewVersions=v1
-
 var _ webhook.Validator = &ClusterConfig{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
