@@ -438,6 +438,19 @@ spec:
           status:
             description: ClusterConfigStatus defines the observed state of ClusterConfig
             properties:
+              bareMetalHostRef:
+                properties:
+                  name:
+                    description: Name identifies the BareMetalHost within a namespace
+                    type: string
+                  namespace:
+                    description: Namespace identifies the namespace containing the
+                      referenced BareMetalHost
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
               conditions:
                 items:
                   description: "Condition contains details for one aspect of the current

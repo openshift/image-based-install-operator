@@ -54,7 +54,8 @@ type ClusterConfigSpec struct {
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
 type ClusterConfigStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+	Conditions       []metav1.Condition      `json:"conditions,omitempty"`
 }
 
 type BareMetalHostReference struct {

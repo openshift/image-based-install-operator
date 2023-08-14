@@ -398,6 +398,53 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 	})
 
+	It("sets the BMH ref in the cluster config status", func() {
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateAvailable,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: configNamespace,
+				Name:      configName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: config.Namespace,
+			Name:      config.Name,
+		}
+		Expect(c.Get(ctx, key, config)).To(Succeed())
+		Expect(config.Status.BareMetalHostRef).To(HaveValue(Equal(*config.Spec.BareMetalHostRef)))
+	})
+
 	It("sets detached on a referenced BMH after it is provisioned", func() {
 		liveISO := "live-iso"
 		bmh := &bmh_v1alpha1.BareMetalHost{
@@ -569,6 +616,127 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionFailedReason))
+	})
+
+	It("removes the image from a BMH when the reference is removed", func() {
+		liveISO := "live-iso"
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				Image: &bmh_v1alpha1.Image{
+					URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", configNamespace, configName),
+					DiskFormat: &liveISO,
+				},
+				Online: true,
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+			Status: relocationv1alpha1.ClusterConfigStatus{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: configNamespace,
+				Name:      configName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+	})
+
+	It("removes the reference and configures a new BMH when the reference is changed", func() {
+		liveISO := "live-iso"
+		oldBMH := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "old-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				Image: &bmh_v1alpha1.Image{
+					URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", configNamespace, configName),
+					DiskFormat: &liveISO,
+				},
+				Online: true,
+			},
+		}
+		Expect(c.Create(ctx, oldBMH)).To(Succeed())
+
+		newBMH := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "new-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+		}
+		Expect(c.Create(ctx, newBMH)).To(Succeed())
+
+		config := &relocationv1alpha1.ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       configName,
+				Namespace:  configNamespace,
+				Finalizers: []string{clusterConfigFinalizerName},
+			},
+			Spec: relocationv1alpha1.ClusterConfigSpec{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      newBMH.Name,
+					Namespace: newBMH.Namespace,
+				},
+			},
+			Status: relocationv1alpha1.ClusterConfigStatus{
+				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+					Name:      oldBMH.Name,
+					Namespace: oldBMH.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, config)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: configNamespace,
+				Name:      configName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		oldKey := types.NamespacedName{
+			Namespace: oldBMH.Namespace,
+			Name:      oldBMH.Name,
+		}
+		Expect(c.Get(ctx, oldKey, oldBMH)).To(Succeed())
+		Expect(oldBMH.Spec.Image).To(BeNil())
+
+		newKey := types.NamespacedName{
+			Namespace: newBMH.Namespace,
+			Name:      newBMH.Name,
+		}
+		Expect(c.Get(ctx, newKey, newBMH)).To(Succeed())
+		Expect(newBMH.Spec.Image).ToNot(BeNil())
 	})
 })
 
