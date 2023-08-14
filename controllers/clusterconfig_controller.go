@@ -122,6 +122,13 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
+	if config.Status.BareMetalHostRef != nil && !relocationv1alpha1.BMHRefsMatch(config.Spec.BareMetalHostRef, config.Status.BareMetalHostRef) {
+		if err := r.removeBMHImage(ctx, config.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
+			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", config.Status.BareMetalHostRef.Namespace, config.Status.BareMetalHostRef.Name)
+			return ctrl.Result{}, err
+		}
+	}
+
 	if config.Spec.BareMetalHostRef != nil {
 		if err := r.setBMHImage(ctx, config.Spec.BareMetalHostRef, u); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
@@ -132,6 +139,13 @@ func (r *ClusterConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		if err := r.setHostConfiguredCondition(ctx, config, nil); err != nil {
 			log.WithError(err).Error("failed to update cluster config status")
+			return ctrl.Result{}, err
+		}
+
+		patch := client.MergeFrom(config.DeepCopy())
+		config.Status.BareMetalHostRef = config.Spec.BareMetalHostRef.DeepCopy()
+		if err := r.Status().Patch(ctx, config, patch); err != nil {
+			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 			return ctrl.Result{}, err
 		}
 	}
@@ -285,7 +299,32 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 	return nil
 }
 
-// configDirs returns the lock directory and the files directory for the given cluster config
+func (r *ClusterConfigReconciler) removeBMHImage(ctx context.Context, bmhRef *relocationv1alpha1.BareMetalHostReference) error {
+	bmh := &bmh_v1alpha1.BareMetalHost{}
+	key := types.NamespacedName{
+		Name:      bmhRef.Name,
+		Namespace: bmhRef.Namespace,
+	}
+	if err := r.Get(ctx, key, bmh); err != nil {
+		return err
+	}
+	patch := client.MergeFrom(bmh.DeepCopy())
+
+	dirty := false
+	if bmh.Spec.Image != nil {
+		bmh.Spec.Image = nil
+		dirty = true
+	}
+
+	if dirty {
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *ClusterConfigReconciler) configDirs(config *relocationv1alpha1.ClusterConfig) (string, string, error) {
 	lockDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name)
 	filesDir := filepath.Join(lockDir, "files")

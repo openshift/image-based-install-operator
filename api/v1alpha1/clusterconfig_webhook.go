@@ -51,9 +51,11 @@ func (r *ClusterConfig) ValidateUpdate(old runtime.Object) (admission.Warnings, 
 		return nil, fmt.Errorf("old object is not a ClusterConfig")
 	}
 
-	// return error if BMH ref is set on old, and is still set on r, and an update is happening
-	// TODO: should we track the current BMH ref in status so we can unset the image when someone removes the BMH from the object or just make this entirely immutable once you set BMH once?
-	if oldConfig.Spec.BareMetalHostRef != nil && r.Spec.BareMetalHostRef != nil {
+	if oldConfig.Spec.BareMetalHostRef == nil && r.Spec.BareMetalHostRef == nil {
+		return nil, nil
+	}
+
+	if BMHRefsMatch(oldConfig.Spec.BareMetalHostRef, r.Spec.BareMetalHostRef) {
 		return nil, fmt.Errorf("Cannot update ClusterConfig when BareMetalHostRef is set, unset BareMetalHostRef before making changes")
 	}
 
@@ -63,4 +65,16 @@ func (r *ClusterConfig) ValidateUpdate(old runtime.Object) (admission.Warnings, 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *ClusterConfig) ValidateDelete() (admission.Warnings, error) {
 	return nil, nil
+}
+
+func BMHRefsMatch(ref1 *BareMetalHostReference, ref2 *BareMetalHostReference) bool {
+	if ref1 == nil && ref2 == nil {
+		return true
+	}
+
+	if ref1 == nil && ref2 != nil || ref1 != nil && ref2 == nil {
+		return false
+	}
+
+	return *ref1 == *ref2
 }

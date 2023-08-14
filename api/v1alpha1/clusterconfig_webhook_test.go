@@ -78,6 +78,34 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).To(BeNil())
 	})
 
+	It("succeeds when BMH ref updated", func() {
+		oldConfig := &ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ClusterConfigSpec{
+				ClusterRelocationSpec: cro.ClusterRelocationSpec{
+					Domain:  "thing.example.com",
+					SSHKeys: []string{"ssh-rsa sshkeyhere foo@example.com"},
+				},
+				BareMetalHostRef: &BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		newConfig := oldConfig.DeepCopy()
+		newConfig.Spec.BareMetalHostRef = &BareMetalHostReference{
+			Name:      "other-bmh",
+			Namespace: "test-bmh-namespace",
+		}
+
+		warns, err := newConfig.ValidateUpdate(oldConfig)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+
 	It("fails when BMH ref is set for non BMH updates", func() {
 		oldConfig := &ClusterConfig{
 			ObjectMeta: metav1.ObjectMeta{
@@ -101,5 +129,29 @@ var _ = Describe("ValidateUpdate", func() {
 		warns, err := newConfig.ValidateUpdate(oldConfig)
 		Expect(warns).To(BeNil())
 		Expect(err).ToNot(BeNil())
+	})
+})
+
+var _ = Describe("BMHRefsMatch", func() {
+	var ref1, ref2 *BareMetalHostReference
+	BeforeEach(func() {
+		ref1 = &BareMetalHostReference{Name: "bmh", Namespace: "test"}
+		ref2 = &BareMetalHostReference{Name: "other-bmh", Namespace: "test"}
+	})
+
+	It("returns true when both are nil", func() {
+		Expect(BMHRefsMatch(nil, nil)).To(Equal(true))
+	})
+	It("returns true when refs match", func() {
+		Expect(BMHRefsMatch(ref1, ref1.DeepCopy())).To(Equal(true))
+	})
+	It("returns false when refs do not match", func() {
+		Expect(BMHRefsMatch(ref1, ref2)).To(Equal(false))
+	})
+	It("returns false for nil and set refs", func() {
+		Expect(BMHRefsMatch(nil, ref2)).To(Equal(false))
+	})
+	It("returns false for set and nil refs", func() {
+		Expect(BMHRefsMatch(ref1, nil)).To(Equal(false))
 	})
 })
