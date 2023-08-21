@@ -64,6 +64,9 @@ const (
 	detachedAnnotation    = "baremetalhost.metal3.io/detached"
 	clusterRelocationName = "cluster"
 	relocationNamespace   = "cluster-relocation"
+	clusterConfigDir      = "cluster-configuration"
+	manifestsDir          = "extra-manifests"
+	networkConfigDir      = "network-configuration"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -220,58 +223,63 @@ func (r *ClusterConfigReconciler) setBMHImage(ctx context.Context, bmhRef *reloc
 // writeInputData writes the required info based on the cluster config to the config cache dir
 func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *relocationv1alpha1.ClusterConfig) (bool, error) {
 	configDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name)
-	filesDir := filepath.Join(configDir, "files")
-	if err := os.MkdirAll(filesDir, 0700); err != nil {
+	clusterConfigPath := filepath.Join(configDir, "files", clusterConfigDir)
+	if err := os.MkdirAll(clusterConfigPath, 0700); err != nil {
 		return false, err
 	}
 
 	locked, err := filelock.WithWriteLock(configDir, func() error {
-		if err := writeNamespace(filepath.Join(filesDir, "namespace.json")); err != nil {
+		if err := writeNamespace(filepath.Join(clusterConfigPath, "namespace.json")); err != nil {
 			return err
 		}
 
-		if err := r.writeClusterRelocation(config, filepath.Join(filesDir, "cluster-relocation.json")); err != nil {
+		if err := r.writeClusterRelocation(config, filepath.Join(clusterConfigPath, "cluster-relocation.json")); err != nil {
 			return err
 		}
 
-		if err := r.writeSecretToFile(ctx, config.Spec.APICertRef, filepath.Join(filesDir, "api-cert-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.APICertRef, filepath.Join(clusterConfigPath, "api-cert-secret.json")); err != nil {
 			return fmt.Errorf("failed to write api cert secret: %w", err)
 		}
 
-		if err := r.writeSecretToFile(ctx, config.Spec.IngressCertRef, filepath.Join(filesDir, "ingress-cert-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.IngressCertRef, filepath.Join(clusterConfigPath, "ingress-cert-secret.json")); err != nil {
 			return fmt.Errorf("failed to write ingress cert secret: %w", err)
 		}
 
-		if err := r.writeSecretToFile(ctx, config.Spec.PullSecretRef, filepath.Join(filesDir, "pull-secret-secret.json")); err != nil {
+		if err := r.writeSecretToFile(ctx, config.Spec.PullSecretRef, filepath.Join(clusterConfigPath, "pull-secret-secret.json")); err != nil {
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
 		if config.Spec.ACMRegistration != nil {
-			if err := r.writeSecretToFile(ctx, &config.Spec.ACMRegistration.ACMSecret, filepath.Join(filesDir, "acm-secret.json")); err != nil {
+			if err := r.writeSecretToFile(ctx, &config.Spec.ACMRegistration.ACMSecret, filepath.Join(clusterConfigPath, "acm-secret.json")); err != nil {
 				return fmt.Errorf("failed to write ACM secret: %w", err)
 			}
 		}
 
 		if config.Spec.ExtraManifestsRef != nil {
+			manifestsPath := filepath.Join(configDir, "files", manifestsDir)
+			if err := os.MkdirAll(manifestsPath, 0700); err != nil {
+				return err
+			}
+
 			cm := &corev1.ConfigMap{}
 			key := types.NamespacedName{Name: config.Spec.ExtraManifestsRef.Name, Namespace: config.Namespace}
 			if err := r.Get(ctx, key, cm); err != nil {
 				return err
 			}
 
-			manifestsDir := filepath.Join(filesDir, "extra-manifests")
-			if err := os.Mkdir(manifestsDir, 0700); err != nil && !os.IsExist(err) {
-				return fmt.Errorf("failed to create extra-manifests directory: %w", err)
-			}
-
 			for name, content := range cm.Data {
-				if err := os.WriteFile(filepath.Join(manifestsDir, name), []byte(content), 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(manifestsPath, name), []byte(content), 0644); err != nil {
 					return fmt.Errorf("failed to write extra manifest file: %w", err)
 				}
 			}
 		}
 
 		if config.Spec.NetworkConfigRef != nil {
+			networkConfigPath := filepath.Join(configDir, "files", networkConfigDir)
+			if err := os.MkdirAll(networkConfigPath, 0700); err != nil {
+				return err
+			}
+
 			cm := &corev1.ConfigMap{}
 			key := types.NamespacedName{Name: config.Spec.NetworkConfigRef.Name, Namespace: config.Namespace}
 			if err := r.Get(ctx, key, cm); err != nil {
@@ -283,7 +291,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 					r.Log.Warnf("Ignoring file name %s without .nmconnection suffix", name)
 					continue
 				}
-				if err := os.WriteFile(filepath.Join(filesDir, name), []byte(content), 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(networkConfigPath, name), []byte(content), 0644); err != nil {
 					return fmt.Errorf("failed to write network connection file: %w", err)
 				}
 			}

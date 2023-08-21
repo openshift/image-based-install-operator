@@ -71,12 +71,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Create(ctx, s)).To(Succeed())
 	}
 
-	outputFilePath := func(file string) string {
-		return filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", file)
+	outputFilePath := func(dir, file string) string {
+		return filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", dir, file)
 	}
 
 	validateSecretContent := func(file string, data map[string][]byte) {
-		content, err := os.ReadFile(outputFilePath(file))
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, file))
 		Expect(err).NotTo(HaveOccurred())
 		secret := &corev1.Secret{}
 		Expect(json.Unmarshal(content, secret)).To(Succeed())
@@ -86,7 +86,7 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	validateExtraManifestContent := func(file string, data string) {
-		content, err := os.ReadFile(filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "extra-manifests", file))
+		content, err := os.ReadFile(outputFilePath(manifestsDir, file))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(content)).To(Equal(data))
 	}
@@ -114,7 +114,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "namespace.json")
+		specPath := outputFilePath(clusterConfigDir, "namespace.json")
 		content, err := os.ReadFile(specPath)
 		Expect(err).NotTo(HaveOccurred())
 		ns := &corev1.Namespace{}
@@ -145,7 +145,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath("cluster-relocation.json"))
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "cluster-relocation.json"))
 		Expect(err).NotTo(HaveOccurred())
 		relocation := &cro.ClusterRelocation{}
 		Expect(json.Unmarshal(content, relocation)).To(Succeed())
@@ -201,7 +201,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		specPath := filepath.Join(dataDir, "namespaces", configNamespace, configName, "files", "cluster-relocation.json")
+		specPath := outputFilePath(clusterConfigDir, "cluster-relocation.json")
 		content, err := os.ReadFile(specPath)
 		Expect(err).NotTo(HaveOccurred())
 		relocation := &cro.ClusterRelocation{}
@@ -255,15 +255,15 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath("eth0.nmconnection"))
+		content, err := os.ReadFile(outputFilePath(networkConfigDir, "eth0.nmconnection"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(content).To(Equal([]byte("some\nconnection\nstring")))
 
-		content, err = os.ReadFile(outputFilePath("eth1.nmconnection"))
+		content, err = os.ReadFile(outputFilePath(networkConfigDir, "eth1.nmconnection"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(content).To(Equal([]byte("other\nconnection\nstring")))
 
-		_, err = os.Stat(outputFilePath("file"))
+		_, err = os.Stat(outputFilePath(networkConfigDir, "file"))
 		Expect(os.IsNotExist(err)).To(BeTrue())
 	})
 
