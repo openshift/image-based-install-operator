@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -268,6 +269,10 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 			}
 
 			for name, content := range cm.Data {
+				var y interface{}
+				if err := yaml.Unmarshal([]byte(content), &y); err != nil {
+					return fmt.Errorf("failed to validate manifest file %s: %w", name, err)
+				}
 				if err := os.WriteFile(filepath.Join(manifestsPath, name), []byte(content), 0644); err != nil {
 					return fmt.Errorf("failed to write extra manifest file: %w", err)
 				}
