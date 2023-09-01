@@ -121,6 +121,8 @@ var _ = Describe("Reconcile", func() {
 		ns := &corev1.Namespace{}
 		Expect(json.Unmarshal(content, ns)).To(Succeed())
 		Expect(ns.Name).To(Equal(relocationNamespace))
+		Expect(ns.Kind).To(Equal("Namespace"))
+		Expect(ns.APIVersion).To(Equal("v1"))
 	})
 
 	It("creates the correct relocation content", func() {

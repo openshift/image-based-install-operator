@@ -290,7 +290,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	}
 
 	locked, err := filelock.WithWriteLock(configDir, func() error {
-		if err := writeNamespace(filepath.Join(clusterConfigPath, "namespace.json")); err != nil {
+		if err := r.writeNamespace(filepath.Join(clusterConfigPath, "namespace.json")); err != nil {
 			return err
 		}
 
@@ -374,12 +374,35 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, config *re
 	return false, nil
 }
 
-func writeNamespace(file string) error {
+func (r *ClusterConfigReconciler) typeMetaForObject(o runtime.Object) (*metav1.TypeMeta, error) {
+	gvks, unversioned, err := r.Scheme.ObjectKinds(o)
+	if err != nil {
+		return nil, err
+	}
+	if unversioned || len(gvks) == 0 {
+		return nil, fmt.Errorf("unable to find API version for object")
+	}
+	// if there are multiple assume the last is the most recent
+	gvk := gvks[len(gvks)-1]
+	return &metav1.TypeMeta{
+		APIVersion: gvk.GroupVersion().String(),
+		Kind:       gvk.Kind,
+	}, nil
+}
+
+func (r *ClusterConfigReconciler) writeNamespace(file string) error {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: relocationNamespace,
 		},
 	}
+
+	typeMeta, err := r.typeMetaForObject(ns)
+	if err != nil {
+		return err
+	}
+	ns.TypeMeta = *typeMeta
+
 	data, err := json.Marshal(ns)
 	if err != nil {
 		return fmt.Errorf("failed to marshal namespace: %w", err)
@@ -401,19 +424,11 @@ func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alp
 		Spec: *config.Spec.ClusterRelocationSpec.DeepCopy(),
 	}
 
-	gvks, unversioned, err := r.Scheme.ObjectKinds(cr)
+	typeMeta, err := r.typeMetaForObject(cr)
 	if err != nil {
 		return err
 	}
-	if unversioned || len(gvks) == 0 {
-		return fmt.Errorf("unable to find API version for ClusterRelocation")
-	}
-	// if there are multiple assume the last is the most recent
-	gvk := gvks[len(gvks)-1]
-	cr.TypeMeta = metav1.TypeMeta{
-		APIVersion: gvk.GroupVersion().String(),
-		Kind:       gvk.Kind,
-	}
+	cr.TypeMeta = *typeMeta
 
 	// override ClusterRelocation and Secret reference namespaces
 	cr.Namespace = relocationNamespace
