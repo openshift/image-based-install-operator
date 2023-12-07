@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	"github.com/kelseyhightower/envconfig"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
@@ -51,7 +50,6 @@ func init() {
 
 	utilruntime.Must(relocationv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(cro.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
