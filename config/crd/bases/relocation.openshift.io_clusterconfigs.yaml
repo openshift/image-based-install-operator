@@ -35,230 +35,6 @@ spec:
           spec:
             description: ClusterConfigSpec defines the desired state of ClusterConfig
             properties:
-              acmRegistration:
-                description: ACMRegistration allows you to register this cluster to
-                  a remote ACM cluster.
-                properties:
-                  acmSecret:
-                    description: acmSecret is a secret reference with credentials
-                      for the ACM cluster. It must have a 'token' field. Optionally,
-                      it can have a 'ca.crt' field which provides the CA bundle for
-                      the ACM cluster. The secret is deleted once ACM registration
-                      succeeds. The type of the secret must be Opaque.
-                    properties:
-                      name:
-                        description: name is unique within a namespace to reference
-                          a secret resource.
-                        type: string
-                      namespace:
-                        description: namespace defines the space within which the
-                          secret name must be unique.
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
-                  clusterName:
-                    description: ClusterName will be the name of the ManagedCluster
-                      in ACM.
-                    type: string
-                  klusterletAddonConfig:
-                    description: KlusterletAddonConfig is the klusterlet add-on configuration.
-                    properties:
-                      applicationManager:
-                        description: ApplicationManagerConfig defines the configurations
-                          of ApplicationManager addon agent.
-                        properties:
-                          enabled:
-                            description: Enabled is the flag to enable/disable the
-                              addon. default is false.
-                            type: boolean
-                          proxyPolicy:
-                            description: ProxyPolicy defines the policy to set proxy
-                              for each addon agent. default is Disabled. Disabled
-                              means that the addon agent pods do not configure the
-                              proxy env variables. OCPGlobalProxy means that the addon
-                              agent pods use the cluster-wide proxy config of OCP
-                              cluster provisioned by ACM. CustomProxy means that the
-                              addon agent pods use the ProxyConfig specified in KlusterletAddonConfig.
-                            enum:
-                            - Disabled
-                            - OCPGlobalProxy
-                            - CustomProxy
-                            type: string
-                        type: object
-                      certPolicyController:
-                        description: CertPolicyControllerConfig defines the configurations
-                          of CertPolicyController addon agent.
-                        properties:
-                          enabled:
-                            description: Enabled is the flag to enable/disable the
-                              addon. default is false.
-                            type: boolean
-                          proxyPolicy:
-                            description: ProxyPolicy defines the policy to set proxy
-                              for each addon agent. default is Disabled. Disabled
-                              means that the addon agent pods do not configure the
-                              proxy env variables. OCPGlobalProxy means that the addon
-                              agent pods use the cluster-wide proxy config of OCP
-                              cluster provisioned by ACM. CustomProxy means that the
-                              addon agent pods use the ProxyConfig specified in KlusterletAddonConfig.
-                            enum:
-                            - Disabled
-                            - OCPGlobalProxy
-                            - CustomProxy
-                            type: string
-                        type: object
-                      clusterLabels:
-                        additionalProperties:
-                          type: string
-                        description: DEPRECATED in release 2.4 and will be removed
-                          in the future since not used anymore.
-                        type: object
-                      clusterName:
-                        description: DEPRECATED in release 2.4 and will be removed
-                          in the future since not used anymore.
-                        minLength: 1
-                        type: string
-                      clusterNamespace:
-                        description: DEPRECATED in release 2.4 and will be removed
-                          in the future since not used anymore.
-                        minLength: 1
-                        type: string
-                      iamPolicyController:
-                        description: IAMPolicyControllerConfig defines the configurations
-                          of IamPolicyController addon agent.
-                        properties:
-                          enabled:
-                            description: Enabled is the flag to enable/disable the
-                              addon. default is false.
-                            type: boolean
-                          proxyPolicy:
-                            description: ProxyPolicy defines the policy to set proxy
-                              for each addon agent. default is Disabled. Disabled
-                              means that the addon agent pods do not configure the
-                              proxy env variables. OCPGlobalProxy means that the addon
-                              agent pods use the cluster-wide proxy config of OCP
-                              cluster provisioned by ACM. CustomProxy means that the
-                              addon agent pods use the ProxyConfig specified in KlusterletAddonConfig.
-                            enum:
-                            - Disabled
-                            - OCPGlobalProxy
-                            - CustomProxy
-                            type: string
-                        type: object
-                      policyController:
-                        description: PolicyController defines the configurations of
-                          PolicyController addon agent.
-                        properties:
-                          enabled:
-                            description: Enabled is the flag to enable/disable the
-                              addon. default is false.
-                            type: boolean
-                          proxyPolicy:
-                            description: ProxyPolicy defines the policy to set proxy
-                              for each addon agent. default is Disabled. Disabled
-                              means that the addon agent pods do not configure the
-                              proxy env variables. OCPGlobalProxy means that the addon
-                              agent pods use the cluster-wide proxy config of OCP
-                              cluster provisioned by ACM. CustomProxy means that the
-                              addon agent pods use the ProxyConfig specified in KlusterletAddonConfig.
-                            enum:
-                            - Disabled
-                            - OCPGlobalProxy
-                            - CustomProxy
-                            type: string
-                        type: object
-                      proxyConfig:
-                        description: ProxyConfig defines the cluster-wide proxy configuration
-                          of the OCP managed cluster.
-                        properties:
-                          httpProxy:
-                            description: HTTPProxy is the URL of the proxy for HTTP
-                              requests.  Empty means unset and will not result in
-                              an env var.
-                            type: string
-                          httpsProxy:
-                            description: HTTPSProxy is the URL of the proxy for HTTPS
-                              requests.  Empty means unset and will not result in
-                              an env var.
-                            type: string
-                          noProxy:
-                            description: NoProxy is a comma-separated list of hostnames
-                              and/or CIDRs for which the proxy should not be used.
-                              Empty means unset and will not result in an env var.
-                              The API Server of Hub cluster should be added here.
-                              And If you scale up workers that are not included in
-                              the network defined by the networking.machineNetwork[].cidr
-                              field from the installation configuration, you must
-                              add them to this list to prevent connection issues.
-                            type: string
-                        type: object
-                      searchCollector:
-                        description: SearchCollectorConfig defines the configurations
-                          of SearchCollector addon agent.
-                        properties:
-                          enabled:
-                            description: Enabled is the flag to enable/disable the
-                              addon. default is false.
-                            type: boolean
-                          proxyPolicy:
-                            description: ProxyPolicy defines the policy to set proxy
-                              for each addon agent. default is Disabled. Disabled
-                              means that the addon agent pods do not configure the
-                              proxy env variables. OCPGlobalProxy means that the addon
-                              agent pods use the cluster-wide proxy config of OCP
-                              cluster provisioned by ACM. CustomProxy means that the
-                              addon agent pods use the ProxyConfig specified in KlusterletAddonConfig.
-                            enum:
-                            - Disabled
-                            - OCPGlobalProxy
-                            - CustomProxy
-                            type: string
-                        type: object
-                      version:
-                        description: DEPRECATED in release 2.4 and will be removed
-                          in the future since not used anymore.
-                        type: string
-                    required:
-                    - applicationManager
-                    - certPolicyController
-                    - iamPolicyController
-                    - policyController
-                    - searchCollector
-                    type: object
-                  managedClusterSet:
-                    description: ManagedClusterSet is the ManagedClusterSet that the
-                      ManagedCluster will join. Defaults to 'default'.
-                    type: string
-                  url:
-                    description: URL is the API URL of the ACM cluster.
-                    type: string
-                required:
-                - acmSecret
-                - clusterName
-                - url
-                type: object
-              addInternalDNSEntries:
-                description: AddInternalDNSEntries deploys a MachineConfig which adds
-                  api and *.apps entries for the new domain to dnsmasq on SNO clusters.
-                  Setting this to true will cause a reboot. If you don't enable this
-                  option, you need to make sure that the cluster can resolve the new
-                  domain address via some other method.
-                type: boolean
-              apiCertRef:
-                description: APICertRef is a reference to a TLS secret that will be
-                  used for the API server. If it is omitted, a self-signed certificate
-                  will be generated. The type of the secret must be kubernetes.io/tls.
-                properties:
-                  name:
-                    description: name is unique within a namespace to reference a
-                      secret resource.
-                    type: string
-                  namespace:
-                    description: namespace defines the space within which the secret
-                      name must be unique.
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               bareMetalHostRef:
                 description: BareMetalHostRef identifies a BareMetalHost object to
                   be used to attach the configuration to the host.
@@ -274,29 +50,10 @@ spec:
                 - name
                 - namespace
                 type: object
-              catalogSources:
-                description: CatalogSources define new CatalogSources to install on
-                  the cluster.
-                items:
-                  properties:
-                    image:
-                      description: Image is an operator-registry container image to
-                        instantiate a registry-server with.
-                      type: string
-                    name:
-                      description: Name is the name of the CatalogSource.
-                      type: string
-                  required:
-                  - image
-                  - name
-                  type: object
-                type: array
-              domain:
-                description: Domain defines the new base domain for the cluster.
-                type: string
-              extraManifestsRef:
-                description: ExtraManifestsRef is a reference to a config map containing
-                  additional manifests to be applied to the relocated cluster.
+              caBundleRef:
+                description: CABundle is a reference to a config map containing the
+                  new bundle of trusted certificates for the host. The tls-ca-bundle.pem
+                  entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
                 properties:
                   name:
                     description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
@@ -304,81 +61,35 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              imageDigestMirrors:
-                description: ImageDigestMirrors is used to configured a mirror registry
-                  on the cluster.
+              cluster_id:
+                description: ClusterIF is the new ID for the cluster.
+                type: string
+              cluster_name:
+                description: ClusterName is the new name for the cluster.
+                type: string
+              domain:
+                description: Domain defines the new base domain for the cluster.
+                type: string
+              extraManifestsRef:
+                description: ExtraManifestsRefs is list of config map references containing
+                  additional manifests to be applied to the relocated cluster.
                 items:
-                  description: ImageDigestMirrors holds cluster-wide information about
-                    how to handle mirrors in the registries config.
+                  description: LocalObjectReference contains enough information to
+                    let you locate the referenced object inside the same namespace.
                   properties:
-                    mirrorSourcePolicy:
-                      description: mirrorSourcePolicy defines the fallback policy
-                        if fails to pull image from the mirrors. If unset, the image
-                        will continue to be pulled from the the repository in the
-                        pull spec. sourcePolicy is valid configuration only when one
-                        or more mirrors are in the mirror list.
-                      enum:
-                      - NeverContactSource
-                      - AllowContactingSource
+                    name:
+                      description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Add other useful fields. apiVersion, kind, uid?'
                       type: string
-                    mirrors:
-                      description: 'mirrors is zero or more locations that may also
-                        contain the same images. No mirror will be configured if not
-                        specified. Images can be pulled from these mirrors only if
-                        they are referenced by their digests. The mirrored location
-                        is obtained by replacing the part of the input reference that
-                        matches source by the mirrors entry, e.g. for registry.redhat.io/product/repo
-                        reference, a (source, mirror) pair *.redhat.io, mirror.local/redhat
-                        causes a mirror.local/redhat/product/repo repository to be
-                        used. The order of mirrors in this list is treated as the
-                        user''s desired priority, while source is by default considered
-                        lower priority than all mirrors. If no mirror is specified
-                        or all image pulls from the mirror list fail, the image will
-                        continue to be pulled from the repository in the pull spec
-                        unless explicitly prohibited by "mirrorSourcePolicy" Other
-                        cluster configuration, including (but not limited to) other
-                        imageDigestMirrors objects, may impact the exact order mirrors
-                        are contacted in, or some mirrors may be contacted in parallel,
-                        so this should be considered a preference rather than a guarantee
-                        of ordering. "mirrors" uses one of the following formats:
-                        host[:port] host[:port]/namespace[/namespace…] host[:port]/namespace[/namespace…]/repo
-                        for more information about the format, see the document about
-                        the location field: https://github.com/containers/image/blob/main/docs/containers-registries.conf.5.md#choosing-a-registry-toml-table'
-                      items:
-                        pattern: ^((?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])(?:(?:\.(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))+)?(?::[0-9]+)?)(?:(?:/[a-z0-9]+(?:(?:(?:[._]|__|[-]*)[a-z0-9]+)+)?)+)?$
-                        type: string
-                      type: array
-                      x-kubernetes-list-type: set
-                    source:
-                      description: 'source matches the repository that users refer
-                        to, e.g. in image pull specifications. Setting source to a
-                        registry hostname e.g. docker.io. quay.io, or registry.redhat.io,
-                        will match the image pull specification of corressponding
-                        registry. "source" uses one of the following formats: host[:port]
-                        host[:port]/namespace[/namespace…] host[:port]/namespace[/namespace…]/repo
-                        [*.]host for more information about the format, see the document
-                        about the location field: https://github.com/containers/image/blob/main/docs/containers-registries.conf.5.md#choosing-a-registry-toml-table'
-                      pattern: ^\*(?:\.(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))+$|^((?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])(?:(?:\.(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))+)?(?::[0-9]+)?)(?:(?:/[a-z0-9]+(?:(?:(?:[._]|__|[-]*)[a-z0-9]+)+)?)+)?$
-                      type: string
-                  required:
-                  - source
                   type: object
+                  x-kubernetes-map-type: atomic
                 type: array
-              ingressCertRef:
-                description: IngressCertRef is a reference to a TLS secret that will
-                  be used for the Ingress Controller. If it is omitted, a self-signed
-                  certificate will be generated. The type of the secret must be kubernetes.io/tls.
-                properties:
-                  name:
-                    description: name is unique within a namespace to reference a
-                      secret resource.
-                    type: string
-                  namespace:
-                    description: namespace defines the space within which the secret
-                      name must be unique.
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
+              hostname:
+                description: Hostname is the new hostname.
+                type: string
+              master_ip:
+                description: MasterIP is the new IP for the host.
+                type: string
               networkConfigRef:
                 description: NetworkConfigRef is the reference to a config map containing
                   network configuration files if necessary. Keys should be of the
@@ -397,43 +108,18 @@ spec:
                   The type of the secret must be kubernetes.io/dockerconfigjson.
                 properties:
                   name:
-                    description: name is unique within a namespace to reference a
-                      secret resource.
-                    type: string
-                  namespace:
-                    description: namespace defines the space within which the secret
-                      name must be unique.
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              registryCert:
-                description: RegistryCert is a new trusted CA certificate. It will
-                  be added to image.config.openshift.io/cluster (additionalTrustedCA).
-                properties:
-                  certificate:
-                    description: Certificate is the certificate for the trusted certificate
-                      authority associated with the registry.
-                    type: string
-                  registryHostname:
-                    description: RegistryHostname is the hostname of the new registry.
-                    type: string
-                  registryPort:
-                    description: RegistryPort is the port number that the registry
-                      is served on.
-                    type: integer
-                required:
-                - certificate
-                - registryHostname
-                type: object
-              sshKeys:
-                description: SSHKeys defines a list of authorized SSH keys for the
-                  'core' user. If defined, it will be appended to the existing authorized
-                  SSH key(s).
-                items:
-                  type: string
-                type: array
-            required:
-            - domain
+              release_registry:
+                description: ReleaseRegistry is the registry used for the cluster
+                  release image.
+                type: string
+              version:
+                description: Version is the version of the cluster.
+                type: string
             type: object
           status:
             description: ClusterConfigStatus defines the observed state of ClusterConfig
