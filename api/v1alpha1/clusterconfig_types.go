@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -36,20 +35,53 @@ const (
 
 // ClusterConfigSpec defines the desired state of ClusterConfig
 type ClusterConfigSpec struct {
-	cro.ClusterRelocationSpec `json:",inline"`
+	ClusterInfo `json:",inline"`
 
-	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
-	// +optional
-	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+	// PullSecretRef is a reference to new cluster-wide pull secret.
+	// If defined, it will replace the secret located at openshift-config/pull-secret.
+	// The type of the secret must be kubernetes.io/dockerconfigjson.
+	PullSecretRef *corev1.LocalObjectReference `json:"pullSecretRef,omitempty"`
+
+	// CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
+	// The tls-ca-bundle.pem entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+	CABundleRef *corev1.LocalObjectReference `json:"caBundleRef,omitempty"`
 
 	// NetworkConfigRef is the reference to a config map containing network configuration files if necessary.
 	// Keys should be of the form *.nmconnection and each represent an nmconnection file to be applied to the host.
 	// +optional
 	NetworkConfigRef *corev1.LocalObjectReference `json:"networkConfigRef,omitempty"`
 
-	// ExtraManifestsRef is a reference to a config map containing additional manifests to be applied to the relocated cluster.
+	// ExtraManifestsRefs is list of config map references containing additional manifests to be applied to the relocated cluster.
 	// +optional
-	ExtraManifestsRef *corev1.LocalObjectReference `json:"extraManifestsRef,omitempty"`
+	ExtraManifestsRefs []corev1.LocalObjectReference `json:"extraManifestsRef,omitempty"`
+
+	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
+	// +optional
+	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+}
+
+// ClusterInfo struct that describe current cluster critical info
+type ClusterInfo struct {
+	// Version is the version of the cluster.
+	Version string `json:"version,omitempty"`
+
+	// Domain defines the new base domain for the cluster.
+	Domain string `json:"domain,omitempty"`
+
+	// ClusterName is the new name for the cluster.
+	ClusterName string `json:"cluster_name,omitempty"`
+
+	// ClusterIF is the new ID for the cluster.
+	ClusterID string `json:"cluster_id,omitempty"`
+
+	// MasterIP is the new IP for the host.
+	MasterIP string `json:"master_ip,omitempty"`
+
+	// ReleaseRegistry is the registry used for the cluster release image.
+	ReleaseRegistry string `json:"release_registry,omitempty"`
+
+	// Hostname is the new hostname.
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // ClusterConfigStatus defines the observed state of ClusterConfig
