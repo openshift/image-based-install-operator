@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	cro "github.com/RHsyseng/cluster-relocation-operator/api/v1beta1"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/internal/filelock"
@@ -66,12 +65,12 @@ type ClusterConfigReconciler struct {
 
 const (
 	detachedAnnotation         = "baremetalhost.metal3.io/detached"
-	clusterRelocationName      = "cluster"
-	relocationNamespace        = "cluster-relocation"
 	clusterConfigDir           = "cluster-configuration"
-	manifestsDir               = "extra-manifests"
+	extraManifestsDir          = "extra-manifests"
+	manifestsDir               = "manifests"
 	networkConfigDir           = "network-configuration"
 	clusterConfigFinalizerName = "clusterconfig." + relocationv1alpha1.Group + "/deprovision"
+	caBundleFileName           = "tls-ca-bundle.pem"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -347,55 +346,44 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus
 	}
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
-		if err := r.writeNamespace(filepath.Join(clusterConfigPath, "namespace.json")); err != nil {
+		if err := r.writeClusterInfo(&config.Spec.ClusterInfo, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
 			return err
 		}
 
-		if err := r.writeClusterRelocation(config, filepath.Join(clusterConfigPath, "cluster-relocation.json")); err != nil {
+		if err := r.writeCABundle(ctx, config.Spec.CABundleRef, config.Namespace, filepath.Join(clusterConfigPath, caBundleFileName)); err != nil {
+			return fmt.Errorf("failed to write ca bundle: %w", err)
+		}
+
+		manifestsPath := filepath.Join(clusterConfigPath, manifestsDir)
+		if err := os.MkdirAll(manifestsPath, 0700); err != nil {
 			return err
 		}
 
-		if err := r.writeClusterRelocation(config, filepath.Join(clusterConfigPath, "cluster-relocation.json")); err != nil {
-			return err
-		}
-
-		if err := r.writeSecretToFile(ctx, config.Spec.APICertRef, filepath.Join(clusterConfigPath, "api-cert-secret.json")); err != nil {
-			return fmt.Errorf("failed to write api cert secret: %w", err)
-		}
-
-		if err := r.writeSecretToFile(ctx, config.Spec.IngressCertRef, filepath.Join(clusterConfigPath, "ingress-cert-secret.json")); err != nil {
-			return fmt.Errorf("failed to write ingress cert secret: %w", err)
-		}
-
-		if err := r.writeSecretToFile(ctx, config.Spec.PullSecretRef, filepath.Join(clusterConfigPath, "pull-secret-secret.json")); err != nil {
+		if err := r.writePullSecretToFile(ctx, config.Spec.PullSecretRef, config.Namespace, filepath.Join(manifestsPath, "pull-secret-secret.json")); err != nil {
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
-		if config.Spec.ACMRegistration != nil {
-			if err := r.writeSecretToFile(ctx, &config.Spec.ACMRegistration.ACMSecret, filepath.Join(clusterConfigPath, "acm-secret.json")); err != nil {
-				return fmt.Errorf("failed to write ACM secret: %w", err)
-			}
-		}
-
-		if config.Spec.ExtraManifestsRef != nil {
-			manifestsPath := filepath.Join(filesDir, manifestsDir)
-			if err := os.MkdirAll(manifestsPath, 0700); err != nil {
+		if config.Spec.ExtraManifestsRefs != nil {
+			extraManifestsPath := filepath.Join(filesDir, extraManifestsDir)
+			if err := os.MkdirAll(extraManifestsPath, 0700); err != nil {
 				return err
 			}
 
-			cm := &corev1.ConfigMap{}
-			key := types.NamespacedName{Name: config.Spec.ExtraManifestsRef.Name, Namespace: config.Namespace}
-			if err := r.Get(ctx, key, cm); err != nil {
-				return err
-			}
-
-			for name, content := range cm.Data {
-				var y interface{}
-				if err := yaml.Unmarshal([]byte(content), &y); err != nil {
-					return fmt.Errorf("failed to validate manifest file %s: %w", name, err)
+			for _, cmRef := range config.Spec.ExtraManifestsRefs {
+				cm := &corev1.ConfigMap{}
+				key := types.NamespacedName{Name: cmRef.Name, Namespace: config.Namespace}
+				if err := r.Get(ctx, key, cm); err != nil {
+					return err
 				}
-				if err := os.WriteFile(filepath.Join(manifestsPath, name), []byte(content), 0644); err != nil {
-					return fmt.Errorf("failed to write extra manifest file: %w", err)
+
+				for name, content := range cm.Data {
+					var y interface{}
+					if err := yaml.Unmarshal([]byte(content), &y); err != nil {
+						return fmt.Errorf("failed to validate manifest file %s: %w", name, err)
+					}
+					if err := os.WriteFile(filepath.Join(extraManifestsPath, name), []byte(content), 0644); err != nil {
+						return fmt.Errorf("failed to write extra manifest file: %w", err)
+					}
 				}
 			}
 		}
@@ -442,101 +430,51 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterConfigReconciler) typeMetaForObject(o runtime.Object) (*metav1.TypeMeta, error) {
-	gvks, unversioned, err := r.Scheme.ObjectKinds(o)
+func (r *ClusterConfigReconciler) writeClusterInfo(info *relocationv1alpha1.ClusterInfo, file string) error {
+	data, err := json.Marshal(info)
 	if err != nil {
-		return nil, err
-	}
-	if unversioned || len(gvks) == 0 {
-		return nil, fmt.Errorf("unable to find API version for object")
-	}
-	// if there are multiple assume the last is the most recent
-	gvk := gvks[len(gvks)-1]
-	return &metav1.TypeMeta{
-		APIVersion: gvk.GroupVersion().String(),
-		Kind:       gvk.Kind,
-	}, nil
-}
-
-func (r *ClusterConfigReconciler) writeNamespace(file string) error {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: relocationNamespace,
-		},
-	}
-
-	typeMeta, err := r.typeMetaForObject(ns)
-	if err != nil {
-		return err
-	}
-	ns.TypeMeta = *typeMeta
-
-	data, err := json.Marshal(ns)
-	if err != nil {
-		return fmt.Errorf("failed to marshal namespace: %w", err)
+		return fmt.Errorf("failed to marshal cluster info: %w", err)
 	}
 	if err := os.WriteFile(file, data, 0644); err != nil {
-		return fmt.Errorf("failed to write namespace: %w", err)
+		return fmt.Errorf("failed to write cluster info: %w", err)
 	}
 
 	return nil
 }
 
-func (r *ClusterConfigReconciler) writeClusterRelocation(config *relocationv1alpha1.ClusterConfig, file string) error {
-	cr := &cro.ClusterRelocation{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterRelocationName,
-			Namespace: config.Namespace,
-		},
-		// initialize with a deep copy to avoid changing the secret ref values of the original config
-		Spec: *config.Spec.ClusterRelocationSpec.DeepCopy(),
+func (r *ClusterConfigReconciler) writeCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
+	if ref == nil {
+		return nil
 	}
 
-	typeMeta, err := r.typeMetaForObject(cr)
-	if err != nil {
+	cm := &corev1.ConfigMap{}
+	key := types.NamespacedName{Name: ref.Name, Namespace: ns}
+	if err := r.Get(ctx, key, cm); err != nil {
 		return err
 	}
-	cr.TypeMeta = *typeMeta
 
-	// override ClusterRelocation and Secret reference namespaces
-	cr.Namespace = relocationNamespace
-	if cr.Spec.ACMRegistration != nil {
-		cr.Spec.ACMRegistration.ACMSecret.Namespace = relocationNamespace
-	}
-	if cr.Spec.APICertRef != nil {
-		cr.Spec.APICertRef.Namespace = relocationNamespace
-	}
-	if cr.Spec.IngressCertRef != nil {
-		cr.Spec.IngressCertRef.Namespace = relocationNamespace
-	}
-	if cr.Spec.PullSecretRef != nil {
-		cr.Spec.PullSecretRef.Namespace = relocationNamespace
+	data, ok := cm.Data[caBundleFileName]
+	if !ok {
+		return fmt.Errorf("%s key missing from CABundle config map", caBundleFileName)
 	}
 
-	data, err := json.Marshal(cr)
-	if err != nil {
-		return fmt.Errorf("failed to marshal cluster relocation: %w", err)
-	}
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cluster relocation: %w", err)
-	}
-
-	return nil
+	return os.WriteFile(file, []byte(data), 0644)
 }
 
-func (r *ClusterConfigReconciler) writeSecretToFile(ctx context.Context, ref *corev1.SecretReference, file string) error {
+func (r *ClusterConfigReconciler) writePullSecretToFile(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
 	if ref == nil {
 		return nil
 	}
 
 	s := &corev1.Secret{}
-	key := types.NamespacedName{Name: ref.Name, Namespace: ref.Namespace}
+	key := types.NamespacedName{Name: ref.Name, Namespace: ns}
 	if err := r.Get(ctx, key, s); err != nil {
 		return err
 	}
 
-	// override namespace
-	s.Namespace = relocationNamespace
+	// override name and namespace
+	s.Name = "pull-secret"
+	s.Namespace = "openshift-config"
 
 	data, err := json.Marshal(s)
 	if err != nil {
