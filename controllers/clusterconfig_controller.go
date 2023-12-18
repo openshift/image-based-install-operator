@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/internal/filelock"
 	"github.com/sirupsen/logrus"
@@ -430,7 +431,7 @@ func (r *ClusterConfigReconciler) writeInputData(ctx context.Context, log logrus
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterConfigReconciler) writeClusterInfo(info *relocationv1alpha1.ClusterInfo, file string) error {
+func (r *ClusterConfigReconciler) writeClusterInfo(info *clusterinfo.ClusterInfo, file string) error {
 	data, err := json.Marshal(info)
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster info: %w", err)

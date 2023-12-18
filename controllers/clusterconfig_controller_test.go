@@ -10,6 +10,7 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -78,7 +79,7 @@ var _ = Describe("Reconcile", func() {
 				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
-				ClusterInfo: relocationv1alpha1.ClusterInfo{
+				ClusterInfo: clusterinfo.ClusterInfo{
 					Domain:          "example.com",
 					ClusterName:     "thingcluster",
 					MasterIP:        "192.0.2.1",
@@ -99,7 +100,7 @@ var _ = Describe("Reconcile", func() {
 
 		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
-		info := &relocationv1alpha1.ClusterInfo{}
+		info := &clusterinfo.ClusterInfo{}
 		Expect(json.Unmarshal(content, info)).To(Succeed())
 
 		Expect(*info).To(Equal(config.Spec.ClusterInfo))
@@ -481,7 +482,7 @@ var _ = Describe("Reconcile", func() {
 				Finalizers: []string{clusterConfigFinalizerName},
 			},
 			Spec: relocationv1alpha1.ClusterConfigSpec{
-				ClusterInfo: relocationv1alpha1.ClusterInfo{
+				ClusterInfo: clusterinfo.ClusterInfo{
 					Domain: "thing.example.com",
 				},
 			},

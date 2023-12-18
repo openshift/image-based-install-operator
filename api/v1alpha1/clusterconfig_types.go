@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -35,7 +36,7 @@ const (
 
 // ClusterConfigSpec defines the desired state of ClusterConfig
 type ClusterConfigSpec struct {
-	ClusterInfo `json:",inline"`
+	clusterinfo.ClusterInfo `json:",inline"`
 
 	// PullSecretRef is a reference to new cluster-wide pull secret.
 	// If defined, it will replace the secret located at openshift-config/pull-secret.
@@ -58,30 +59,6 @@ type ClusterConfigSpec struct {
 	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
 	// +optional
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
-}
-
-// ClusterInfo struct that describe current cluster critical info
-type ClusterInfo struct {
-	// Version is the version of the cluster.
-	Version string `json:"version,omitempty"`
-
-	// Domain defines the new base domain for the cluster.
-	Domain string `json:"domain,omitempty"`
-
-	// ClusterName is the new name for the cluster.
-	ClusterName string `json:"cluster_name,omitempty"`
-
-	// ClusterIF is the new ID for the cluster.
-	ClusterID string `json:"cluster_id,omitempty"`
-
-	// MasterIP is the new IP for the host.
-	MasterIP string `json:"master_ip,omitempty"`
-
-	// ReleaseRegistry is the registry used for the cluster release image.
-	ReleaseRegistry string `json:"release_registry,omitempty"`
-
-	// Hostname is the new hostname.
-	Hostname string `json:"hostname,omitempty"`
 }
 
 // ClusterConfigStatus defines the observed state of ClusterConfig

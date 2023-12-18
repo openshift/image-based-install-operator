@@ -62,13 +62,10 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               cluster_id:
-                description: ClusterIF is the new ID for the cluster.
                 type: string
               cluster_name:
-                description: ClusterName is the new name for the cluster.
                 type: string
               domain:
-                description: Domain defines the new base domain for the cluster.
                 type: string
               extraManifestsRef:
                 description: ExtraManifestsRefs is list of config map references containing
@@ -85,10 +82,8 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
               hostname:
-                description: Hostname is the new hostname.
                 type: string
               master_ip:
-                description: MasterIP is the new IP for the host.
                 type: string
               networkConfigRef:
                 description: NetworkConfigRef is the reference to a config map containing
@@ -114,11 +109,8 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               release_registry:
-                description: ReleaseRegistry is the registry used for the cluster
-                  release image.
                 type: string
               version:
-                description: Version is the version of the cluster.
                 type: string
             type: object
           status:
