@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -14,7 +15,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ClusterConfigSpec{
-				ClusterInfo: ClusterInfo{Domain: "thing.example.com"},
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 			},
 		}
 		newConfig := oldConfig.DeepCopy()
@@ -32,7 +33,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ClusterConfigSpec{
-				ClusterInfo: ClusterInfo{Domain: "thing.example.com"},
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 			},
 		}
 		newConfig := oldConfig.DeepCopy()
@@ -53,7 +54,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ClusterConfigSpec{
-				ClusterInfo: ClusterInfo{Domain: "thing.example.com"},
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -75,7 +76,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ClusterConfigSpec{
-				ClusterInfo: ClusterInfo{Domain: "thing.example.com"},
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -100,7 +101,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ClusterConfigSpec{
-				ClusterInfo: ClusterInfo{Domain: "thing.example.com"},
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
