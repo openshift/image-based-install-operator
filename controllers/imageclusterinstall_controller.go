@@ -33,7 +33,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	errors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,8 +47,9 @@ import (
 
 	"github.com/containers/image/v5/docker/reference"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
+	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	"github.com/openshift/cluster-relocation-service/internal/certs"
 	"github.com/openshift/cluster-relocation-service/internal/filelock"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
@@ -65,10 +66,11 @@ type ImageClusterInstallReconcilerOptions struct {
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
 type ImageClusterInstallReconciler struct {
 	client.Client
-	Log     logrus.FieldLogger
-	Scheme  *runtime.Scheme
-	Options *ImageClusterInstallReconcilerOptions
-	BaseURL string
+	Log         logrus.FieldLogger
+	Scheme      *runtime.Scheme
+	Options     *ImageClusterInstallReconcilerOptions
+	BaseURL     string
+	CertManager certs.KubeConfigCertManager
 }
 
 const (
@@ -81,7 +83,7 @@ const (
 	caBundleFileName            = "tls-ca-bundle.pem"
 )
 
-//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
@@ -132,7 +134,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	u, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
+	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
@@ -154,7 +156,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.BareMetalHostRef != nil {
-		if err := r.setBMHImage(ctx, ici.Spec.BareMetalHostRef, u); err != nil {
+		if err := r.setBMHImage(ctx, ici.Spec.BareMetalHostRef, imageUrl); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
 			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -395,9 +397,6 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	}
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
-		if err := r.writeClusterInfo(ctx, ici, cd, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
-			return err
-		}
 
 		if err := r.writeCABundle(ctx, ici.Spec.CABundleRef, ici.Namespace, filepath.Join(clusterConfigPath, caBundleFileName)); err != nil {
 			return fmt.Errorf("failed to write ca bundle: %w", err)
@@ -422,7 +421,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				cm := &corev1.ConfigMap{}
 				key := types.NamespacedName{Name: cmRef.Name, Namespace: ici.Namespace}
 				if err := r.Get(ctx, key, cm); err != nil {
-					return err
+					return fmt.Errorf("failed to get extraManifests config map %w", err)
 				}
 
 				for name, content := range cm.Data {
@@ -451,7 +450,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 
 			for name, content := range cm.Data {
 				if !strings.HasSuffix(name, ".nmconnection") {
-					r.Log.Warnf("Ignoring file name %s without .nmconnection suffix", name)
+					log.Warnf("Ignoring file name %s without .nmconnection suffix", name)
 					continue
 				}
 				if err := os.WriteFile(filepath.Join(networkConfigPath, name), []byte(content), 0644); err != nil {
@@ -460,6 +459,13 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			}
 		}
 
+		crypto, err := r.generateClusterCrypto(cd, ctx)
+		if err != nil {
+			return err
+		}
+		if err := r.writeClusterInfo(ctx, ici, cd, crypto, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
+			return fmt.Errorf("failed to write cluster info: %w", err)
+		}
 		return nil
 	})
 	if lockErr != nil {
@@ -477,6 +483,23 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ImageClusterInstallReconciler) generateClusterCrypto(cd *hivev1.ClusterDeployment, ctx context.Context) (lca_api.KubeConfigCryptoRetention, error) {
+	// TODO: handle user provided API and ingress certs
+	// TODO: consider optimizing this code by skipping the cert generation if the cluster URL is the same
+	if err := r.CertManager.GenerateAllCertificates(); err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate certificates: %w", err)
+	}
+	kubeconfigBytes, err := r.CertManager.GenerateKubeConfig(fmt.Sprintf("%s.%s", cd.Spec.ClusterName, cd.Spec.BaseDomain))
+	if err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate kubeconfig: %w", err)
+	}
+	err = r.CreateKubeconfigSecret(ctx, cd, kubeconfigBytes)
+	if err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
+	}
+	return r.CertManager.GetCrypto(), nil
 }
 
 func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
@@ -499,19 +522,20 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string) error {
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
 	}
 
-	info := clusterinfo.ClusterInfo{
-		Version:         ici.Spec.Version,
-		Domain:          cd.Spec.BaseDomain,
-		ClusterName:     cd.Spec.ClusterName,
-		MasterIP:        ici.Spec.MasterIP,
-		ReleaseRegistry: releaseRegistry,
-		Hostname:        ici.Spec.Hostname,
+	info := lca_api.SeedReconfiguration{
+		APIVersion:                lca_api.SeedReconfigurationVersion,
+		BaseDomain:                cd.Spec.BaseDomain,
+		ClusterName:               cd.Spec.ClusterName,
+		NodeIP:                    ici.Spec.MasterIP,
+		ReleaseRegistry:           releaseRegistry,
+		Hostname:                  ici.Spec.Hostname,
+		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
 	}
 	data, err := json.Marshal(info)
 	if err != nil {
@@ -524,6 +548,33 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ic
 	return nil
 }
 
+func (r *ImageClusterInstallReconciler) CreateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
+	kubeconfigSecret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cd.Spec.ClusterName + "-admin-kubeconfig",
+			Namespace: cd.Namespace,
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
+	mutateFn := func() error {
+		// Update the Secret object with the desired data
+		kubeconfigSecret.Data = map[string][]byte{
+			"kubeconfig": kubeconfigBytes,
+		}
+		return nil
+	}
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, kubeconfigSecret, mutateFn)
+	if err != nil {
+		return fmt.Errorf("failed to create kubeconfig secret: %w", err)
+	}
+	r.Log.Infof("kubeconfig secret %s", op)
+	return nil
+}
+
 func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
 	if ref == nil {
 		return nil
@@ -532,7 +583,7 @@ func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *
 	cm := &corev1.ConfigMap{}
 	key := types.NamespacedName{Name: ref.Name, Namespace: ns}
 	if err := r.Get(ctx, key, cm); err != nil {
-		return err
+		return fmt.Errorf("failed to get CABundle config map: %w", err)
 	}
 
 	data, ok := cm.Data[caBundleFileName]

@@ -37,6 +37,7 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/controllers"
+	"github.com/openshift/cluster-relocation-service/internal/certs"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
@@ -112,10 +113,11 @@ func main() {
 	}
 
 	if err = (&controllers.ImageClusterInstallReconciler{
-		Client:  mgr.GetClient(),
-		Log:     logger,
-		Scheme:  mgr.GetScheme(),
-		Options: controllerOptions,
+		Client:      mgr.GetClient(),
+		Log:         logger,
+		Scheme:      mgr.GetScheme(),
+		Options:     controllerOptions,
+		CertManager: certs.KubeConfigCertManager{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)

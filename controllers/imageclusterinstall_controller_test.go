@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"k8s.io/client-go/tools/clientcmd"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,8 +19,9 @@ import (
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
+	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	"github.com/openshift/cluster-relocation-service/internal/certs"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
 
@@ -58,6 +61,7 @@ var _ = Describe("Reconcile", func() {
 				ServiceScheme:    "http",
 				DataDir:          dataDir,
 			},
+			CertManager: certs.KubeConfigCertManager{},
 		}
 
 		imageSet := &hivev1.ClusterImageSet{
@@ -117,19 +121,20 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	It("creates the correct cluster info manifest", func() {
-		info := clusterinfo.ClusterInfo{
-			Domain:          "example.com",
+		info := lca_api.SeedReconfiguration{
+			APIVersion:      lca_api.SeedReconfigurationVersion,
+			BaseDomain:      "example.com",
 			ClusterName:     "thingcluster",
-			MasterIP:        "192.0.2.1",
+			NodeIP:          "192.0.2.1",
 			ReleaseRegistry: "registry.example.com",
 			Hostname:        "thing",
 		}
-		clusterInstall.Spec.MasterIP = info.MasterIP
+		clusterInstall.Spec.MasterIP = info.NodeIP
 		clusterInstall.Spec.Hostname = info.Hostname
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
 		clusterDeployment.Spec.ClusterName = info.ClusterName
-		clusterDeployment.Spec.BaseDomain = info.Domain
+		clusterDeployment.Spec.BaseDomain = info.BaseDomain
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
@@ -142,9 +147,10 @@ var _ = Describe("Reconcile", func() {
 
 		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &clusterinfo.ClusterInfo{}
+		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-
+		// reset the KubeconfigCryptoRetention
+		infoOut.KubeconfigCryptoRetention = lca_api.KubeConfigCryptoRetention{}
 		Expect(*infoOut).To(Equal(info))
 	})
 
@@ -309,6 +315,35 @@ var _ = Describe("Reconcile", func() {
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).To(HaveOccurred())
+	})
+
+	It("creates certificates", func() {
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = "test-cluster"
+		clusterDeployment.Spec.BaseDomain = "redhat.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify the kubeconfig secret
+		kubeconfigSecret := &corev1.Secret{}
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: clusterInstallNamespace, Name: clusterDeployment.Spec.ClusterName + "-admin-kubeconfig"}, kubeconfigSecret)
+		Expect(err).NotTo(HaveOccurred())
+		kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
+		Expect(exists).To(BeTrue())
+		kubeconfig, err := clientcmd.Load(kubeconfigSecretData)
+		Expect(err).NotTo(HaveOccurred())
+		// verify the cluster URL
+		Expect(kubeconfig.Clusters["cluster"].Server).To(Equal(fmt.Sprintf("https://api.%s.%s:6443", clusterDeployment.Spec.ClusterName, clusterDeployment.Spec.BaseDomain)))
+
+		// verify all signer keys exists
+		// verify the admin client CA cert exists
 	})
 
 	It("configures a referenced BMH", func() {
