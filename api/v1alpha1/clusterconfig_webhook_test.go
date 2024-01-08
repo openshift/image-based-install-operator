@@ -4,6 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -115,6 +116,62 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).ToNot(BeNil())
 	})
+	It("succeeds status update when BMH ref is set", func() {
+		oldConfig := &ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ClusterConfigSpec{
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				BareMetalHostRef: &BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		newConfig := oldConfig.DeepCopy()
+		cond := metav1.Condition{
+			Type:    ImageReadyCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  ImageReadyReason,
+			Message: ImageReadyMessage,
+		}
+		meta.SetStatusCondition(&newConfig.Status.Conditions, cond)
+
+		warns, err := newConfig.ValidateUpdate(oldConfig)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+	It("fail status and spec update when BMH ref is set", func() {
+		oldConfig := &ClusterConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ClusterConfigSpec{
+				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				BareMetalHostRef: &BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		newConfig := oldConfig.DeepCopy()
+		cond := metav1.Condition{
+			Type:    ImageReadyCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  ImageReadyReason,
+			Message: ImageReadyMessage,
+		}
+		meta.SetStatusCondition(&newConfig.Status.Conditions, cond)
+		newConfig.Spec.Domain = "stuff.example.com"
+
+		warns, err := newConfig.ValidateUpdate(oldConfig)
+		Expect(warns).To(BeNil())
+		Expect(err).NotTo(BeNil())
+	})
+
 })
 
 var _ = Describe("BMHRefsMatch", func() {
