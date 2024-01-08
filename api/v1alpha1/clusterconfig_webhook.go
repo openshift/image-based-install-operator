@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,11 +56,22 @@ func (r *ClusterConfig) ValidateUpdate(old runtime.Object) (admission.Warnings, 
 		return nil, nil
 	}
 
+	// Allow update if it's just the status
+	if isStatusUpdate(oldConfig, r) {
+		return nil, nil
+	}
 	if BMHRefsMatch(oldConfig.Spec.BareMetalHostRef, r.Spec.BareMetalHostRef) {
 		return nil, fmt.Errorf("Cannot update ClusterConfig when BareMetalHostRef is set, unset BareMetalHostRef before making changes")
 	}
-
 	return nil, nil
+}
+
+func isStatusUpdate(oldConfig *ClusterConfig, r *ClusterConfig) bool {
+	oldConfigCopy := oldConfig.DeepCopy()
+	oldConfigCopy.Status = ClusterConfigStatus{}
+	newCopy := r.DeepCopy()
+	newCopy.Status = ClusterConfigStatus{}
+	return reflect.DeepEqual(oldConfigCopy, newCopy)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
