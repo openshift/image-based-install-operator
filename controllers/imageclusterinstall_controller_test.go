@@ -498,7 +498,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.Conditions, relocationv1alpha1.ImageReadyCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.ImageReadyCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(relocationv1alpha1.ImageReadyReason))
@@ -543,7 +543,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.Conditions, relocationv1alpha1.HostConfiguredCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.HostConfiguredCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionSucceededReason))
@@ -575,7 +575,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.Conditions, relocationv1alpha1.HostConfiguredCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.HostConfiguredCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionFailedReason))

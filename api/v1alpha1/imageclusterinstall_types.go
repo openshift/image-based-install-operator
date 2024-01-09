@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -36,6 +37,18 @@ const (
 
 // ImageClusterInstallSpec defines the desired state of ImageClusterInstall
 type ImageClusterInstallSpec struct {
+	// ClusterDeploymentRef is a reference to the ClusterDeployment.
+	// +optional
+	ClusterDeploymentRef *corev1.LocalObjectReference `json:"clusterDeploymentRef"`
+
+	// ImageSetRef is a reference to a ClusterImageSet.
+	ImageSetRef hivev1.ClusterImageSetReference `json:"imageSetRef"`
+
+	// ClusterMetadata contains metadata information about the installed cluster.
+	// This must be set as soon as all the information is available.
+	// +optional
+	ClusterMetadata *hivev1.ClusterMetadata `json:"clusterMetadata"`
+
 	clusterinfo.ClusterInfo `json:",inline"`
 
 	// PullSecretRef is a reference to new cluster-wide pull secret.
@@ -63,8 +76,15 @@ type ImageClusterInstallSpec struct {
 
 // ImageClusterInstallStatus defines the observed state of ImageClusterInstall
 type ImageClusterInstallStatus struct {
+	// Conditions is a list of conditions associated with syncing to the cluster.
+	// +optional
+	Conditions []hivev1.ClusterInstallCondition `json:"conditions,omitempty"`
+
+	// InstallRestarts is the total count of container restarts on the clusters install job.
+	InstallRestarts int `json:"installRestarts,omitempty"`
+
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
-	Conditions       []metav1.Condition      `json:"conditions,omitempty"`
+	ConfigConditions []metav1.Condition      `json:"configConditions,omitempty"`
 }
 
 type BareMetalHostReference struct {
