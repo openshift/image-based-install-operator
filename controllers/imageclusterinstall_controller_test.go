@@ -7,12 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
-	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
-	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +15,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
+	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Reconcile", func() {
@@ -795,6 +798,89 @@ var _ = Describe("mapBMHToICI", func() {
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		requests := r.mapBMHToICI(ctx, bmh)
+		Expect(len(requests)).To(Equal(0))
+	})
+})
+
+var _ = Describe("mapCDToICI", func() {
+	var (
+		c                       client.Client
+		r                       *ImageClusterInstallReconciler
+		ctx                     = context.Background()
+		clusterInstallName      = "test-cluster-install"
+		clusterInstallNamespace = "test-namespace"
+	)
+
+	BeforeEach(func() {
+		c = fakeclient.NewClientBuilder().
+			WithScheme(scheme.Scheme).
+			WithStatusSubresource(&relocationv1alpha1.ImageClusterInstall{}).
+			Build()
+
+		r = &ImageClusterInstallReconciler{
+			Client: c,
+			Scheme: scheme.Scheme,
+			Log:    logrus.New(),
+		}
+	})
+
+	It("returns a request for the cluster install referenced by the given ClusterDeployment", func() {
+		cd := &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cd",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
+					Group:   relocationv1alpha1.Group,
+					Version: relocationv1alpha1.Version,
+					Kind:    "ImageClusterInstall",
+					Name:    clusterInstallName,
+				},
+			},
+		}
+		Expect(c.Create(ctx, cd)).To(Succeed())
+
+		requests := r.mapCDToICI(ctx, cd)
+		Expect(len(requests)).To(Equal(1))
+		Expect(requests[0].NamespacedName).To(Equal(types.NamespacedName{
+			Name:      clusterInstallName,
+			Namespace: clusterInstallNamespace,
+		}))
+	})
+
+	It("returns an empty list when no cluster install is set", func() {
+		cd := &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cd",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{},
+		}
+		Expect(c.Create(ctx, cd)).To(Succeed())
+
+		requests := r.mapCDToICI(ctx, cd)
+		Expect(len(requests)).To(Equal(0))
+	})
+
+	It("returns an empty list when the cluster install does not match our GVK", func() {
+		cd := &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cd",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
+					Group:   "extensions.hive.openshift.io",
+					Version: "v1beta2",
+					Kind:    "AgentClusterInstall",
+					Name:    clusterInstallName,
+				},
+			},
+		}
+		Expect(c.Create(ctx, cd)).To(Succeed())
+
+		requests := r.mapCDToICI(ctx, cd)
 		Expect(len(requests)).To(Equal(0))
 	})
 })

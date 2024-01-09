@@ -44,6 +44,7 @@ import (
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/internal/filelock"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -228,6 +229,29 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 	return requests
 }
 
+func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj client.Object) []reconcile.Request {
+	cdName := obj.GetName()
+	cdNamespace := obj.GetNamespace()
+
+	cd := &hivev1.ClusterDeployment{}
+	if err := r.Get(ctx, types.NamespacedName{Name: cdName, Namespace: cdNamespace}, cd); err != nil {
+		return []reconcile.Request{}
+	}
+
+	if cd.Spec.ClusterInstallRef != nil &&
+		cd.Spec.ClusterInstallRef.Group == relocationv1alpha1.Group &&
+		cd.Spec.ClusterInstallRef.Kind == "ImageClusterInstall" {
+		return []reconcile.Request{{
+			NamespacedName: types.NamespacedName{
+				Namespace: cdNamespace,
+				Name:      cd.Spec.ClusterInstallRef.Name,
+			},
+		}}
+	}
+
+	return []reconcile.Request{}
+}
+
 func serviceURL(opts *ImageClusterInstallReconcilerOptions) string {
 	host := fmt.Sprintf("%s.%s", opts.ServiceName, opts.ServiceNamespace)
 	if opts.ServicePort != "" {
@@ -249,6 +273,7 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&relocationv1alpha1.ImageClusterInstall{}).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToICI)).
+		WatchesRawSource(source.Kind(mgr.GetCache(), &hivev1.ClusterDeployment{}), handler.EnqueueRequestsFromMapFunc(r.mapCDToICI)).
 		Complete(r)
 }
 
