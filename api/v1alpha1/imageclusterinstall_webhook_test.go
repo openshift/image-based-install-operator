@@ -137,7 +137,7 @@ var _ = Describe("ValidateUpdate", func() {
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
 		}
-		meta.SetStatusCondition(&newClusterInstall.Status.Conditions, cond)
+		meta.SetStatusCondition(&newClusterInstall.Status.ConfigConditions, cond)
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
@@ -164,7 +164,7 @@ var _ = Describe("ValidateUpdate", func() {
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
 		}
-		meta.SetStatusCondition(&newClusterInstall.Status.Conditions, cond)
+		meta.SetStatusCondition(&newClusterInstall.Status.ConfigConditions, cond)
 		newClusterInstall.Spec.Domain = "stuff.example.com"
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)

@@ -66,6 +66,86 @@ spec:
                 type: string
               cluster_name:
                 type: string
+              clusterDeploymentRef:
+                description: ClusterDeploymentRef is a reference to the ClusterDeployment.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+              clusterMetadata:
+                description: ClusterMetadata contains metadata information about the
+                  installed cluster. This must be set as soon as all the information
+                  is available.
+                properties:
+                  adminKubeconfigSecretRef:
+                    description: AdminKubeconfigSecretRef references the secret containing
+                      the admin kubeconfig for this cluster.
+                    properties:
+                      name:
+                        description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          TODO: Add other useful fields. apiVersion, kind, uid?'
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  adminPasswordSecretRef:
+                    description: AdminPasswordSecretRef references the secret containing
+                      the admin username/password which can be used to login to this
+                      cluster.
+                    properties:
+                      name:
+                        description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          TODO: Add other useful fields. apiVersion, kind, uid?'
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  clusterID:
+                    description: ClusterID is a globally unique identifier for this
+                      cluster generated during installation. Used for reporting metrics
+                      among other places.
+                    type: string
+                  infraID:
+                    description: InfraID is an identifier for this cluster generated
+                      during installation and used for tagging/naming resources in
+                      cloud providers.
+                    type: string
+                  platform:
+                    description: Platform holds platform-specific cluster metadata
+                    properties:
+                      aws:
+                        description: AWS holds AWS-specific cluster metadata
+                        properties:
+                          hostedZoneRole:
+                            description: HostedZoneRole is the role to assume when
+                              performing operations on a hosted zone owned by another
+                              account.
+                            type: string
+                        type: object
+                      azure:
+                        description: Azure holds azure-specific cluster metadata
+                        properties:
+                          resourceGroupName:
+                            description: ResourceGroupName is the name of the resource
+                              group in which the cluster resources were created.
+                            type: string
+                        required:
+                        - resourceGroupName
+                        type: object
+                      gcp:
+                        description: GCP holds GCP-specific cluster metadata
+                        properties:
+                          networkProjectID:
+                            description: NetworkProjectID is used for shared VPC setups
+                            type: string
+                        type: object
+                    type: object
+                required:
+                - adminKubeconfigSecretRef
+                - clusterID
+                - infraID
+                type: object
               domain:
                 type: string
               extraManifestsRef:
@@ -84,6 +164,16 @@ spec:
                 type: array
               hostname:
                 type: string
+              imageSetRef:
+                description: ImageSetRef is a reference to a ClusterImageSet.
+                properties:
+                  name:
+                    description: Name is the name of the ClusterImageSet that this
+                      refers to
+                    type: string
+                required:
+                - name
+                type: object
               master_ip:
                 type: string
               networkConfigRef:
@@ -113,6 +203,8 @@ spec:
                 type: string
               version:
                 type: string
+            required:
+            - imageSetRef
             type: object
           status:
             description: ImageClusterInstallStatus defines the observed state of ImageClusterInstall
@@ -131,6 +223,41 @@ spec:
                 - namespace
                 type: object
               conditions:
+                description: Conditions is a list of conditions associated with syncing
+                  to the cluster.
+                items:
+                  description: ClusterInstallCondition contains details for the current
+                    condition of a cluster install.
+                  properties:
+                    lastProbeTime:
+                      description: LastProbeTime is the last time we probed the condition.
+                      format: date-time
+                      type: string
+                    lastTransitionTime:
+                      description: LastTransitionTime is the last time the condition
+                        transitioned from one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message is a human-readable message indicating
+                        details about last transition.
+                      type: string
+                    reason:
+                      description: Reason is a unique, one-word, CamelCase reason
+                        for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status is the status of the condition.
+                      type: string
+                    type:
+                      description: Type is the type of the condition.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              configConditions:
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
@@ -198,6 +325,10 @@ spec:
                   - type
                   type: object
                 type: array
+              installRestarts:
+                description: InstallRestarts is the total count of container restarts
+                  on the clusters install job.
+                type: integer
             type: object
         type: object
     served: true

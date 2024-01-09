@@ -168,7 +168,7 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 	}
 
 	patch := client.MergeFrom(clusterInstall.DeepCopy())
-	meta.SetStatusCondition(&clusterInstall.Status.Conditions, cond)
+	meta.SetStatusCondition(&clusterInstall.Status.ConfigConditions, cond)
 	return r.Status().Patch(ctx, clusterInstall, patch)
 }
 
@@ -187,7 +187,7 @@ func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.C
 	}
 
 	patch := client.MergeFrom(clusterInstall.DeepCopy())
-	meta.SetStatusCondition(&clusterInstall.Status.Conditions, cond)
+	meta.SetStatusCondition(&clusterInstall.Status.ConfigConditions, cond)
 	return r.Status().Patch(ctx, clusterInstall, patch)
 }
 
