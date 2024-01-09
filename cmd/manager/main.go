@@ -103,23 +103,23 @@ func main() {
 	logger := logrus.New()
 	logger.SetReportCaller(true)
 
-	controllerOptions := &controllers.ClusterConfigReconcilerOptions{}
+	controllerOptions := &controllers.ImageClusterInstallReconcilerOptions{}
 	if err := envconfig.Process("cluster-relocation-service", controllerOptions); err != nil {
 		setupLog.Error(err, "unable to process envconfig")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.ClusterConfigReconciler{
+	if err = (&controllers.ImageClusterInstallReconciler{
 		Client:  mgr.GetClient(),
 		Log:     logger,
 		Scheme:  mgr.GetScheme(),
 		Options: controllerOptions,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterConfig")
+		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)
 	}
-	if err = (&relocationv1alpha1.ClusterConfig{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "ClusterConfig")
+	if err = (&relocationv1alpha1.ImageClusterInstall{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ImageClusterInstall")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

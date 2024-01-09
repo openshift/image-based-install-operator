@@ -1,4 +1,4 @@
 ## Append samples you want in your CSV to this file as resources ##
 resources:
-- relocation_v1alpha1_clusterconfig.yaml
+- relocation_v1alpha1_imageclusterinstall.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
-  name: cluster-config-manager
+  name: image-cluster-install-manager
 rules:
 - apiGroups:
   - ""
@@ -26,7 +26,7 @@ rules:
 - apiGroups:
   - relocation.openshift.io
   resources:
-  - clusterconfigs
+  - imageclusterinstalls
   verbs:
   - create
   - delete
@@ -38,13 +38,13 @@ rules:
 - apiGroups:
   - relocation.openshift.io
   resources:
-  - clusterconfigs/finalizers
+  - imageclusterinstalls/finalizers
   verbs:
   - update
 - apiGroups:
   - relocation.openshift.io
   resources:
-  - clusterconfigs/status
+  - imageclusterinstalls/status
   verbs:
   - get
   - patch

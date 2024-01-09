@@ -24,7 +24,7 @@ make deploy IMG=<some-registry>/cluster-relocation-service:tag
 3. Create a cluster config resource
 
 ```sh
-kubectl apply -f config/samples/relocation_v1alpha1_clusterconfig.yaml
+kubectl apply -f config/samples/relocation_v1alpha1_imageclusterinstall.yaml
 ```
 
 ### Undeploy controller

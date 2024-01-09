@@ -10,51 +10,51 @@ import (
 
 var _ = Describe("ValidateUpdate", func() {
 	It("succeeds when BMH ref is not set", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
-		newConfig.Spec.Domain = "stuff.example.com"
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.Domain = "stuff.example.com"
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
 
 	It("succeeds when BMH ref is changed from nil to non-nil", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
-		newConfig.Spec.BareMetalHostRef = &BareMetalHostReference{
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.BareMetalHostRef = &BareMetalHostReference{
 			Name:      "test-bmh",
 			Namespace: "test-bmh-namespace",
 		}
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
 
 	It("succeeds when BMH ref is changed from non-nil to nil", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
@@ -62,21 +62,21 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
-		newConfig.Spec.BareMetalHostRef = nil
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.BareMetalHostRef = nil
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
 
 	It("succeeds when BMH ref updated", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
@@ -84,24 +84,24 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
-		newConfig.Spec.BareMetalHostRef = &BareMetalHostReference{
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.BareMetalHostRef = &BareMetalHostReference{
 			Name:      "other-bmh",
 			Namespace: "test-bmh-namespace",
 		}
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
 
 	It("fails when BMH ref is set for non BMH updates", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
@@ -109,20 +109,20 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
-		newConfig.Spec.Domain = "stuff.example.com"
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.Domain = "stuff.example.com"
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).ToNot(BeNil())
 	})
 	It("succeeds status update when BMH ref is set", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
@@ -130,26 +130,26 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
+		newClusterInstall := oldClusterInstall.DeepCopy()
 		cond := metav1.Condition{
 			Type:    ImageReadyCondition,
 			Status:  metav1.ConditionTrue,
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
 		}
-		meta.SetStatusCondition(&newConfig.Status.Conditions, cond)
+		meta.SetStatusCondition(&newClusterInstall.Status.Conditions, cond)
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
 	It("fail status and spec update when BMH ref is set", func() {
-		oldConfig := &ClusterConfig{
+		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
-			Spec: ClusterConfigSpec{
+			Spec: ImageClusterInstallSpec{
 				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
@@ -157,17 +157,17 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 		}
-		newConfig := oldConfig.DeepCopy()
+		newClusterInstall := oldClusterInstall.DeepCopy()
 		cond := metav1.Condition{
 			Type:    ImageReadyCondition,
 			Status:  metav1.ConditionTrue,
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
 		}
-		meta.SetStatusCondition(&newConfig.Status.Conditions, cond)
-		newConfig.Spec.Domain = "stuff.example.com"
+		meta.SetStatusCondition(&newClusterInstall.Status.Conditions, cond)
+		newClusterInstall.Spec.Domain = "stuff.example.com"
 
-		warns, err := newConfig.ValidateUpdate(oldConfig)
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).NotTo(BeNil())
 	})
