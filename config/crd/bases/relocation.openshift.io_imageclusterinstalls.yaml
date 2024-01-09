@@ -5,20 +5,21 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.11.1
   creationTimestamp: null
-  name: clusterconfigs.relocation.openshift.io
+  name: imageclusterinstalls.relocation.openshift.io
 spec:
   group: relocation.openshift.io
   names:
-    kind: ClusterConfig
-    listKind: ClusterConfigList
-    plural: clusterconfigs
-    singular: clusterconfig
+    kind: ImageClusterInstall
+    listKind: ImageClusterInstallList
+    plural: imageclusterinstalls
+    singular: imageclusterinstall
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterConfig is the Schema for the clusterconfigs API
+        description: ImageClusterInstall is the Schema for the imageclusterinstall
+          API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -33,7 +34,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ClusterConfigSpec defines the desired state of ClusterConfig
+            description: ImageClusterInstallSpec defines the desired state of ImageClusterInstall
             properties:
               bareMetalHostRef:
                 description: BareMetalHostRef identifies a BareMetalHost object to
@@ -114,7 +115,7 @@ spec:
                 type: string
             type: object
           status:
-            description: ClusterConfigStatus defines the observed state of ClusterConfig
+            description: ImageClusterInstallStatus defines the observed state of ImageClusterInstall
             properties:
               bareMetalHostRef:
                 properties:

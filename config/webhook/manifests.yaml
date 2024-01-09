@@ -2,7 +2,7 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: clusterconfigs.relocation.openshift.io
+  name: imageclusterinstalls.relocation.openshift.io
   annotations:
     service.beta.openshift.io/inject-cabundle: "true"
 webhooks:
@@ -12,9 +12,9 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-relocation-openshift-io-v1alpha1-clusterconfig
+      path: /validate-relocation-openshift-io-v1alpha1-imageclusterinstall
   failurePolicy: Fail
-  name: clusterconfigs.relocation.openshift.io
+  name: imageclusterinstalls.relocation.openshift.io
   rules:
   - apiGroups:
     - relocation.openshift.io
@@ -24,5 +24,5 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - clusterconfigs
+    - imageclusterinstalls
   sideEffects: None

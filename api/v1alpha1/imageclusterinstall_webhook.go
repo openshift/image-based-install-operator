@@ -28,54 +28,54 @@ import (
 )
 
 // log is for logging in this package.
-var clusterconfiglog = logf.Log.WithName("clusterconfig-resource")
+var icilog = logf.Log.WithName("imageclusterinstall-resource")
 
-func (r *ClusterConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (r *ImageClusterInstall) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
 }
 
-var _ webhook.Validator = &ClusterConfig{}
+var _ webhook.Validator = &ImageClusterInstall{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *ClusterConfig) ValidateCreate() (admission.Warnings, error) {
+func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *ClusterConfig) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	clusterconfiglog.Info("validate update", "name", r.Name)
+func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+	icilog.Info("validate update", "name", r.Name)
 
-	oldConfig, ok := old.(*ClusterConfig)
+	oldClusterInstall, ok := old.(*ImageClusterInstall)
 	if !ok {
-		return nil, fmt.Errorf("old object is not a ClusterConfig")
+		return nil, fmt.Errorf("old object is not an ImageClusterInstall")
 	}
 
-	if oldConfig.Spec.BareMetalHostRef == nil && r.Spec.BareMetalHostRef == nil {
+	if oldClusterInstall.Spec.BareMetalHostRef == nil && r.Spec.BareMetalHostRef == nil {
 		return nil, nil
 	}
 
 	// Allow update if it's just the status
-	if isStatusUpdate(oldConfig, r) {
+	if isStatusUpdate(oldClusterInstall, r) {
 		return nil, nil
 	}
-	if BMHRefsMatch(oldConfig.Spec.BareMetalHostRef, r.Spec.BareMetalHostRef) {
-		return nil, fmt.Errorf("Cannot update ClusterConfig when BareMetalHostRef is set, unset BareMetalHostRef before making changes")
+	if BMHRefsMatch(oldClusterInstall.Spec.BareMetalHostRef, r.Spec.BareMetalHostRef) {
+		return nil, fmt.Errorf("Cannot update ImageClusterInstall when BareMetalHostRef is set, unset BareMetalHostRef before making changes")
 	}
 	return nil, nil
 }
 
-func isStatusUpdate(oldConfig *ClusterConfig, r *ClusterConfig) bool {
-	oldConfigCopy := oldConfig.DeepCopy()
-	oldConfigCopy.Status = ClusterConfigStatus{}
+func isStatusUpdate(oldClusterInstall *ImageClusterInstall, r *ImageClusterInstall) bool {
+	oldClusterInstallCopy := oldClusterInstall.DeepCopy()
+	oldClusterInstallCopy.Status = ImageClusterInstallStatus{}
 	newCopy := r.DeepCopy()
-	newCopy.Status = ClusterConfigStatus{}
-	return reflect.DeepEqual(oldConfigCopy, newCopy)
+	newCopy.Status = ImageClusterInstallStatus{}
+	return reflect.DeepEqual(oldClusterInstallCopy, newCopy)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *ClusterConfig) ValidateDelete() (admission.Warnings, error) {
+func (r *ImageClusterInstall) ValidateDelete() (admission.Warnings, error) {
 	return nil, nil
 }
 

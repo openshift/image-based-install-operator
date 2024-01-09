@@ -17,7 +17,7 @@ resources:
   controller: true
   domain: openshift.io
   group: relocation
-  kind: ClusterConfig
+  kind: ImageClusterInstall
   path: github.com/openshift/cluster-relocation-service/api/v1alpha1
   version: v1alpha1
   webhooks:

@@ -43,7 +43,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	h.Log.Infof("Serving image for ClusterConfig %s/%s", namespace, name)
+	h.Log.Infof("Serving image for ImageClusterInstall %s/%s", namespace, name)
 
 	isoWorkDir, err := os.MkdirTemp(h.WorkDir, "build")
 	if err != nil {

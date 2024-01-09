@@ -1,20 +1,24 @@
-# permissions for end users to view clusterconfigs.
+# permissions for end users to edit imageclusterinstalls.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: clusterconfig-viewer
+  name: imageclusterinstall-editor
 rules:
 - apiGroups:
   - relocation.openshift.io
   resources:
-  - clusterconfigs
+  - imageclusterinstalls
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - relocation.openshift.io
   resources:
-  - clusterconfigs/status
+  - imageclusterinstalls/status
   verbs:
   - get

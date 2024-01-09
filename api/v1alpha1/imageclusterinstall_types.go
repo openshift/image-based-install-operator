@@ -34,8 +34,8 @@ const (
 	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
 )
 
-// ClusterConfigSpec defines the desired state of ClusterConfig
-type ClusterConfigSpec struct {
+// ImageClusterInstallSpec defines the desired state of ImageClusterInstall
+type ImageClusterInstallSpec struct {
 	clusterinfo.ClusterInfo `json:",inline"`
 
 	// PullSecretRef is a reference to new cluster-wide pull secret.
@@ -61,8 +61,8 @@ type ClusterConfigSpec struct {
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
 }
 
-// ClusterConfigStatus defines the observed state of ClusterConfig
-type ClusterConfigStatus struct {
+// ImageClusterInstallStatus defines the observed state of ImageClusterInstall
+type ImageClusterInstallStatus struct {
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
 	Conditions       []metav1.Condition      `json:"conditions,omitempty"`
 }
@@ -77,24 +77,24 @@ type BareMetalHostReference struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// ClusterConfig is the Schema for the clusterconfigs API
-type ClusterConfig struct {
+// ImageClusterInstall is the Schema for the imageclusterinstall API
+type ImageClusterInstall struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ClusterConfigSpec   `json:"spec,omitempty"`
-	Status ClusterConfigStatus `json:"status,omitempty"`
+	Spec   ImageClusterInstallSpec   `json:"spec,omitempty"`
+	Status ImageClusterInstallStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// ClusterConfigList contains a list of ClusterConfig
-type ClusterConfigList struct {
+// ImageClusterInstallList contains a list of ImageClusterInstall
+type ImageClusterInstallList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ClusterConfig `json:"items"`
+	Items           []ImageClusterInstall `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterConfig{}, &ClusterConfigList{})
+	SchemeBuilder.Register(&ImageClusterInstall{}, &ImageClusterInstallList{})
 }

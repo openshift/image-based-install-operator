@@ -1,7 +1,7 @@
 apiVersion: relocation.openshift.io/v1alpha1
-kind: ClusterConfig
+kind: ImageClusterInstall
 metadata:
-  name: clusterconfig
+  name: imageclusterinstall
 spec:
   domain: thing.example.com
   sshKeys:
