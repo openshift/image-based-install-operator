@@ -32,8 +32,10 @@ var _ = Describe("Reconcile", func() {
 		dataDir                 string
 		r                       *ImageClusterInstallReconciler
 		ctx                     = context.Background()
-		clusterInstallName      = "test-cluster-install"
+		clusterInstallName      = "test-cluster"
 		clusterInstallNamespace = "test-namespace"
+		clusterInstall          *relocationv1alpha1.ImageClusterInstall
+		clusterDeployment       *hivev1.ClusterDeployment
 	)
 
 	BeforeEach(func() {
@@ -57,6 +59,32 @@ var _ = Describe("Reconcile", func() {
 				DataDir:          dataDir,
 			},
 		}
+
+		clusterInstall = &relocationv1alpha1.ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       clusterInstallName,
+				Namespace:  clusterInstallNamespace,
+				Finalizers: []string{clusterInstallFinalizerName},
+			},
+			Spec: relocationv1alpha1.ImageClusterInstallSpec{
+				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
+			},
+		}
+
+		clusterDeployment = &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      clusterInstallName,
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
+					Group:   clusterInstall.GroupVersionKind().Group,
+					Version: clusterInstall.GroupVersionKind().Version,
+					Kind:    clusterInstall.GroupVersionKind().Kind,
+					Name:    clusterInstall.Name,
+				},
+			},
+		}
 	})
 
 	AfterEach(func() {
@@ -75,23 +103,25 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	It("creates the correct cluster info manifest", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{
-					Domain:          "example.com",
-					ClusterName:     "thingcluster",
-					MasterIP:        "192.0.2.1",
-					ReleaseRegistry: "registry.example.com",
-					Hostname:        "thing.example.com",
-				},
-			},
+		info := clusterinfo.ClusterInfo{
+			Domain:          "example.com",
+			ClusterName:     "thingcluster",
+			ClusterID:       "9ae1cce5-eb90-41b8-b194-b87dd6f9b30a",
+			MasterIP:        "192.0.2.1",
+			ReleaseRegistry: "registry.example.com",
+			Hostname:        "thing",
 		}
+		clusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
+			ClusterID: info.ClusterID,
+		}
+		clusterInstall.Spec.MasterIP = info.MasterIP
+		clusterInstall.Spec.ReleaseRegistry = info.ReleaseRegistry
+		clusterInstall.Spec.Hostname = info.Hostname
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = info.ClusterName
+		clusterDeployment.Spec.BaseDomain = info.Domain
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -103,10 +133,10 @@ var _ = Describe("Reconcile", func() {
 
 		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
-		info := &clusterinfo.ClusterInfo{}
-		Expect(json.Unmarshal(content, info)).To(Succeed())
+		infoOut := &clusterinfo.ClusterInfo{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
-		Expect(*info).To(Equal(clusterInstall.Spec.ClusterInfo))
+		Expect(*infoOut).To(Equal(info))
 	})
 
 	It("creates the pull secret", func() {
@@ -120,18 +150,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, s)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				PullSecretRef: &corev1.LocalObjectReference{
-					Name: "my-pull-secret",
-				},
-			},
-		}
+		clusterDeployment.Spec.PullSecretRef = &corev1.LocalObjectReference{Name: "my-pull-secret"}
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
 		key := types.NamespacedName{
@@ -163,19 +183,11 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, cm)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				CABundleRef: &corev1.LocalObjectReference{
-					Name: "ca-bundle",
-				},
-			},
+		clusterInstall.Spec.CABundleRef = &corev1.LocalObjectReference{
+			Name: "ca-bundle",
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -207,19 +219,11 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, s)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				NetworkConfigRef: &corev1.LocalObjectReference{
-					Name: netConfigName,
-				},
-			},
+		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
+			Name: netConfigName,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -254,19 +258,11 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, cm)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				ExtraManifestsRefs: []corev1.LocalObjectReference{
-					{Name: "manifests"},
-				},
-			},
+		clusterInstall.Spec.ExtraManifestsRefs = []corev1.LocalObjectReference{
+			{Name: "manifests"},
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -292,19 +288,11 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, cm)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				ExtraManifestsRefs: []corev1.LocalObjectReference{
-					{Name: "manifests"},
-				},
-			},
+		clusterInstall.Spec.ExtraManifestsRefs = []corev1.LocalObjectReference{
+			{Name: "manifests"},
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -328,20 +316,12 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
-			},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{
@@ -379,20 +359,12 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
-			},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{
@@ -434,20 +406,12 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
-			},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{
@@ -478,19 +442,9 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the image ready condition", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{
-					Domain: "thing.example.com",
-				},
-			},
-		}
+		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -522,20 +476,12 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
-			},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -554,20 +500,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the host configured condition to false when the host is missing", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
-				},
-			},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      "test-bmh",
+			Namespace: "test-bmh-namespace",
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
@@ -601,20 +539,14 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Status: relocationv1alpha1.ImageClusterInstallStatus{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
+		clusterInstall.Status = relocationv1alpha1.ImageClusterInstallStatus{
+			BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
 			},
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{
@@ -659,26 +591,18 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, newBMH)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      newBMH.Name,
-					Namespace: newBMH.Namespace,
-				},
-			},
-			Status: relocationv1alpha1.ImageClusterInstallStatus{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
-					Name:      oldBMH.Name,
-					Namespace: oldBMH.Namespace,
-				},
+		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+			Name:      newBMH.Name,
+			Namespace: newBMH.Namespace,
+		}
+		clusterInstall.Status = relocationv1alpha1.ImageClusterInstallStatus{
+			BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+				Name:      oldBMH.Name,
+				Namespace: oldBMH.Namespace,
 			},
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{

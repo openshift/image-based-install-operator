@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,12 +48,19 @@ type ImageClusterInstallSpec struct {
 	// +optional
 	ClusterMetadata *hivev1.ClusterMetadata `json:"clusterMetadata"`
 
-	clusterinfo.ClusterInfo `json:",inline"`
+	// Version is the target OCP version for the cluster
+	// TODO: should this use ImageSetRef?
+	Version string `json:"version,omitempty"`
 
-	// PullSecretRef is a reference to new cluster-wide pull secret.
-	// If defined, it will replace the secret located at openshift-config/pull-secret.
-	// The type of the secret must be kubernetes.io/dockerconfigjson.
-	PullSecretRef *corev1.LocalObjectReference `json:"pullSecretRef,omitempty"`
+	// MasterIP is the desired IP for the host
+	MasterIP string `json:"masterIP,omitempty"`
+
+	// Hostname is the desired hostname for the host
+	Hostname string `json:"hostname,omitempty"`
+
+	// ReleaseRegistry is the registry of the installed release image
+	// TODO: should this also use the registry of ImageSetRef?
+	ReleaseRegistry string `json:"releaseRegistry,omitempty"`
 
 	// CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
 	// The tls-ca-bundle.pem entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem

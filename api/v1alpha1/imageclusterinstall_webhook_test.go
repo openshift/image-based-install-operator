@@ -3,7 +3,6 @@ package v1alpha1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -16,11 +15,11 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.Domain = "stuff.example.com"
+		newClusterInstall.Spec.Hostname = "stuff"
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
@@ -34,7 +33,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -55,7 +54,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -77,7 +76,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -102,7 +101,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -110,7 +109,7 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.Domain = "stuff.example.com"
+		newClusterInstall.Spec.Hostname = "stuff"
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
@@ -123,7 +122,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -150,7 +149,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				ClusterInfo: clusterinfo.ClusterInfo{Domain: "thing.example.com"},
+				Hostname: "test",
 				BareMetalHostRef: &BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
@@ -165,7 +164,7 @@ var _ = Describe("ValidateUpdate", func() {
 			Message: ImageReadyMessage,
 		}
 		meta.SetStatusCondition(&newClusterInstall.Status.ConfigConditions, cond)
-		newClusterInstall.Spec.Domain = "stuff.example.com"
+		newClusterInstall.Spec.Hostname = "stuff"
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
