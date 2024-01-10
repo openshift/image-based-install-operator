@@ -99,7 +99,22 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if res, err := r.writeInputData(ctx, log, clusterInstall); !res.IsZero() || err != nil {
+	if clusterInstall.Spec.ClusterDeploymentRef == nil || clusterInstall.Spec.ClusterDeploymentRef.Name == "" {
+		log.Warn("ClusterDeploymentRef is unset, not reconciling")
+		return ctrl.Result{}, fmt.Errorf("missing ClusterDeploymentRef")
+	}
+
+	clusterDeployment := &hivev1.ClusterDeployment{}
+	cdKey := types.NamespacedName{
+		Namespace: clusterInstall.Namespace,
+		Name:      clusterInstall.Spec.ClusterDeploymentRef.Name,
+	}
+	if err := r.Get(ctx, cdKey, clusterDeployment); err != nil {
+		log.WithError(err).Errorf("failed to get ClusterDeployment %s", cdKey)
+		return ctrl.Result{}, err
+	}
+
+	if res, err := r.writeInputData(ctx, log, clusterInstall, clusterDeployment); !res.IsZero() || err != nil {
 		if err != nil {
 			if updateErr := r.setImageReadyCondition(ctx, clusterInstall, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -361,7 +376,7 @@ func (r *ImageClusterInstallReconciler) configDirs(clusterInstall *relocationv1a
 }
 
 // writeInputData writes the required info based on the ImageClusterInstall to the config cache dir
-func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *relocationv1alpha1.ImageClusterInstall) (ctrl.Result, error) {
+func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) (ctrl.Result, error) {
 	lockDir, filesDir, err := r.configDirs(ici)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -372,7 +387,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	}
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
-		if err := r.writeClusterInfo(&ici.Spec.ClusterInfo, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
+		if err := r.writeClusterInfo(ici, cd, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
 			return err
 		}
 
@@ -385,7 +400,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			return err
 		}
 
-		if err := r.writePullSecretToFile(ctx, ici.Spec.PullSecretRef, ici.Namespace, filepath.Join(manifestsPath, "pull-secret-secret.json")); err != nil {
+		if err := r.writePullSecretToFile(ctx, cd.Spec.PullSecretRef, ici.Namespace, filepath.Join(manifestsPath, "pull-secret-secret.json")); err != nil {
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
@@ -456,7 +471,18 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(info *clusterinfo.ClusterInfo, file string) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
+	info := clusterinfo.ClusterInfo{
+		Version:         ici.Spec.Version,
+		Domain:          cd.Spec.BaseDomain,
+		ClusterName:     cd.Spec.ClusterName,
+		MasterIP:        ici.Spec.MasterIP,
+		ReleaseRegistry: ici.Spec.ReleaseRegistry,
+		Hostname:        ici.Spec.Hostname,
+	}
+	if ici.Spec.ClusterMetadata != nil {
+		info.ClusterID = ici.Spec.ClusterMetadata.ClusterID
+	}
 	data, err := json.Marshal(info)
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster info: %w", err)

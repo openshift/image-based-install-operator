@@ -62,10 +62,6 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              cluster_id:
-                type: string
-              cluster_name:
-                type: string
               clusterDeploymentRef:
                 description: ClusterDeploymentRef is a reference to the ClusterDeployment.
                 properties:
@@ -146,8 +142,6 @@ spec:
                 - clusterID
                 - infraID
                 type: object
-              domain:
-                type: string
               extraManifestsRef:
                 description: ExtraManifestsRefs is list of config map references containing
                   additional manifests to be applied to the relocated cluster.
@@ -163,6 +157,7 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
               hostname:
+                description: Hostname is the desired hostname for the host
                 type: string
               imageSetRef:
                 description: ImageSetRef is a reference to a ClusterImageSet.
@@ -174,7 +169,8 @@ spec:
                 required:
                 - name
                 type: object
-              master_ip:
+              masterIP:
+                description: MasterIP is the desired IP for the host
                 type: string
               networkConfigRef:
                 description: NetworkConfigRef is the reference to a config map containing
@@ -188,20 +184,13 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              pullSecretRef:
-                description: PullSecretRef is a reference to new cluster-wide pull
-                  secret. If defined, it will replace the secret located at openshift-config/pull-secret.
-                  The type of the secret must be kubernetes.io/dockerconfigjson.
-                properties:
-                  name:
-                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      TODO: Add other useful fields. apiVersion, kind, uid?'
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
-              release_registry:
+              releaseRegistry:
+                description: 'ReleaseRegistry is the registry of the installed release
+                  image TODO: should this also use the registry of ImageSetRef?'
                 type: string
               version:
+                description: 'Version is the target OCP version for the cluster TODO:
+                  should this use ImageSetRef?'
                 type: string
             required:
             - imageSetRef

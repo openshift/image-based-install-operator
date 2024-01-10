@@ -116,12 +116,6 @@ func (in *ImageClusterInstallSpec) DeepCopyInto(out *ImageClusterInstallSpec) {
 		*out = new(hivev1.ClusterMetadata)
 		(*in).DeepCopyInto(*out)
 	}
-	out.ClusterInfo = in.ClusterInfo
-	if in.PullSecretRef != nil {
-		in, out := &in.PullSecretRef, &out.PullSecretRef
-		*out = new(v1.LocalObjectReference)
-		**out = **in
-	}
 	if in.CABundleRef != nil {
 		in, out := &in.CABundleRef, &out.CABundleRef
 		*out = new(v1.LocalObjectReference)
