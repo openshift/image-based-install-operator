@@ -441,6 +441,18 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
 
+	It("doesn't error when ClusterDeploymentRef is unset", func() {
+		clusterInstall.Spec.ClusterDeploymentRef = nil
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+
 	It("sets the image ready condition", func() {
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
