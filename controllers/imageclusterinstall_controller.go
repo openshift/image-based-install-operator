@@ -100,8 +100,8 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
-		log.Warn("ClusterDeploymentRef is unset, not reconciling")
-		return ctrl.Result{}, fmt.Errorf("missing ClusterDeploymentRef")
+		log.Error("ClusterDeploymentRef is unset, not reconciling")
+		return ctrl.Result{}, nil
 	}
 
 	clusterDeployment := &hivev1.ClusterDeployment{}
