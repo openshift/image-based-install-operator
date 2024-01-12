@@ -480,9 +480,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ici *relocationv1alpha1
 		MasterIP:        ici.Spec.MasterIP,
 		ReleaseRegistry: ici.Spec.ReleaseRegistry,
 		Hostname:        ici.Spec.Hostname,
-	}
-	if ici.Spec.ClusterMetadata != nil {
-		info.ClusterID = ici.Spec.ClusterMetadata.ClusterID
+		ClusterID:       ici.Spec.ClusterID,
 	}
 	data, err := json.Marshal(info)
 	if err != nil {

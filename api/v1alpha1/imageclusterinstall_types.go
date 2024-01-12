@@ -62,6 +62,9 @@ type ImageClusterInstallSpec struct {
 	// TODO: should this also use the registry of ImageSetRef?
 	ReleaseRegistry string `json:"releaseRegistry,omitempty"`
 
+	// ClusterID is the desired ID for the new cluster
+	ClusterID string `json:"clusterID,omitempty"`
+
 	// CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
 	// The tls-ca-bundle.pem entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 	CABundleRef *corev1.LocalObjectReference `json:"caBundleRef,omitempty"`
