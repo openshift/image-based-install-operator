@@ -71,6 +71,9 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              clusterID:
+                description: ClusterID is the desired ID for the new cluster
+                type: string
               clusterMetadata:
                 description: ClusterMetadata contains metadata information about the
                   installed cluster. This must be set as soon as all the information

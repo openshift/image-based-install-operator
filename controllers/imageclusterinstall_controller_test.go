@@ -111,9 +111,7 @@ var _ = Describe("Reconcile", func() {
 			ReleaseRegistry: "registry.example.com",
 			Hostname:        "thing",
 		}
-		clusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
-			ClusterID: info.ClusterID,
-		}
+		clusterInstall.Spec.ClusterID = info.ClusterID
 		clusterInstall.Spec.MasterIP = info.MasterIP
 		clusterInstall.Spec.ReleaseRegistry = info.ReleaseRegistry
 		clusterInstall.Spec.Hostname = info.Hostname
