@@ -80,6 +80,7 @@ const (
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=relocation.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
 //+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=hive.openshift.io,resources=clusterdeployments,verbs=get;list;watch;update;patch
 
 func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithFields(logrus.Fields{"name": req.Name, "namespace": req.Namespace})
