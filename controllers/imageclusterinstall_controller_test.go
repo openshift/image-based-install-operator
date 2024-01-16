@@ -106,12 +106,10 @@ var _ = Describe("Reconcile", func() {
 		info := clusterinfo.ClusterInfo{
 			Domain:          "example.com",
 			ClusterName:     "thingcluster",
-			ClusterID:       "9ae1cce5-eb90-41b8-b194-b87dd6f9b30a",
 			MasterIP:        "192.0.2.1",
 			ReleaseRegistry: "registry.example.com",
 			Hostname:        "thing",
 		}
-		clusterInstall.Spec.ClusterID = info.ClusterID
 		clusterInstall.Spec.MasterIP = info.MasterIP
 		clusterInstall.Spec.ReleaseRegistry = info.ReleaseRegistry
 		clusterInstall.Spec.Hostname = info.Hostname
