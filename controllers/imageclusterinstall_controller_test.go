@@ -60,6 +60,17 @@ var _ = Describe("Reconcile", func() {
 			},
 		}
 
+		imageSet := &hivev1.ClusterImageSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "imageset",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterImageSetSpec{
+				ReleaseImage: "registry.example.com/releases/ocp@sha256:0ec9d715c717b2a592d07dd83860013613529fae69bc9eecb4b2d4ace679f6f3",
+			},
+		}
+		Expect(c.Create(ctx, imageSet)).To(Succeed())
+
 		clusterInstall = &relocationv1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
@@ -67,6 +78,9 @@ var _ = Describe("Reconcile", func() {
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
 			Spec: relocationv1alpha1.ImageClusterInstallSpec{
+				ImageSetRef: hivev1.ClusterImageSetReference{
+					Name: imageSet.Name,
+				},
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
 			},
 		}
@@ -111,7 +125,6 @@ var _ = Describe("Reconcile", func() {
 			Hostname:        "thing",
 		}
 		clusterInstall.Spec.MasterIP = info.MasterIP
-		clusterInstall.Spec.ReleaseRegistry = info.ReleaseRegistry
 		clusterInstall.Spec.Hostname = info.Hostname
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 

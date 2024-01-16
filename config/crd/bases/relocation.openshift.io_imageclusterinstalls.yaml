@@ -184,10 +184,6 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              releaseRegistry:
-                description: 'ReleaseRegistry is the registry of the installed release
-                  image TODO: should this also use the registry of ImageSetRef?'
-                type: string
               version:
                 description: 'Version is the target OCP version for the cluster TODO:
                   should this use ImageSetRef?'

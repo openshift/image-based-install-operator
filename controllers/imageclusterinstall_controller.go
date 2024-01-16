@@ -26,6 +26,11 @@ import (
 	"strings"
 	"time"
 
+	// These are required for image parsing to work correctly with digest-based pull specs
+	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
+	_ "crypto/sha256"
+	_ "crypto/sha512"
+
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	errors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/containers/image/v5/docker/reference"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
 	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
@@ -388,7 +394,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	}
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
-		if err := r.writeClusterInfo(ici, cd, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
+		if err := r.writeClusterInfo(ctx, ici, cd, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
 			return err
 		}
 
@@ -472,13 +478,38 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
+func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall) (string, error) {
+	cis := hivev1.ClusterImageSet{}
+	key := types.NamespacedName{Name: ici.Spec.ImageSetRef.Name, Namespace: ici.Namespace}
+	if err := r.Get(ctx, key, &cis); err != nil {
+		return "", err
+	}
+
+	ref, err := reference.Parse(cis.Spec.ReleaseImage)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse ReleaseImage from ClusterImageSet %s: %w", key, err)
+	}
+
+	namedRef, ok := ref.(reference.Named)
+	if !ok {
+		return "", fmt.Errorf("failed to parse registry name from image %s", ref)
+	}
+
+	return strings.Split(namedRef.Name(), "/")[0], nil
+}
+
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
+	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
+	if err != nil {
+		return err
+	}
+
 	info := clusterinfo.ClusterInfo{
 		Version:         ici.Spec.Version,
 		Domain:          cd.Spec.BaseDomain,
 		ClusterName:     cd.Spec.ClusterName,
 		MasterIP:        ici.Spec.MasterIP,
-		ReleaseRegistry: ici.Spec.ReleaseRegistry,
+		ReleaseRegistry: releaseRegistry,
 		Hostname:        ici.Spec.Hostname,
 	}
 	data, err := json.Marshal(info)
