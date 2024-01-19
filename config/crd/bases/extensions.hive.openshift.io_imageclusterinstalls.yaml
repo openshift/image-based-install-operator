@@ -5,9 +5,9 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.11.1
   creationTimestamp: null
-  name: imageclusterinstalls.relocation.openshift.io
+  name: imageclusterinstalls.extensions.hive.openshift.io
 spec:
-  group: relocation.openshift.io
+  group: extensions.hive.openshift.io
   names:
     kind: ImageClusterInstall
     listKind: ImageClusterInstallList
