@@ -5,6 +5,9 @@ resources:
 - bases/relocation.openshift.io_imageclusterinstalls.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
+patchesStrategicMerge:
+- patches/hive_contract_label.yaml
+
 # the following config is for teaching kustomize how to do kustomization for CRDs.
 configurations:
 - kustomizeconfig.yaml
