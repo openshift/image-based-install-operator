@@ -115,6 +115,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).ToNot(BeNil())
 	})
+
 	It("succeeds status update when BMH ref is set", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
@@ -142,6 +143,29 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
+
+	It("metadata update succeeds when BMH ref is set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+				BareMetalHostRef: &BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.ObjectMeta.Finalizers = []string{"somefinalizer"}
+
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+
 	It("fail status and spec update when BMH ref is set", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
