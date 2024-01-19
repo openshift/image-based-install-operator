@@ -30,7 +30,7 @@ var _ = Describe("ServeHttp", func() {
 		workDir    string
 		configsDir string
 
-		namespace = "cluster-relocation"
+		namespace = "image-based-install-operator"
 		name      = "config"
 	)
 

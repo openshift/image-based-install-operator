@@ -1,5 +1,5 @@
 # Adds namespace to all resources.
-namespace: cluster-relocation
+namespace: image-based-install-operator
 
 bases:
 - ../crd

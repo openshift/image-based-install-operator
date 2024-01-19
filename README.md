@@ -1,8 +1,8 @@
-# cluster-relocation-service
-Configure relocated SNO clusters
+# image-based-install-operator
+Provide site configuration to Single Node OpenShift clusters to complete installation
 
 ## Description
-The cluster-relocation-service creates ISO images containing cluster configuration and optionally attaches them to relocated remote clusters using a BMH
+The image-based-install-operator creates ISO images containing cluster configuration and optionally attaches them to remote clusters using a BMH
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
@@ -12,19 +12,19 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 1. Build and push your image to the location specified by `IMG`:
 
 ```sh
-make build-image push IMG=<some-registry>/cluster-relocation-service:tag
+make build-image push IMG=<some-registry>/image-based-install-operator:tag
 ```
 
 2. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
-make deploy IMG=<some-registry>/cluster-relocation-service:tag
+make deploy IMG=<some-registry>/image-based-install-operator:tag
 ```
 
-3. Create a cluster config resource
+3. Create an ImageClusterInstall resource
 
 ```sh
-kubectl apply -f config/samples/relocation_v1alpha1_imageclusterinstall.yaml
+kubectl apply -f config/samples/image-based-install_v1alpha1_imageclusterinstall.yaml
 ```
 
 ### Undeploy controller

@@ -14,7 +14,7 @@ import (
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
-	"github.com/openshift/cluster-relocation-service/internal/filelock"
+	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/sirupsen/logrus"
 )
 

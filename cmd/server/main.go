@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/kelseyhightower/envconfig"
-	"github.com/openshift/cluster-relocation-service/internal/imageserver"
+	"github.com/openshift/image-based-install-operator/internal/imageserver"
 	"github.com/sirupsen/logrus"
 )
 

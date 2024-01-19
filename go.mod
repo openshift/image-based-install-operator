@@ -1,4 +1,4 @@
-module github.com/openshift/cluster-relocation-service
+module github.com/openshift/image-based-install-operator
 
 go 1.19
 

@@ -20,9 +20,9 @@ import (
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
-	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
-	"github.com/openshift/cluster-relocation-service/internal/certs"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/sirupsen/logrus"
 
 	. "github.com/onsi/ginkgo/v2"
