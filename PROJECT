@@ -8,8 +8,8 @@ layout:
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
-projectName: cluster-relocation-service
-repo: github.com/openshift/cluster-relocation-service
+projectName: image-based-install-operator
+repo: github.com/openshift/image-based-install-operator
 resources:
 - api:
     crdVersion: v1
@@ -18,7 +18,7 @@ resources:
   domain: hive.openshift.io
   group: extensions
   kind: ImageClusterInstall
-  path: github.com/openshift/cluster-relocation-service/api/v1alpha1
+  path: github.com/openshift/image-based-install-operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     validation: true

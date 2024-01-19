@@ -2,7 +2,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: controller-manager-metrics-monitor
-  namespace: cluster-relocation
+  namespace: image-based-install-operator
 spec:
   endpoints:
     - path: /metrics

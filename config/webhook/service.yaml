@@ -11,4 +11,4 @@ spec:
     protocol: TCP
     targetPort: 9443
   selector:
-    app: cluster-relocation
+    app: image-based-install-operator

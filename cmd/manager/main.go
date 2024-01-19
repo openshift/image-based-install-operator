@@ -35,10 +35,10 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
-	"github.com/openshift/cluster-relocation-service/controllers"
-	"github.com/openshift/cluster-relocation-service/internal/certs"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/image-based-install-operator/controllers"
+	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )
@@ -107,7 +107,7 @@ func main() {
 	logger.SetReportCaller(true)
 
 	controllerOptions := &controllers.ImageClusterInstallReconcilerOptions{}
-	if err := envconfig.Process("cluster-relocation-service", controllerOptions); err != nil {
+	if err := envconfig.Process("image-based-install-operator", controllerOptions); err != nil {
 		setupLog.Error(err, "unable to process envconfig")
 		os.Exit(1)
 	}
