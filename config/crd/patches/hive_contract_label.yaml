@@ -3,4 +3,4 @@ kind: CustomResourceDefinition
 metadata:
   labels:
     contracts.hive.openshift.io/clusterinstall: "true"
-  name: imageclusterinstalls.relocation.openshift.io
+  name: imageclusterinstalls.extensions.hive.openshift.io

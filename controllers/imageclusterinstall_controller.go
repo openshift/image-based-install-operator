@@ -48,7 +48,7 @@ import (
 	"github.com/containers/image/v5/docker/reference"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
-	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	"github.com/openshift/cluster-relocation-service/internal/filelock"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
@@ -77,14 +77,14 @@ const (
 	extraManifestsDir           = "extra-manifests"
 	manifestsDir                = "manifests"
 	networkConfigDir            = "network-configuration"
-	clusterInstallFinalizerName = "imageclusterinstall." + relocationv1alpha1.Group + "/deprovision"
+	clusterInstallFinalizerName = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
 	caBundleFileName            = "tls-ca-bundle.pem"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
-//+kubebuilder:rbac:groups=relocation.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=relocation.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=relocation.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
+//+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
 //+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=hive.openshift.io,resources=clusterdeployments,verbs=get;list;watch;update;patch
 
@@ -93,7 +93,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	log.Info("Running reconcile ...")
 	defer log.Info("Reconcile complete")
 
-	ici := &relocationv1alpha1.ImageClusterInstall{}
+	ici := &v1alpha1.ImageClusterInstall{}
 	if err := r.Get(ctx, req.NamespacedName, ici); err != nil {
 		log.WithError(err).Error("failed to get ImageClusterInstall")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -145,7 +145,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if ici.Status.BareMetalHostRef != nil && !relocationv1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
+	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
 		if err := r.removeBMHImage(ctx, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
 			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", ici.Status.BareMetalHostRef.Namespace, ici.Status.BareMetalHostRef.Name)
 			return ctrl.Result{}, err
@@ -176,17 +176,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall, err error) error {
+func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
 	cond := metav1.Condition{
-		Type:    relocationv1alpha1.ImageReadyCondition,
+		Type:    v1alpha1.ImageReadyCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  relocationv1alpha1.ImageReadyReason,
-		Message: relocationv1alpha1.ImageReadyMessage,
+		Reason:  v1alpha1.ImageReadyReason,
+		Message: v1alpha1.ImageReadyMessage,
 	}
 
 	if err != nil {
 		cond.Status = metav1.ConditionFalse
-		cond.Reason = relocationv1alpha1.ImageNotReadyReason
+		cond.Reason = v1alpha1.ImageNotReadyReason
 		cond.Message = err.Error()
 	}
 
@@ -195,17 +195,17 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall, err error) error {
+func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
 	cond := metav1.Condition{
-		Type:    relocationv1alpha1.HostConfiguredCondition,
+		Type:    v1alpha1.HostConfiguredCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  relocationv1alpha1.HostConfiguraionSucceededReason,
-		Message: relocationv1alpha1.HostConfigurationSucceededMessage,
+		Reason:  v1alpha1.HostConfiguraionSucceededReason,
+		Message: v1alpha1.HostConfigurationSucceededMessage,
 	}
 
 	if err != nil {
 		cond.Status = metav1.ConditionFalse
-		cond.Reason = relocationv1alpha1.HostConfiguraionFailedReason
+		cond.Reason = v1alpha1.HostConfiguraionFailedReason
 		cond.Message = err.Error()
 	}
 
@@ -222,7 +222,7 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 	if err := r.Get(ctx, types.NamespacedName{Name: bmhName, Namespace: bmhNamespace}, bmh); err != nil {
 		return []reconcile.Request{}
 	}
-	iciList := &relocationv1alpha1.ImageClusterInstallList{}
+	iciList := &v1alpha1.ImageClusterInstallList{}
 	if err := r.List(ctx, iciList); err != nil {
 		return []reconcile.Request{}
 	}
@@ -261,7 +261,7 @@ func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj clie
 	}
 
 	if cd.Spec.ClusterInstallRef != nil &&
-		cd.Spec.ClusterInstallRef.Group == relocationv1alpha1.Group &&
+		cd.Spec.ClusterInstallRef.Group == v1alpha1.Group &&
 		cd.Spec.ClusterInstallRef.Kind == "ImageClusterInstall" {
 		return []reconcile.Request{{
 			NamespacedName: types.NamespacedName{
@@ -293,13 +293,13 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 	r.BaseURL = serviceURL(r.Options)
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&relocationv1alpha1.ImageClusterInstall{}).
+		For(&v1alpha1.ImageClusterInstall{}).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToICI)).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &hivev1.ClusterDeployment{}), handler.EnqueueRequestsFromMapFunc(r.mapCDToICI)).
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef *relocationv1alpha1.BareMetalHostReference, url string) error {
+func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference, url string) error {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
 		Name:      bmhRef.Name,
@@ -346,7 +346,7 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef 
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *relocationv1alpha1.BareMetalHostReference) error {
+func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
 		Name:      bmhRef.Name,
@@ -372,7 +372,7 @@ func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhR
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) configDirs(ici *relocationv1alpha1.ImageClusterInstall) (string, string, error) {
+func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterInstall) (string, string, error) {
 	lockDir := filepath.Join(r.Options.DataDir, "namespaces", ici.Namespace, ici.Name)
 	filesDir := filepath.Join(lockDir, "files")
 	if err := os.MkdirAll(filesDir, 0700); err != nil {
@@ -383,7 +383,7 @@ func (r *ImageClusterInstallReconciler) configDirs(ici *relocationv1alpha1.Image
 }
 
 // writeInputData writes the required info based on the ImageClusterInstall to the config cache dir
-func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) (ctrl.Result, error) {
+func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) (ctrl.Result, error) {
 	lockDir, filesDir, err := r.configDirs(ici)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -478,7 +478,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall) (string, error) {
+func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
 	cis := hivev1.ClusterImageSet{}
 	key := types.NamespacedName{Name: ici.Spec.ImageSetRef.Name, Namespace: ici.Namespace}
 	if err := r.Get(ctx, key, &cis); err != nil {
@@ -498,7 +498,7 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *relocationv1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, file string) error {
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
@@ -568,7 +568,7 @@ func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Contex
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log logrus.FieldLogger, ici *relocationv1alpha1.ImageClusterInstall) (ctrl.Result, bool, error) {
+func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall) (ctrl.Result, bool, error) {
 	if ici.DeletionTimestamp.IsZero() {
 		patch := client.MergeFrom(ici.DeepCopy())
 		if controllerutil.AddFinalizer(ici, clusterInstallFinalizerName) {

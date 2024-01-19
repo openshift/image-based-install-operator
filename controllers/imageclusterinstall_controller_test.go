@@ -18,7 +18,7 @@ import (
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/openshift-kni/lifecycle-agent/ibu-imager/clusterinfo"
-	relocationv1alpha1 "github.com/openshift/cluster-relocation-service/api/v1alpha1"
+	"github.com/openshift/cluster-relocation-service/api/v1alpha1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
 
@@ -34,14 +34,14 @@ var _ = Describe("Reconcile", func() {
 		ctx                     = context.Background()
 		clusterInstallName      = "test-cluster"
 		clusterInstallNamespace = "test-namespace"
-		clusterInstall          *relocationv1alpha1.ImageClusterInstall
+		clusterInstall          *v1alpha1.ImageClusterInstall
 		clusterDeployment       *hivev1.ClusterDeployment
 	)
 
 	BeforeEach(func() {
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
-			WithStatusSubresource(&relocationv1alpha1.ImageClusterInstall{}).
+			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
 		var err error
 		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
@@ -71,13 +71,13 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, imageSet)).To(Succeed())
 
-		clusterInstall = &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall = &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
+			Spec: v1alpha1.ImageClusterInstallSpec{
 				ImageSetRef: hivev1.ClusterImageSetReference{
 					Name: imageSet.Name,
 				},
@@ -325,7 +325,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
@@ -368,7 +368,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
@@ -415,7 +415,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
@@ -476,11 +476,11 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.ImageReadyCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.ImageReadyCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-		Expect(cond.Reason).To(Equal(relocationv1alpha1.ImageReadyReason))
-		Expect(cond.Message).To(Equal(relocationv1alpha1.ImageReadyMessage))
+		Expect(cond.Reason).To(Equal(v1alpha1.ImageReadyReason))
+		Expect(cond.Message).To(Equal(v1alpha1.ImageReadyMessage))
 	})
 
 	It("sets the host configured condition when the host can be configured", func() {
@@ -497,7 +497,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
@@ -513,15 +513,15 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.HostConfiguredCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.HostConfiguredCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionSucceededReason))
-		Expect(cond.Message).To(Equal(relocationv1alpha1.HostConfigurationSucceededMessage))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionSucceededReason))
+		Expect(cond.Message).To(Equal(v1alpha1.HostConfigurationSucceededMessage))
 	})
 
 	It("sets the host configured condition to false when the host is missing", func() {
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      "test-bmh",
 			Namespace: "test-bmh-namespace",
 		}
@@ -537,10 +537,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, relocationv1alpha1.HostConfiguredCondition)
+		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.HostConfiguredCondition)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(relocationv1alpha1.HostConfiguraionFailedReason))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
 	})
 
 	It("removes the image from a BMH when the reference is removed", func() {
@@ -560,8 +560,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Status = relocationv1alpha1.ImageClusterInstallStatus{
-			BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
+			BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 				Name:      bmh.Name,
 				Namespace: bmh.Namespace,
 			},
@@ -612,12 +612,12 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, newBMH)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      newBMH.Name,
 			Namespace: newBMH.Namespace,
 		}
-		clusterInstall.Status = relocationv1alpha1.ImageClusterInstallStatus{
-			BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
+			BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 				Name:      oldBMH.Name,
 				Namespace: oldBMH.Namespace,
 			},
@@ -663,7 +663,7 @@ var _ = Describe("mapBMHToICI", func() {
 	BeforeEach(func() {
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
-			WithStatusSubresource(&relocationv1alpha1.ImageClusterInstall{}).
+			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
 
 		r = &ImageClusterInstallReconciler{
@@ -682,13 +682,13 @@ var _ = Describe("mapBMHToICI", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterInstallName,
 				Namespace: clusterInstallNamespace,
 			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 					Name:      bmh.Name,
 					Namespace: bmh.Namespace,
 				},
@@ -696,7 +696,7 @@ var _ = Describe("mapBMHToICI", func() {
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
-		clusterInstall = &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall = &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "other-cluster-install",
 				Namespace: clusterInstallNamespace,
@@ -721,13 +721,13 @@ var _ = Describe("mapBMHToICI", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterInstallName,
 				Namespace: clusterInstallNamespace,
 			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 					Name:      "other-bmh",
 					Namespace: bmh.Namespace,
 				},
@@ -735,7 +735,7 @@ var _ = Describe("mapBMHToICI", func() {
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
-		clusterInstall = &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall = &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "other-cluster-install",
 				Namespace: clusterInstallNamespace,
@@ -759,7 +759,7 @@ var _ = Describe("mapCDToICI", func() {
 	BeforeEach(func() {
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
-			WithStatusSubresource(&relocationv1alpha1.ImageClusterInstall{}).
+			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
 
 		r = &ImageClusterInstallReconciler{
@@ -777,8 +777,8 @@ var _ = Describe("mapCDToICI", func() {
 			},
 			Spec: hivev1.ClusterDeploymentSpec{
 				ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
-					Group:   relocationv1alpha1.Group,
-					Version: relocationv1alpha1.Version,
+					Group:   v1alpha1.Group,
+					Version: v1alpha1.Version,
 					Kind:    "ImageClusterInstall",
 					Name:    clusterInstallName,
 				},
@@ -863,7 +863,7 @@ var _ = Describe("handleFinalizer", func() {
 	BeforeEach(func() {
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
-			WithStatusSubresource(&relocationv1alpha1.ImageClusterInstall{}).
+			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
 		var err error
 		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
@@ -884,7 +884,7 @@ var _ = Describe("handleFinalizer", func() {
 	})
 
 	It("adds the finalizer if the cluster install is not being deleted", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterInstallName,
 				Namespace: clusterInstallNamespace,
@@ -905,7 +905,7 @@ var _ = Describe("handleFinalizer", func() {
 	})
 
 	It("noops if the finalizer is already present", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
@@ -920,7 +920,7 @@ var _ = Describe("handleFinalizer", func() {
 	})
 
 	It("deletes the local files when the config is deleted", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
@@ -968,14 +968,14 @@ var _ = Describe("handleFinalizer", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 					Name:      bmh.Name,
 					Namespace: bmh.Namespace,
 				},
@@ -1008,14 +1008,14 @@ var _ = Describe("handleFinalizer", func() {
 	})
 
 	It("removes the finalizer if the referenced BMH doesn't exist", func() {
-		clusterInstall := &relocationv1alpha1.ImageClusterInstall{
+		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
-			Spec: relocationv1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &relocationv1alpha1.BareMetalHostReference{
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
 				},

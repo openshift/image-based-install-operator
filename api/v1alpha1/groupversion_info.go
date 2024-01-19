@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the relocation v1alpha1 API group
+// Package v1alpha1 contains API Schema definitions for the extensions v1alpha1 API group
 // +kubebuilder:object:generate=true
-// +groupName=relocation.openshift.io
+// +groupName=extensions.hive.openshift.io
 package v1alpha1
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	Group   = "relocation.openshift.io"
+	Group   = "extensions.hive.openshift.io"
 	Version = "v1alpha1"
 )
 

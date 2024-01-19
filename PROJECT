@@ -15,8 +15,8 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: openshift.io
-  group: relocation
+  domain: hive.openshift.io
+  group: extensions
   kind: ImageClusterInstall
   path: github.com/openshift/cluster-relocation-service/api/v1alpha1
   version: v1alpha1
