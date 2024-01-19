@@ -56,8 +56,8 @@ func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warn
 		return nil, nil
 	}
 
-	// Allow update if it's just the status
-	if isStatusUpdate(oldClusterInstall, r) {
+	// Allow update if it's not the spec
+	if !isSpecUpdate(oldClusterInstall, r) {
 		return nil, nil
 	}
 	if BMHRefsMatch(oldClusterInstall.Spec.BareMetalHostRef, r.Spec.BareMetalHostRef) {
@@ -66,12 +66,11 @@ func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warn
 	return nil, nil
 }
 
-func isStatusUpdate(oldClusterInstall *ImageClusterInstall, r *ImageClusterInstall) bool {
-	oldClusterInstallCopy := oldClusterInstall.DeepCopy()
-	oldClusterInstallCopy.Status = ImageClusterInstallStatus{}
-	newCopy := r.DeepCopy()
-	newCopy.Status = ImageClusterInstallStatus{}
-	return reflect.DeepEqual(oldClusterInstallCopy, newCopy)
+func isSpecUpdate(oldClusterInstall *ImageClusterInstall, newClusterInstall *ImageClusterInstall) bool {
+	oldSpec := oldClusterInstall.Spec.DeepCopy()
+	newSpec := newClusterInstall.Spec.DeepCopy()
+
+	return !reflect.DeepEqual(oldSpec, newSpec)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
