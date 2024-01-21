@@ -10,12 +10,14 @@ require (
 	github.com/metal3-io/baremetal-operator/apis v0.3.1
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.10
-	github.com/openshift-kni/lifecycle-agent v0.0.0-20231218125809-9c9bf395ff10
+	github.com/openshift-kni/lifecycle-agent v0.0.0-20240121095635-c31ca59a4f64
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
+	github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
 	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.28.3
 	k8s.io/apimachinery v0.28.3
+	k8s.io/apiserver v0.28.2
 	k8s.io/client-go v0.28.2
 	sigs.k8s.io/controller-runtime v0.16.1
 )
