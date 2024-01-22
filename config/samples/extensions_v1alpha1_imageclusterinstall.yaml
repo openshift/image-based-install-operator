@@ -3,6 +3,13 @@ kind: ImageClusterInstall
 metadata:
   name: imageclusterinstall
 spec:
-  domain: thing.example.com
-  sshKeys:
-  - "ssh-rsa sshkeyhere foo@example.com"
+  clusterDeploymentRef:
+    name: test-sno
+  clusterID: 3ab3ba89-108b-43a7-b358-4e45e493aba7
+  hostname: newhostname
+  nodeIP: 192.0.2.100
+  imageSetRef:
+    name: 4.14.10
+  bareMetalHostRef:
+    name: host-0
+    namespace: test-sno
