@@ -532,7 +532,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ic
 		APIVersion:                lca_api.SeedReconfigurationVersion,
 		BaseDomain:                cd.Spec.BaseDomain,
 		ClusterName:               cd.Spec.ClusterName,
-		NodeIP:                    ici.Spec.MasterIP,
+		NodeIP:                    ici.Spec.NodeIP,
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,
 		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
