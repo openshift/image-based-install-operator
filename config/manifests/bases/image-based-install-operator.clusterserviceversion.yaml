@@ -1,0 +1,52 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: image-based-install-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: ImageClusterInstall is the Schema for the imageclusterinstall API
+      displayName: Image Cluster Install
+      kind: ImageClusterInstall
+      name: imageclusterinstalls.extensions.hive.openshift.io
+      version: v1alpha1
+  description: The image-based-install-operator creates ISO images containing cluster
+    configuration and optionally attaches them to remote clusters using a BareMetalHost.
+  displayName: Image Based Install Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - OpenShift
+  - install
+  - edge
+  links:
+  - name: Image Based Install Operator
+    url: https://github.com/openshift/image-based-install-operator
+  maintainers:
+  - email: ncarboni@redhat.com
+    name: Nick Carboni
+  - email: ercohen@redhat.com
+    name: Eran Cohen
+  maturity: alpha
+  provider:
+    name: Red Hat
+  version: 0.0.0

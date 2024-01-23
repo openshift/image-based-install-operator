@@ -1,0 +1,310 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "extensions.hive.openshift.io/v1alpha1",
+          "kind": "ImageClusterInstall",
+          "metadata": {
+            "name": "imageclusterinstall"
+          },
+          "spec": {
+            "bareMetalHostRef": {
+              "name": "host-0",
+              "namespace": "test-sno"
+            },
+            "clusterDeploymentRef": {
+              "name": "test-sno"
+            },
+            "clusterID": "3ab3ba89-108b-43a7-b358-4e45e493aba7",
+            "hostname": "newhostname",
+            "imageSetRef": {
+              "name": "4.14.10"
+            },
+            "nodeIP": "192.0.2.100"
+          }
+        }
+      ]
+    capabilities: Basic Install
+    createdAt: "2024-01-23T14:29:08Z"
+    operators.operatorframework.io/builder: operator-sdk-v1.30.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
+  name: image-based-install-operator.v0.0.1
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: ImageClusterInstall is the Schema for the imageclusterinstall API
+      displayName: Image Cluster Install
+      kind: ImageClusterInstall
+      name: imageclusterinstalls.extensions.hive.openshift.io
+      version: v1alpha1
+  description: The image-based-install-operator creates ISO images containing cluster
+    configuration and optionally attaches them to remote clusters using a BareMetalHost.
+  displayName: Image Based Install Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - extensions.hive.openshift.io
+          resources:
+          - imageclusterinstalls
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - extensions.hive.openshift.io
+          resources:
+          - imageclusterinstalls/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - extensions.hive.openshift.io
+          resources:
+          - imageclusterinstalls/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - hive.openshift.io
+          resources:
+          - clusterdeployments
+          verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - hive.openshift.io
+          resources:
+          - clusterimagesets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - metal3.io
+          resources:
+          - baremetalhosts
+          verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        serviceAccountName: controller-manager
+      deployments:
+      - label:
+          app: image-based-install-operator
+        name: image-based-install-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: image-based-install-operator
+          strategy: {}
+          template:
+            metadata:
+              labels:
+                app: image-based-install-operator
+            spec:
+              containers:
+              - args:
+                - --leader-elect
+                command:
+                - /manager
+                env:
+                - name: SERVICE_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: SERVICE_NAME
+                  value: image-based-install-config
+                - name: SERVICE_PORT
+                  value: "8000"
+                - name: SERVICE_SCHEME
+                  value: https
+                image: controller:latest
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                name: manager
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 10m
+                    memory: 64Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - mountPath: /data
+                  name: data
+                - mountPath: /webhook-certs
+                  name: webhook-certs
+              - command:
+                - /server
+                env:
+                - name: HTTPS_KEY_FILE
+                  value: /certs/tls.key
+                - name: HTTPS_CERT_FILE
+                  value: /certs/tls.crt
+                - name: PORT
+                  value: "8000"
+                image: controller:latest
+                name: server
+                ports:
+                - containerPort: 8000
+                  name: config-server
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 10m
+                    memory: 64Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - mountPath: /data
+                  name: data
+                - mountPath: /certs
+                  name: certs
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              serviceAccountName: controller-manager
+              terminationGracePeriodSeconds: 10
+              volumes:
+              - emptyDir: {}
+                name: data
+              - name: certs
+                secret:
+                  secretName: ibi-config-serving-certs
+              - name: webhook-certs
+                secret:
+                  secretName: webhook-certs
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: controller-manager
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - OpenShift
+  - install
+  - edge
+  links:
+  - name: Image Based Install Operator
+    url: https://github.com/openshift/image-based-install-operator
+  maintainers:
+  - email: ncarboni@redhat.com
+    name: Nick Carboni
+  - email: ercohen@redhat.com
+    name: Eran Cohen
+  maturity: alpha
+  provider:
+    name: Red Hat
+  version: 0.0.1
+  webhookdefinitions:
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: image-based-install-operator
+    failurePolicy: Fail
+    generateName: imageclusterinstalls.extensions.hive.openshift.io
+    rules:
+    - apiGroups:
+      - extensions.hive.openshift.io
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - imageclusterinstalls
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-extensions-hive-openshift-io-v1alpha1-imageclusterinstall
