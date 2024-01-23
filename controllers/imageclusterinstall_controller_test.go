@@ -154,12 +154,13 @@ var _ = Describe("Reconcile", func() {
 		Expect(*infoOut).To(Equal(info))
 	})
 
-	It("creates the pull secret", func() {
+	It("creates the pull secret without extra metadata", func() {
 		pullSecretData := map[string][]byte{"pullsecret": []byte("pullsecret")}
 		s := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-pull-secret",
 				Namespace: clusterInstallNamespace,
+				UID:       types.UID("22ce1ffc-aa2d-477e-87b6-2a755f332e41"),
 			},
 			Data: pullSecretData,
 		}
@@ -184,6 +185,7 @@ var _ = Describe("Reconcile", func() {
 
 		Expect(secret.Namespace).To(Equal("openshift-config"))
 		Expect(secret.Name).To(Equal("pull-secret"))
+		Expect(secret.UID).To(Equal(types.UID("")))
 		Expect(secret.Data).To(Equal(pullSecretData))
 	})
 
