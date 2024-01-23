@@ -129,7 +129,7 @@ var _ = Describe("Reconcile", func() {
 			ReleaseRegistry: "registry.example.com",
 			Hostname:        "thing",
 		}
-		clusterInstall.Spec.MasterIP = info.NodeIP
+		clusterInstall.Spec.NodeIP = info.NodeIP
 		clusterInstall.Spec.Hostname = info.Hostname
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 

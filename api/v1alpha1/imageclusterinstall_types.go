@@ -17,9 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 )
 
 const (
@@ -52,8 +53,8 @@ type ImageClusterInstallSpec struct {
 	// TODO: should this use ImageSetRef?
 	Version string `json:"version,omitempty"`
 
-	// MasterIP is the desired IP for the host
-	MasterIP string `json:"masterIP,omitempty"`
+	// NodeIP is the desired IP for the host
+	NodeIP string `json:"nodeIP,omitempty"`
 
 	// Hostname is the desired hostname for the host
 	Hostname string `json:"hostname,omitempty"`
