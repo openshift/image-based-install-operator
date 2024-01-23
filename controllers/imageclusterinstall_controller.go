@@ -605,9 +605,11 @@ func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Contex
 		return err
 	}
 
-	// override name and namespace
-	s.Name = "pull-secret"
-	s.Namespace = "openshift-config"
+	// override name and namespace and clear metadata
+	s.ObjectMeta = metav1.ObjectMeta{
+		Name:      "pull-secret",
+		Namespace: "openshift-config",
+	}
 
 	data, err := json.Marshal(s)
 	if err != nil {
