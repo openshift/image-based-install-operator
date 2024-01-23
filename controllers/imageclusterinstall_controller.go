@@ -555,7 +555,7 @@ func (r *ImageClusterInstallReconciler) CreateKubeconfigSecret(ctx context.Conte
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cd.Spec.ClusterName + "-admin-kubeconfig",
+			Name:      cd.Name + "-admin-kubeconfig",
 			Namespace: cd.Namespace,
 		},
 		Type: corev1.SecretTypeOpaque,
