@@ -121,20 +121,12 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	It("creates the correct cluster info manifest", func() {
-		info := lca_api.SeedReconfiguration{
-			APIVersion:      lca_api.SeedReconfigurationVersion,
-			BaseDomain:      "example.com",
-			ClusterName:     "thingcluster",
-			NodeIP:          "192.0.2.1",
-			ReleaseRegistry: "registry.example.com",
-			Hostname:        "thing",
-		}
-		clusterInstall.Spec.NodeIP = info.NodeIP
-		clusterInstall.Spec.Hostname = info.Hostname
+		clusterInstall.Spec.NodeIP = "192.0.2.1"
+		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
-		clusterDeployment.Spec.ClusterName = info.ClusterName
-		clusterDeployment.Spec.BaseDomain = info.BaseDomain
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
@@ -149,9 +141,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		// reset the KubeconfigCryptoRetention
-		infoOut.KubeconfigCryptoRetention = lca_api.KubeConfigCryptoRetention{}
-		Expect(*infoOut).To(Equal(info))
+
+		Expect(infoOut.APIVersion).To(Equal(lca_api.SeedReconfigurationVersion))
+		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
+		Expect(infoOut.ClusterName).To(Equal(clusterDeployment.Spec.ClusterName))
+		Expect(infoOut.ClusterID).ToNot(Equal(""))
+		Expect(infoOut.NodeIP).To(Equal(clusterInstall.Spec.NodeIP))
+		Expect(infoOut.ReleaseRegistry).To(Equal("registry.example.com"))
+		Expect(infoOut.Hostname).To(Equal(clusterInstall.Spec.Hostname))
 	})
 
 	It("keep cluster crypto if name and base domain didn't change", func() {
@@ -767,6 +764,36 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, newKey, newBMH)).To(Succeed())
 		Expect(newBMH.Spec.Image).ToNot(BeNil())
+	})
+
+	It("updates the cluster install metadata", func() {
+		clusterInstall.Spec.NodeIP = "192.0.2.1"
+		clusterInstall.Spec.Hostname = "thing"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+
+		updatedICI := v1alpha1.ImageClusterInstall{}
+		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
+
+		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(infoOut.ClusterID))
+		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(HavePrefix("thingcluster"))
+		Expect(updatedICI.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
 	})
 })
 
