@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -46,6 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/containers/image/v5/docker/reference"
+	"github.com/google/uuid"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -133,6 +136,14 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.Error(err)
 		}
 		return res, err
+	}
+
+	if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment); err != nil {
+		log.WithError(err).Error("failed to set ImageClusterInstall metadata")
+		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+		return ctrl.Result{}, err
 	}
 
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
@@ -386,6 +397,15 @@ func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterIns
 	return lockDir, filesDir, nil
 }
 
+func (r *ImageClusterInstallReconciler) clusterInfoFilePath(ici *v1alpha1.ImageClusterInstall) (string, error) {
+	_, filesDir, err := r.configDirs(ici)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(filesDir, clusterConfigDir, "manifest.json"), nil
+}
+
 // writeInputData writes the required info based on the ImageClusterInstall to the config cache dir
 func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) (ctrl.Result, error) {
 	lockDir, filesDir, err := r.configDirs(ici)
@@ -459,7 +479,10 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				}
 			}
 		}
-		clusterInfoFilePath := filepath.Join(clusterConfigPath, "manifest.json")
+		clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
+		if err != nil {
+			return err
+		}
 		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
 		crypto := &lca_api.KubeConfigCryptoRetention{}
 		if clusterInfo == nil {
@@ -478,7 +501,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				}
 			}
 		}
-		if err := r.writeClusterInfo(ctx, ici, cd, *crypto, clusterInfoFilePath); err != nil {
+		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, clusterInfoFilePath); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -524,7 +547,7 @@ func (r *ImageClusterInstallReconciler) generateClusterCrypto(ctx context.Contex
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate kubeconfig: %w", err)
 	}
-	err = r.CreateOrUpdateKubeconfigSecret(ctx, cd, kubeconfigBytes)
+	err = r.createOrUpdateKubeconfigSecret(ctx, cd, kubeconfigBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
 	}
@@ -551,16 +574,25 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string) error {
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
+	}
+
+	var clusterID string
+	if ici.Spec.ClusterMetadata != nil {
+		clusterID = ici.Spec.ClusterMetadata.ClusterID
+	} else {
+		clusterID = uuid.New().String()
+		log.Info("created new cluster ID %s", clusterID)
 	}
 
 	info := lca_api.SeedReconfiguration{
 		APIVersion:                lca_api.SeedReconfigurationVersion,
 		BaseDomain:                cd.Spec.BaseDomain,
 		ClusterName:               cd.Spec.ClusterName,
+		ClusterID:                 clusterID,
 		NodeIP:                    ici.Spec.NodeIP,
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,
@@ -577,14 +609,18 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ic
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) CreateOrUpdateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
+func kubeconfigSecretName(cd *hivev1.ClusterDeployment) string {
+	return cd.Name + "-admin-kubeconfig"
+}
+
+func (r *ImageClusterInstallReconciler) createOrUpdateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
 	kubeconfigSecret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cd.Name + "-admin-kubeconfig",
+			Name:      kubeconfigSecretName(cd),
 			Namespace: cd.Namespace,
 		},
 		Type: corev1.SecretTypeOpaque,
@@ -649,6 +685,59 @@ func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Contex
 	}
 
 	return nil
+}
+
+func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) error {
+	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
+	if err != nil {
+		return err
+	}
+	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+	if clusterInfo == nil {
+		return fmt.Errorf("No cluster info found for ImageClusterInstall %s/%s", ici.Namespace, ici.Name)
+	}
+
+	if ici.Spec.ClusterMetadata != nil &&
+		ici.Spec.ClusterMetadata.ClusterID == clusterInfo.ClusterID &&
+		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecretName(cd) {
+		return nil
+	}
+
+	patch := client.MergeFrom(ici.DeepCopy())
+	ici.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
+		ClusterID: clusterInfo.ClusterID,
+		InfraID:   generateInfraID(clusterInfo.ClusterName),
+		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
+			Name: kubeconfigSecretName(cd),
+		},
+	}
+
+	if err := r.Patch(ctx, ici, patch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Implementation from openshift-installer here: https://github.com/openshift/installer/blob/67c114a4b82ed509dc292fa81d63030c8b4118ee/pkg/asset/installconfig/clusterid.go#L60-L79
+func generateInfraID(base string) string {
+	// replace all characters that are not `alphanum` or `-` with `-`
+	re := regexp.MustCompile("[^A-Za-z0-9-]")
+	base = re.ReplaceAllString(base, "-")
+
+	// replace all multiple dashes in a sequence with single one.
+	re = regexp.MustCompile(`-{2,}`)
+	base = re.ReplaceAllString(base, "-")
+
+	maxBaseLen := 21
+	// truncate to maxBaseLen
+	if len(base) > maxBaseLen {
+		base = base[:maxBaseLen]
+	}
+	base = strings.TrimRight(base, "-")
+
+	// add random chars to the end to randomize
+	return fmt.Sprintf("%s-%s", base, utilrand.String(5))
 }
 
 func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall) (ctrl.Result, bool, error) {
