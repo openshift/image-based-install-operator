@@ -154,6 +154,88 @@ var _ = Describe("Reconcile", func() {
 		Expect(*infoOut).To(Equal(info))
 	})
 
+	It("keep cluster crypto if name and base domain didn't change", func() {
+		baseDomain := "example.com"
+		clusterName := "thingcluster"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = clusterName
+		clusterDeployment.Spec.BaseDomain = baseDomain
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		// save the current KubeconfigCryptoRetention
+		clusterCrypto := infoOut.KubeconfigCryptoRetention
+		// reconcile again and verify that the cluster crypto stay the same
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut = &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(clusterCrypto).To(Equal(infoOut.KubeconfigCryptoRetention))
+	})
+	It("regenerate cluster crypto in case the cluster name or base domain changed", func() {
+		baseDomain := "example.com"
+		clusterName := "thingcluster"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = clusterName
+		clusterDeployment.Spec.BaseDomain = baseDomain
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		// save the current KubeconfigCryptoRetention
+		clusterCrypto := infoOut.KubeconfigCryptoRetention
+
+		clusterDeployment.Spec.BaseDomain = "new.base.domain"
+		Expect(c.Update(ctx, clusterDeployment)).To(Succeed())
+		// reconcile again and verify that the cluster crypto got updated
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut = &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(clusterCrypto).ToNot(Equal(infoOut.KubeconfigCryptoRetention))
+
+		// save the current KubeconfigCryptoRetention
+		clusterCrypto = infoOut.KubeconfigCryptoRetention
+		clusterDeployment.Spec.ClusterName = "newName"
+		Expect(c.Update(ctx, clusterDeployment)).To(Succeed())
+		// reconcile again and verify that the cluster crypto got updated
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut = &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(clusterCrypto).ToNot(Equal(infoOut.KubeconfigCryptoRetention))
+
+	})
 	It("creates the pull secret without extra metadata", func() {
 		pullSecretData := map[string][]byte{"pullsecret": []byte("pullsecret")}
 		s := &corev1.Secret{

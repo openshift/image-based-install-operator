@@ -79,6 +79,7 @@ const (
 	extraManifestsDir           = "extra-manifests"
 	manifestsDir                = "manifests"
 	networkConfigDir            = "network-configuration"
+	kubeconfig                  = "kubeconfig"
 	clusterInstallFinalizerName = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
 	caBundleFileName            = "tls-ca-bundle.pem"
 )
@@ -458,12 +459,26 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				}
 			}
 		}
-
-		crypto, err := r.generateClusterCrypto(cd, ctx)
-		if err != nil {
-			return err
+		clusterInfoFilePath := filepath.Join(clusterConfigPath, "manifest.json")
+		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+		crypto := &lca_api.KubeConfigCryptoRetention{}
+		if clusterInfo == nil {
+			// handle first cert generation
+			crypto, err = r.generateClusterCrypto(ctx, cd)
+			if err != nil {
+				return err
+			}
+		} else {
+			crypto = &clusterInfo.KubeconfigCryptoRetention
+			if clusterInfo.ClusterName != cd.Spec.ClusterName || clusterInfo.BaseDomain != cd.Spec.BaseDomain {
+				// in case the cluster name or baseDomain changed we need a new kubeconfig, so we just regenerate all crypto
+				crypto, err = r.generateClusterCrypto(ctx, cd)
+				if err != nil {
+					return err
+				}
+			}
 		}
-		if err := r.writeClusterInfo(ctx, ici, cd, crypto, filepath.Join(clusterConfigPath, "manifest.json")); err != nil {
+		if err := r.writeClusterInfo(ctx, ici, cd, *crypto, clusterInfoFilePath); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -481,23 +496,37 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
-
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) generateClusterCrypto(cd *hivev1.ClusterDeployment, ctx context.Context) (lca_api.KubeConfigCryptoRetention, error) {
+func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(clusterInfoFilePath string) *lca_api.SeedReconfiguration {
+	data, err := os.ReadFile(clusterInfoFilePath)
+	if err != nil {
+		// In case it's the first time the ICI gets reconciled the file doesn't exist
+		return nil
+	}
+	clusterInfo := lca_api.SeedReconfiguration{}
+	err = json.Unmarshal(data, &clusterInfo)
+	if err != nil {
+		r.Log.Warnf("failed to marshal cluster info: %w", err)
+		return nil
+	}
+	return &clusterInfo
+}
+
+func (r *ImageClusterInstallReconciler) generateClusterCrypto(ctx context.Context, cd *hivev1.ClusterDeployment) (*lca_api.KubeConfigCryptoRetention, error) {
 	// TODO: handle user provided API and ingress certs
-	// TODO: consider optimizing this code by skipping the cert generation if the cluster URL is the same
+	r.Log.Infof("Generating cluster crypto")
 	if err := r.CertManager.GenerateAllCertificates(); err != nil {
-		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate certificates: %w", err)
+		return nil, fmt.Errorf("failed to generate certificates: %w", err)
 	}
 	kubeconfigBytes, err := r.CertManager.GenerateKubeConfig(fmt.Sprintf("%s.%s", cd.Spec.ClusterName, cd.Spec.BaseDomain))
 	if err != nil {
-		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate kubeconfig: %w", err)
+		return nil, fmt.Errorf("failed to generate kubeconfig: %w", err)
 	}
-	err = r.CreateKubeconfigSecret(ctx, cd, kubeconfigBytes)
+	err = r.CreateOrUpdateKubeconfigSecret(ctx, cd, kubeconfigBytes)
 	if err != nil {
-		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
+		return nil, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
 	}
 	return r.CertManager.GetCrypto(), nil
 }
@@ -548,7 +577,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, ic
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) CreateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
+func (r *ImageClusterInstallReconciler) CreateOrUpdateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
 	kubeconfigSecret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
