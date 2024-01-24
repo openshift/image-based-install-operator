@@ -93,8 +93,8 @@ func (r *KubeConfigCertManager) GenerateKubeApiserverServingSigningCerts() error
 	return nil
 }
 
-func (r *KubeConfigCertManager) GetCrypto() lca_api.KubeConfigCryptoRetention {
-	return r.crypto
+func (r *KubeConfigCertManager) GetCrypto() *lca_api.KubeConfigCryptoRetention {
+	return &r.crypto
 }
 
 // GenerateIngressServingSigningCerts Create the ingress serving signer CAs and adds them to the cluster CA bundle
