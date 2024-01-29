@@ -502,7 +502,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				}
 			}
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, clusterInfoFilePath); err != nil {
+		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, clusterInfoFilePath, clusterInfo); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -575,18 +575,20 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string, existingInfo *lca_api.SeedReconfiguration) error {
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
 	}
 
 	var clusterID string
-	if ici.Spec.ClusterMetadata != nil {
+	if existingInfo != nil && existingInfo.ClusterID != "" {
+		clusterID = existingInfo.ClusterID
+	} else if ici.Spec.ClusterMetadata != nil {
 		clusterID = ici.Spec.ClusterMetadata.ClusterID
 	} else {
 		clusterID = uuid.New().String()
-		log.Info("created new cluster ID %s", clusterID)
+		log.Infof("created new cluster ID %s", clusterID)
 	}
 
 	info := lca_api.SeedReconfiguration{
