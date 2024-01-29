@@ -138,14 +138,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment); err != nil {
-		log.WithError(err).Error("failed to set ImageClusterInstall metadata")
-		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return ctrl.Result{}, err
-	}
-
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
@@ -186,6 +178,15 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 			return ctrl.Result{}, err
 		}
+
+		if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment); err != nil {
+			log.WithError(err).Error("failed to set ImageClusterInstall metadata")
+			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
+				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			}
+			return ctrl.Result{}, err
+		}
+
 	}
 
 	return ctrl.Result{}, nil
