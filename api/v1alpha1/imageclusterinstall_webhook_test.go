@@ -3,6 +3,8 @@ package v1alpha1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -195,6 +197,32 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).NotTo(BeNil())
 	})
 
+	It("allows ClusterMetadata updates when BMH ref is set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+				BareMetalHostRef: &BareMetalHostReference{
+					Name:      "test-bmh",
+					Namespace: "test-bmh-namespace",
+				},
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
+			ClusterID: "asdf",
+			InfraID:   "qwer",
+			AdminKubeconfigSecretRef: corev1.LocalObjectReference{
+				Name: "secret",
+			},
+		}
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
 })
 
 var _ = Describe("BMHRefsMatch", func() {

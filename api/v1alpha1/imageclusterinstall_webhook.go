@@ -69,6 +69,8 @@ func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warn
 func isSpecUpdate(oldClusterInstall *ImageClusterInstall, newClusterInstall *ImageClusterInstall) bool {
 	oldSpec := oldClusterInstall.Spec.DeepCopy()
 	newSpec := newClusterInstall.Spec.DeepCopy()
+	oldSpec.ClusterMetadata = nil
+	newSpec.ClusterMetadata = nil
 
 	return !reflect.DeepEqual(oldSpec, newSpec)
 }
