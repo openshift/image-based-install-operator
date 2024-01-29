@@ -767,6 +767,23 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("updates the cluster install metadata", func() {
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateAvailable,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
 		clusterInstall.Spec.NodeIP = "192.0.2.1"
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -791,6 +808,7 @@ var _ = Describe("Reconcile", func() {
 		updatedICI := v1alpha1.ImageClusterInstall{}
 		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
 
+		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
 		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(infoOut.ClusterID))
 		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(HavePrefix("thingcluster"))
 		Expect(updatedICI.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
