@@ -591,11 +591,22 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		log.Infof("created new cluster ID %s", clusterID)
 	}
 
+	var infraID string
+	if existingInfo != nil && existingInfo.InfraID != "" {
+		infraID = existingInfo.InfraID
+	} else if ici.Spec.ClusterMetadata != nil {
+		infraID = ici.Spec.ClusterMetadata.InfraID
+	} else {
+		infraID = generateInfraID(cd.Spec.ClusterName)
+		log.Infof("created new infra ID %s", infraID)
+	}
+
 	info := lca_api.SeedReconfiguration{
 		APIVersion:                lca_api.SeedReconfigurationVersion,
 		BaseDomain:                cd.Spec.BaseDomain,
 		ClusterName:               cd.Spec.ClusterName,
 		ClusterID:                 clusterID,
+		InfraID:                   infraID,
 		NodeIP:                    ici.Spec.NodeIP,
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,
@@ -702,6 +713,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 
 	if ici.Spec.ClusterMetadata != nil &&
 		ici.Spec.ClusterMetadata.ClusterID == clusterInfo.ClusterID &&
+		ici.Spec.ClusterMetadata.InfraID == clusterInfo.InfraID &&
 		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecretName(cd) {
 		return nil
 	}
@@ -709,7 +721,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 	patch := client.MergeFrom(ici.DeepCopy())
 	ici.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
 		ClusterID: clusterInfo.ClusterID,
-		InfraID:   generateInfraID(clusterInfo.ClusterName),
+		InfraID:   clusterInfo.InfraID,
 		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
 			Name: kubeconfigSecretName(cd),
 		},
