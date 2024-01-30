@@ -179,14 +179,15 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment); err != nil {
+		if err := r.setClusterInstallMetadata(ctx, ici, kubeconfigSecretName(clusterDeployment)); err != nil {
 			log.WithError(err).Error("failed to set ImageClusterInstall metadata")
-			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
 			return ctrl.Result{}, err
 		}
 
+		if err := r.setClusterDeploymentMetadata(ctx, clusterDeployment, *ici.Spec.ClusterMetadata); err != nil {
+			log.WithError(err).Error("failed to set ClusterDeployment metadata")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -701,7 +702,7 @@ func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Contex
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) error {
+func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, kubeconfigSecret string) error {
 	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
 	if err != nil {
 		return err
@@ -714,7 +715,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 	if ici.Spec.ClusterMetadata != nil &&
 		ici.Spec.ClusterMetadata.ClusterID == clusterInfo.ClusterID &&
 		ici.Spec.ClusterMetadata.InfraID == clusterInfo.InfraID &&
-		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecretName(cd) {
+		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret {
 		return nil
 	}
 
@@ -723,15 +724,36 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 		ClusterID: clusterInfo.ClusterID,
 		InfraID:   clusterInfo.InfraID,
 		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
-			Name: kubeconfigSecretName(cd),
+			Name: kubeconfigSecret,
 		},
 	}
 
-	if err := r.Patch(ctx, ici, patch); err != nil {
-		return err
+	return r.Patch(ctx, ici, patch)
+}
+
+func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context.Context, cd *hivev1.ClusterDeployment, clusterMeta hivev1.ClusterMetadata) error {
+	kubeconfigSecret := kubeconfigSecretName(cd)
+
+	if cd.Spec.Installed &&
+		cd.Spec.ClusterMetadata != nil &&
+		cd.Spec.ClusterMetadata.ClusterID == clusterMeta.ClusterID &&
+		cd.Spec.ClusterMetadata.InfraID == clusterMeta.InfraID &&
+		cd.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret {
+
+		return nil
 	}
 
-	return nil
+	patch := client.MergeFrom(cd.DeepCopy())
+	cd.Spec.Installed = true
+	cd.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
+		ClusterID: clusterMeta.ClusterID,
+		InfraID:   clusterMeta.InfraID,
+		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
+			Name: kubeconfigSecret,
+		},
+	}
+
+	return r.Patch(ctx, cd, patch)
 }
 
 // Implementation from openshift-installer here: https://github.com/openshift/installer/blob/67c114a4b82ed509dc292fa81d63030c8b4118ee/pkg/asset/installconfig/clusterid.go#L60-L79

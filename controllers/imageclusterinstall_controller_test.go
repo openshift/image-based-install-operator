@@ -766,7 +766,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(newBMH.Spec.Image).ToNot(BeNil())
 	})
 
-	It("updates the cluster install metadata", func() {
+	It("updates the cluster install and cluster deployment metadata", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
@@ -805,14 +805,23 @@ var _ = Describe("Reconcile", func() {
 		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
+		validateMeta := func(meta *hivev1.ClusterMetadata) {
+			Expect(meta).ToNot(BeNil())
+			Expect(meta.ClusterID).To(Equal(infoOut.ClusterID))
+			Expect(meta.InfraID).To(HavePrefix("thingcluster"))
+			Expect(meta.InfraID).To(Equal(infoOut.InfraID))
+			Expect(meta.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
+		}
+
 		updatedICI := v1alpha1.ImageClusterInstall{}
 		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
+		validateMeta(updatedICI.Spec.ClusterMetadata)
 
-		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
-		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(infoOut.ClusterID))
-		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(HavePrefix("thingcluster"))
-		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(Equal(infoOut.InfraID))
-		Expect(updatedICI.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
+		updatedCD := hivev1.ClusterDeployment{}
+		Expect(c.Get(ctx, key, &updatedCD)).To(Succeed())
+
+		Expect(updatedCD.Spec.Installed).To(BeTrue())
+		validateMeta(updatedCD.Spec.ClusterMetadata)
 	})
 
 	It("sets the clusterID to the manifest.json value if it exists", func() {
