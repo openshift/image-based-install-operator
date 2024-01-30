@@ -811,6 +811,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
 		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(infoOut.ClusterID))
 		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(HavePrefix("thingcluster"))
+		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(Equal(infoOut.InfraID))
 		Expect(updatedICI.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
 	})
 
@@ -862,6 +863,58 @@ var _ = Describe("Reconcile", func() {
 		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
 		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(existingInfo.ClusterID))
 		Expect(infoOut.ClusterID).To(Equal(existingInfo.ClusterID))
+	})
+
+	It("sets the infraID to the manifest.json value if it exists", func() {
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateAvailable,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		existingInfo := lca_api.SeedReconfiguration{
+			InfraID: "thingcluster-nvvbf",
+		}
+		content, err := json.Marshal(existingInfo)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.MkdirAll(outputFilePath(clusterConfigDir), 0700)).To(Succeed())
+		Expect(os.WriteFile(outputFilePath(clusterConfigDir, "manifest.json"), content, 0644)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+
+		updatedICI := v1alpha1.ImageClusterInstall{}
+		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
+
+		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
+		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(Equal(existingInfo.InfraID))
+		Expect(infoOut.InfraID).To(Equal(existingInfo.InfraID))
 	})
 })
 
