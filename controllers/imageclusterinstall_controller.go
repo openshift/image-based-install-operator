@@ -35,7 +35,6 @@ import (
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -193,44 +192,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
-	cond := metav1.Condition{
-		Type:    v1alpha1.ImageReadyCondition,
-		Status:  metav1.ConditionTrue,
-		Reason:  v1alpha1.ImageReadyReason,
-		Message: v1alpha1.ImageReadyMessage,
-	}
-
-	if err != nil {
-		cond.Status = metav1.ConditionFalse
-		cond.Reason = v1alpha1.ImageNotReadyReason
-		cond.Message = err.Error()
-	}
-
-	patch := client.MergeFrom(ici.DeepCopy())
-	meta.SetStatusCondition(&ici.Status.ConfigConditions, cond)
-	return r.Status().Patch(ctx, ici, patch)
-}
-
-func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
-	cond := metav1.Condition{
-		Type:    v1alpha1.HostConfiguredCondition,
-		Status:  metav1.ConditionTrue,
-		Reason:  v1alpha1.HostConfiguraionSucceededReason,
-		Message: v1alpha1.HostConfigurationSucceededMessage,
-	}
-
-	if err != nil {
-		cond.Status = metav1.ConditionFalse
-		cond.Reason = v1alpha1.HostConfiguraionFailedReason
-		cond.Message = err.Error()
-	}
-
-	patch := client.MergeFrom(ici.DeepCopy())
-	meta.SetStatusCondition(&ici.Status.ConfigConditions, cond)
-	return r.Status().Patch(ctx, ici, patch)
 }
 
 func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj client.Object) []reconcile.Request {
