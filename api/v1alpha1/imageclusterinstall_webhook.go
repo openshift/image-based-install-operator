@@ -19,7 +19,9 @@ package v1alpha1
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
+	"golang.org/x/crypto/ssh"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -40,6 +42,12 @@ var _ webhook.Validator = &ImageClusterInstall{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
+	if r.Spec.SSHKey != "" {
+		if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
+			return nil, fmt.Errorf("invalid ssh key: %v", err)
+		}
+
+	}
 	return nil, nil
 }
 
@@ -47,6 +55,12 @@ func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
 func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	icilog.Info("validate update", "name", r.Name)
 
+	if r.Spec.SSHKey != "" {
+		if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
+			return nil, fmt.Errorf("invalid ssh key: %w", err)
+		}
+
+	}
 	oldClusterInstall, ok := old.(*ImageClusterInstall)
 	if !ok {
 		return nil, fmt.Errorf("old object is not an ImageClusterInstall")
@@ -73,6 +87,21 @@ func isSpecUpdate(oldClusterInstall *ImageClusterInstall, newClusterInstall *Ima
 	newSpec.ClusterMetadata = nil
 
 	return !reflect.DeepEqual(oldSpec, newSpec)
+}
+
+func isValidSSHPublicKey(pubKeyString string) error {
+	// Trim any leading/trailing whitespaces
+	pubKeyString = strings.TrimSpace(pubKeyString)
+
+	// Decode the base64-encoded public key
+	pubKeyBytes := []byte(pubKeyString)
+	// Parse the public key
+	_, _, _, _, err := ssh.ParseAuthorizedKey(pubKeyBytes)
+	if err != nil {
+		return fmt.Errorf("error parsing public key: %w", err)
+	}
+	// If parsing is successful, the key is valid
+	return nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type

@@ -59,6 +59,11 @@ type ImageClusterInstallSpec struct {
 	// Hostname is the desired hostname for the host
 	Hostname string `json:"hostname,omitempty"`
 
+	// SSHKey is the public Secure Shell (SSH) key to provide access to
+	// instances. Equivalent to install-config.yaml's sshKey.
+	// This key will be added to the host to allow ssh access
+	SSHKey string `json:"ssh_key,omitempty"`
+
 	// CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
 	// The tls-ca-bundle.pem entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 	CABundleRef *corev1.LocalObjectReference `json:"caBundleRef,omitempty"`

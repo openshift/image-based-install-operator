@@ -1,12 +1,13 @@
 package v1alpha1
 
 import (
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 )
 
 var _ = Describe("ValidateUpdate", func() {
@@ -26,6 +27,72 @@ var _ = Describe("ValidateUpdate", func() {
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
+	})
+	It("update succeeds when ssh key is valid and BMH ref is not set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.SSHKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQChSAVWhBU4NBaSI67Gvm0oywPk/dzeh+KlT05VLz3OODld8O0Y95+xg02qMOkNOYz8ucq0BwzTx82DLyl5A/WX64t/Kf2WtnOQ8A02xtVl3LcS9Fzmdi6bA168O/sNKfQ1jeVtZyPBwNkKGgp9qhi/JGVzuwLVV+crMjxsSobsEbHij3FWxLqoNNMPHN8FJFiZZaGbltShheFsepiMf9kY04FZjDKyLrI/rueQWuqhLPfJTOGQktKWEYeLYgKiH82/1x3BNYYuuZxUI0KtQ4S50+M6GSQ1yaR7B7/RI+g/CCwGurccOASqcUtqUDzL53p+Y1ffJfn0WubkxrmNmC/jE0YWDepqDsrLXXdo+k3otWkBx1KhUJ5y/jmJZDkDPVFieqh7yRQ2G1J1ByvBRc4h214PHPztFK63xQ9crsQjlzLCR7esGqJ2iIqoGk1BrXbHlAB9FLPhQXDN+IvpWyO1L02ggGZQnLV7ds0dZApexu2g79HcQrCuKu2W9nPTEZ0= eran@fedora"
+
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+	It("update fail when ssh key is invalid and BMH ref is not set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.SSHKey = "ssh-rsa invalid ssh key"
+
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
+	})
+	It("create succeeds when ssh key is valid and BMH ref is not set", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+				SSHKey:   "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQChSAVWhBU4NBaSI67Gvm0oywPk/dzeh+KlT05VLz3OODld8O0Y95+xg02qMOkNOYz8ucq0BwzTx82DLyl5A/WX64t/Kf2WtnOQ8A02xtVl3LcS9Fzmdi6bA168O/sNKfQ1jeVtZyPBwNkKGgp9qhi/JGVzuwLVV+crMjxsSobsEbHij3FWxLqoNNMPHN8FJFiZZaGbltShheFsepiMf9kY04FZjDKyLrI/rueQWuqhLPfJTOGQktKWEYeLYgKiH82/1x3BNYYuuZxUI0KtQ4S50+M6GSQ1yaR7B7/RI+g/CCwGurccOASqcUtqUDzL53p+Y1ffJfn0WubkxrmNmC/jE0YWDepqDsrLXXdo+k3otWkBx1KhUJ5y/jmJZDkDPVFieqh7yRQ2G1J1ByvBRc4h214PHPztFK63xQ9crsQjlzLCR7esGqJ2iIqoGk1BrXbHlAB9FLPhQXDN+IvpWyO1L02ggGZQnLV7ds0dZApexu2g79HcQrCuKu2W9nPTEZ0= eran@fedora",
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+	It("create fail when ssh key is invalid and BMH ref is not set", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+				SSHKey:   "ssh-rsa invalid ssh key",
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
 	})
 
 	It("succeeds when BMH ref is changed from nil to non-nil", func() {

@@ -609,6 +609,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		ClusterID:                 clusterID,
 		InfraID:                   infraID,
 		NodeIP:                    ici.Spec.NodeIP,
+		SSHKey:                    ici.Spec.SSHKey,
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,
 		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
