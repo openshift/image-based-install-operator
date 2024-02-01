@@ -123,6 +123,7 @@ var _ = Describe("Reconcile", func() {
 	It("creates the correct cluster info manifest", func() {
 		clusterInstall.Spec.NodeIP = "192.0.2.1"
 		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
 		clusterDeployment.Spec.ClusterName = "thingcluster"
@@ -149,6 +150,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.NodeIP).To(Equal(clusterInstall.Spec.NodeIP))
 		Expect(infoOut.ReleaseRegistry).To(Equal("registry.example.com"))
 		Expect(infoOut.Hostname).To(Equal(clusterInstall.Spec.Hostname))
+		Expect(infoOut.SSHKey).To(Equal(clusterInstall.Spec.SSHKey))
 	})
 
 	It("keep cluster crypto if name and base domain didn't change", func() {
