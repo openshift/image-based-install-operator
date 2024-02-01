@@ -92,10 +92,7 @@ func isSpecUpdate(oldClusterInstall *ImageClusterInstall, newClusterInstall *Ima
 func isValidSSHPublicKey(pubKeyString string) error {
 	// Trim any leading/trailing whitespaces
 	pubKeyString = strings.TrimSpace(pubKeyString)
-
-	// Decode the base64-encoded public key
 	pubKeyBytes := []byte(pubKeyString)
-	// Parse the public key
 	_, _, _, _, err := ssh.ParseAuthorizedKey(pubKeyBytes)
 	if err != nil {
 		return fmt.Errorf("error parsing public key: %w", err)
