@@ -51,6 +51,7 @@ import (
 	"github.com/google/uuid"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
+	apicfgv1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
@@ -77,14 +78,15 @@ type ImageClusterInstallReconciler struct {
 }
 
 const (
-	detachedAnnotation          = "baremetalhost.metal3.io/detached"
-	clusterConfigDir            = "cluster-configuration"
-	extraManifestsDir           = "extra-manifests"
-	manifestsDir                = "manifests"
-	networkConfigDir            = "network-configuration"
-	kubeconfig                  = "kubeconfig"
-	clusterInstallFinalizerName = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
-	caBundleFileName            = "tls-ca-bundle.pem"
+	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	clusterConfigDir             = "cluster-configuration"
+	extraManifestsDir            = "extra-manifests"
+	manifestsDir                 = "manifests"
+	networkConfigDir             = "network-configuration"
+	kubeconfig                   = "kubeconfig"
+	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
+	caBundleFileName             = "tls-ca-bundle.pem"
+	imageDigestMirrorSetFileName = "image-digest-sources.json"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -434,6 +436,10 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			return fmt.Errorf("failed to write pull secret: %w", err)
 		}
 
+		if err := r.writeImageDigestSourceToFile(ici.Spec.ImageDigestSources, filepath.Join(manifestsPath, imageDigestMirrorSetFileName)); err != nil {
+			return fmt.Errorf("failed to write ImageDigestSources: %w", err)
+		}
+
 		if ici.Spec.ExtraManifestsRefs != nil {
 			extraManifestsPath := filepath.Join(filesDir, extraManifestsDir)
 			if err := os.MkdirAll(extraManifestsPath, 0700); err != nil {
@@ -695,6 +701,36 @@ func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Contex
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
+	}
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigestMirrors []apicfgv1.ImageDigestMirrors, file string) error {
+	if imageDigestMirrors == nil {
+		return nil
+	}
+
+	imageDigestMirrorSet := &apicfgv1.ImageDigestMirrorSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: apicfgv1.SchemeGroupVersion.String(),
+			Kind:       "ImageDigestMirrorSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "image-digest-mirror",
+			// not namespaced
+		},
+		Spec: apicfgv1.ImageDigestMirrorSetSpec{
+			ImageDigestMirrors: imageDigestMirrors,
+		},
+	}
+
+	data, err := json.Marshal(imageDigestMirrorSet)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ImageDigestMirrorSet: %w", err)
 	}
 	if err := os.WriteFile(file, data, 0644); err != nil {
 		return err
