@@ -22,6 +22,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	configv1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,6 +116,13 @@ func (in *ImageClusterInstallSpec) DeepCopyInto(out *ImageClusterInstallSpec) {
 		in, out := &in.ClusterMetadata, &out.ClusterMetadata
 		*out = new(hivev1.ClusterMetadata)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.ImageDigestSources != nil {
+		in, out := &in.ImageDigestSources, &out.ImageDigestSources
+		*out = make([]configv1.ImageDigestMirrors, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.CABundleRef != nil {
 		in, out := &in.CABundleRef, &out.CABundleRef

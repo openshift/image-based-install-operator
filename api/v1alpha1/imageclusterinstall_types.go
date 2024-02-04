@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	apicfgv1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 )
 
@@ -63,6 +64,10 @@ type ImageClusterInstallSpec struct {
 	// instances. Equivalent to install-config.yaml's sshKey.
 	// This key will be added to the host to allow ssh access
 	SSHKey string `json:"ssh_key,omitempty"`
+
+	// ImageDigestSources lists sources/repositories for the release-image content.
+	// +optional
+	ImageDigestSources []apicfgv1.ImageDigestMirrors `json:"imageDigestSources,omitempty"`
 
 	// CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
 	// The tls-ca-bundle.pem entry in the config map will be written to /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem

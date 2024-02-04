@@ -20,6 +20,7 @@ import (
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
+	apicfgv1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
@@ -299,6 +300,53 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(content).To(Equal([]byte("mycabundle")))
+	})
+	It("creates the imageDigestMirrorSet", func() {
+		imageDigestMirrors := []apicfgv1.ImageDigestMirrors{
+			{
+				Source: "registry.ci.openshift.org/ocp/release",
+				Mirrors: []apicfgv1.ImageMirror{
+					"virthost.ostest.test.metalkube.org:5000/localimages/local-release-image",
+				},
+			},
+			{
+				Source: "quay.io/openshift-release-dev/ocp-v4.0-art-dev",
+				Mirrors: []apicfgv1.ImageMirror{
+					"virthost.ostest.test.metalkube.org:5000/localimages/local-release-image",
+				},
+			},
+		}
+		clusterInstall.Spec.ImageDigestSources = imageDigestMirrors
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", imageDigestMirrorSetFileName))
+		Expect(err).NotTo(HaveOccurred())
+		expectedImageDigestMirrorSet := &apicfgv1.ImageDigestMirrorSet{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: apicfgv1.SchemeGroupVersion.String(),
+				Kind:       "ImageDigestMirrorSet",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "image-digest-mirror",
+				// not namespaced
+			},
+			Spec: apicfgv1.ImageDigestMirrorSetSpec{
+				ImageDigestMirrors: imageDigestMirrors,
+			},
+		}
+
+		expectedcontent, err := json.Marshal(expectedImageDigestMirrorSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(content).To(Equal(expectedcontent))
 	})
 
 	It("creates files for referenced nmconnection files", func() {
