@@ -45,6 +45,22 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
+	It("update succeeds when hostname is valid and BMH ref is not set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.Hostname = "other-valid-hostname"
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
 	It("update fail when ssh key is invalid and BMH ref is not set", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
@@ -62,7 +78,24 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
 	})
-	It("create succeeds when ssh key is valid and BMH ref is not set", func() {
+	It("update fail when hostname is invalid and BMH ref is not set", func() {
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test",
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.Hostname = "invalid_hostname&"
+
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid hostname"))
+	})
+	It("create succeeds when hostname and ssh key are valid and BMH ref is not set", func() {
 		newClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -93,6 +126,21 @@ var _ = Describe("ValidateUpdate", func() {
 		warns, err := newClusterInstall.ValidateCreate()
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
+	})
+	It("create fail when hostname is invalid and BMH ref is not set", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname: "test_not_valid",
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid hostname"))
 	})
 
 	It("succeeds when BMH ref is changed from nil to non-nil", func() {
