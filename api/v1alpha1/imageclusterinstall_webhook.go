@@ -17,12 +17,14 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -42,11 +44,12 @@ var _ webhook.Validator = &ImageClusterInstall{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
-	if r.Spec.SSHKey != "" {
-		if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
-			return nil, fmt.Errorf("invalid ssh key: %v", err)
-		}
-
+	icilog.Info("validate create", "name", r.Name)
+	if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
+		return nil, fmt.Errorf("invalid ssh key: %v", err)
+	}
+	if err := isValidHostname(r.Spec.Hostname); err != nil {
+		return nil, fmt.Errorf("invalid hostname: %w", err)
 	}
 	return nil, nil
 }
@@ -55,12 +58,13 @@ func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
 func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	icilog.Info("validate update", "name", r.Name)
 
-	if r.Spec.SSHKey != "" {
-		if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
-			return nil, fmt.Errorf("invalid ssh key: %w", err)
-		}
-
+	if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
+		return nil, fmt.Errorf("invalid ssh key: %w", err)
 	}
+	if err := isValidHostname(r.Spec.Hostname); err != nil {
+		return nil, fmt.Errorf("invalid hostname: %w", err)
+	}
+
 	oldClusterInstall, ok := old.(*ImageClusterInstall)
 	if !ok {
 		return nil, fmt.Errorf("old object is not an ImageClusterInstall")
@@ -90,6 +94,9 @@ func isSpecUpdate(oldClusterInstall *ImageClusterInstall, newClusterInstall *Ima
 }
 
 func isValidSSHPublicKey(pubKeyString string) error {
+	if pubKeyString == "" {
+		return nil
+	}
 	// Trim any leading/trailing whitespaces
 	pubKeyString = strings.TrimSpace(pubKeyString)
 	pubKeyBytes := []byte(pubKeyString)
@@ -98,6 +105,17 @@ func isValidSSHPublicKey(pubKeyString string) error {
 		return fmt.Errorf("error parsing public key: %w", err)
 	}
 	// If parsing is successful, the key is valid
+	return nil
+}
+
+func isValidHostname(hostname string) error {
+	if hostname == "" {
+		return nil
+	}
+	errs := validation.IsDNS1123Subdomain(hostname)
+	if len(errs) != 0 {
+		return errors.New(strings.Join(errs, ";"))
+	}
 	return nil
 }
 
