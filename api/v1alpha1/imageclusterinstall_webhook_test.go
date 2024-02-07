@@ -2,7 +2,6 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -248,13 +247,12 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		cond := metav1.Condition{
-			Type:    ImageReadyCondition,
-			Status:  metav1.ConditionTrue,
+		newClusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{{
+			Type:    hivev1.ClusterInstallRequirementsMet,
+			Status:  corev1.ConditionTrue,
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
-		}
-		meta.SetStatusCondition(&newClusterInstall.Status.ConfigConditions, cond)
+		}}
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
@@ -298,13 +296,12 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		cond := metav1.Condition{
-			Type:    ImageReadyCondition,
-			Status:  metav1.ConditionTrue,
+		newClusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{{
+			Type:    hivev1.ClusterInstallRequirementsMet,
+			Status:  corev1.ConditionTrue,
 			Reason:  ImageReadyReason,
 			Message: ImageReadyMessage,
-		}
-		meta.SetStatusCondition(&newClusterInstall.Status.ConfigConditions, cond)
+		}}
 		newClusterInstall.Spec.Hostname = "stuff"
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)

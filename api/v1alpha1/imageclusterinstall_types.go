@@ -25,12 +25,10 @@ import (
 )
 
 const (
-	ImageReadyCondition = "ImageReady"
 	ImageNotReadyReason = "NotReady"
 	ImageReadyReason    = "Ready"
 	ImageReadyMessage   = "Image is ready for use"
 
-	HostConfiguredCondition           = "HostConfigured"
 	HostConfiguraionFailedReason      = "HostConfigurationFailed"
 	HostConfiguraionSucceededReason   = "HostConfigurationSucceeded"
 	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
