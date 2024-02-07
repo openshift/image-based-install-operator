@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -628,7 +627,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
 
-	It("sets the image ready condition", func() {
+	It("sets the requirements met condition when the image is ready", func() {
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -642,14 +641,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.ImageReadyCondition)
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(v1alpha1.ImageReadyReason))
 		Expect(cond.Message).To(Equal(v1alpha1.ImageReadyMessage))
 	})
 
-	It("sets the host configured condition when the host can be configured", func() {
+	It("sets the stopped condition to false when the host can be configured", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
@@ -679,14 +678,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.HostConfiguredCondition)
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionSucceededReason))
 		Expect(cond.Message).To(Equal(v1alpha1.HostConfigurationSucceededMessage))
 	})
 
-	It("sets the host configured condition to false when the host is missing", func() {
+	It("sets the stopped condition to true when the host is missing", func() {
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      "test-bmh",
 			Namespace: "test-bmh-namespace",
@@ -703,9 +702,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := meta.FindStatusCondition(clusterInstall.Status.ConfigConditions, v1alpha1.HostConfiguredCondition)
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
 	})
 

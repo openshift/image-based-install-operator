@@ -129,6 +129,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
+	if err := r.initializeConditions(ctx, ici); err != nil {
+		log.Errorf("Failed to initialize conditions: %s", err)
+		return ctrl.Result{}, err
+	}
+
 	if res, err := r.writeInputData(ctx, log, ici, clusterDeployment); !res.IsZero() || err != nil {
 		if err != nil {
 			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
