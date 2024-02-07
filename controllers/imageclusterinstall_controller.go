@@ -431,21 +431,14 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 		}
 		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
 		crypto := &lca_api.KubeConfigCryptoRetention{}
-		if clusterInfo == nil {
-			// handle first cert generation
+		if clusterInfo == nil || clusterInfo.ClusterName != cd.Spec.ClusterName || clusterInfo.BaseDomain != cd.Spec.BaseDomain {
+			// handle first cert generation as well as cases the cluster name or baseDomain changed, and we need a new kubeconfig.
 			crypto, err = r.generateClusterCrypto(ctx, cd)
 			if err != nil {
 				return err
 			}
 		} else {
 			crypto = &clusterInfo.KubeconfigCryptoRetention
-			if clusterInfo.ClusterName != cd.Spec.ClusterName || clusterInfo.BaseDomain != cd.Spec.BaseDomain {
-				// in case the cluster name or baseDomain changed we need a new kubeconfig, so we just regenerate all crypto
-				crypto, err = r.generateClusterCrypto(ctx, cd)
-				if err != nil {
-					return err
-				}
-			}
 		}
 		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, psData, clusterInfoFilePath, clusterInfo); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
