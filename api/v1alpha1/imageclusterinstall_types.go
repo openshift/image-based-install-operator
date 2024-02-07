@@ -95,7 +95,6 @@ type ImageClusterInstallStatus struct {
 	InstallRestarts int `json:"installRestarts,omitempty"`
 
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
-	ConfigConditions []metav1.Condition      `json:"configConditions,omitempty"`
 }
 
 type BareMetalHostReference struct {

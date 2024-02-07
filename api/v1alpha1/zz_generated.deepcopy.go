@@ -25,7 +25,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -170,13 +169,6 @@ func (in *ImageClusterInstallStatus) DeepCopyInto(out *ImageClusterInstallStatus
 		in, out := &in.BareMetalHostRef, &out.BareMetalHostRef
 		*out = new(BareMetalHostReference)
 		**out = **in
-	}
-	if in.ConfigConditions != nil {
-		in, out := &in.ConfigConditions, &out.ConfigConditions
-		*out = make([]metav1.Condition, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
 	}
 }
 
