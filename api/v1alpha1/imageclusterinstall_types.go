@@ -63,7 +63,7 @@ type ImageClusterInstallSpec struct {
 	// SSHKey is the public Secure Shell (SSH) key to provide access to
 	// instances. Equivalent to install-config.yaml's sshKey.
 	// This key will be added to the host to allow ssh access
-	SSHKey string `json:"ssh_key,omitempty"`
+	SSHKey string `json:"sshKey,omitempty"`
 
 	// ImageDigestSources lists sources/repositories for the release-image content.
 	// +optional

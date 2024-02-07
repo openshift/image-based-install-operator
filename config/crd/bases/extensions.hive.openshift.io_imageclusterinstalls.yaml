@@ -244,7 +244,7 @@ spec:
               nodeIP:
                 description: NodeIP is the desired IP for the host
                 type: string
-              ssh_key:
+              sshKey:
                 description: SSHKey is the public Secure Shell (SSH) key to provide
                   access to instances. Equivalent to install-config.yaml's sshKey.
                   This key will be added to the host to allow ssh access
