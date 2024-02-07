@@ -648,7 +648,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Message).To(Equal(v1alpha1.ImageReadyMessage))
 	})
 
-	It("sets the stopped condition to false when the host can be configured", func() {
+	It("sets conditions to show cluster installed when the host can be configured", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
@@ -678,11 +678,16 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionSucceededReason))
-		Expect(cond.Message).To(Equal(v1alpha1.HostConfigurationSucceededMessage))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 	})
 
 	It("sets the stopped condition to true when the host is missing", func() {

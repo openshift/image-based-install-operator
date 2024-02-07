@@ -173,10 +173,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			}
 			return ctrl.Result{}, err
 		}
-		if err := r.setHostConfiguredCondition(ctx, ici, nil); err != nil {
-			log.WithError(err).Error("failed to update ImageClusterInstall status")
-			return ctrl.Result{}, err
-		}
 
 		patch := client.MergeFrom(ici.DeepCopy())
 		ici.Status.BareMetalHostRef = ici.Spec.BareMetalHostRef.DeepCopy()
@@ -192,6 +188,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 		if err := r.setClusterDeploymentMetadata(ctx, clusterDeployment, *ici.Spec.ClusterMetadata); err != nil {
 			log.WithError(err).Error("failed to set ClusterDeployment metadata")
+			return ctrl.Result{}, err
+		}
+
+		if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
+			log.WithError(err).Error("failed to set installed conditions")
 			return ctrl.Result{}, err
 		}
 	}
