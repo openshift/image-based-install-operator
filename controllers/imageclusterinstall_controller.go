@@ -57,6 +57,7 @@ import (
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/sirupsen/logrus"
 )
@@ -72,6 +73,7 @@ type ImageClusterInstallReconcilerOptions struct {
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
 type ImageClusterInstallReconciler struct {
 	client.Client
+	credentials.Credentials
 	Log         logrus.FieldLogger
 	Scheme      *runtime.Scheme
 	Options     *ImageClusterInstallReconcilerOptions
@@ -89,7 +91,6 @@ const (
 	extraManifestsDir            = "extra-manifests"
 	manifestsDir                 = "manifests"
 	nmstateCMKey                 = "network-config"
-	kubeconfig                   = "kubeconfig"
 	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
 	caBundleFileName             = "tls-ca-bundle.pem"
 	imageDigestMirrorSetFileName = "image-digest-sources.json"
@@ -190,7 +191,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.setClusterInstallMetadata(ctx, ici, kubeconfigSecretName(clusterDeployment)); err != nil {
+		if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment.Name); err != nil {
 			log.WithError(err).Error("failed to set ImageClusterInstall metadata")
 			return ctrl.Result{}, err
 		}
@@ -440,7 +441,11 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 		} else {
 			crypto = &clusterInfo.KubeconfigCryptoRetention
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, psData, clusterInfoFilePath, clusterInfo); err != nil {
+		kubeadminPasswordHash, err := r.Credentials.EnsureAdminPasswordSecret(ctx, cd)
+		if err != nil {
+			return fmt.Errorf("failed to ensure admin password secret: %w", err)
+		}
+		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -486,7 +491,7 @@ func (r *ImageClusterInstallReconciler) generateClusterCrypto(ctx context.Contex
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate kubeconfig: %w", err)
 	}
-	err = r.createOrUpdateKubeconfigSecret(ctx, cd, kubeconfigBytes)
+	err = r.EnsureKubeconfigSecret(ctx, cd, kubeconfigBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
 	}
@@ -532,12 +537,11 @@ func (r *ImageClusterInstallReconciler) nmstateConfig(ctx context.Context, ici *
 	return nmstate, nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, psData string, file string, existingInfo *lca_api.SeedReconfiguration) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, psData, kubeadminPasswordHash string, file string, existingInfo *lca_api.SeedReconfiguration) error {
 	nmstate, err := r.nmstateConfig(ctx, ici)
 	if err != nil {
 		return err
 	}
-
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
@@ -575,6 +579,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
 		PullSecret:                psData,
 		RawNMStateConfig:          nmstate,
+		KubeadminPasswordHash:     kubeadminPasswordHash,
 	}
 	data, err := json.Marshal(info)
 	if err != nil {
@@ -584,37 +589,6 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		return fmt.Errorf("failed to write cluster info: %w", err)
 	}
 
-	return nil
-}
-
-func kubeconfigSecretName(cd *hivev1.ClusterDeployment) string {
-	return cd.Name + "-admin-kubeconfig"
-}
-
-func (r *ImageClusterInstallReconciler) createOrUpdateKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
-	kubeconfigSecret := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: corev1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      kubeconfigSecretName(cd),
-			Namespace: cd.Namespace,
-		},
-		Type: corev1.SecretTypeOpaque,
-	}
-	mutateFn := func() error {
-		// Update the Secret object with the desired data
-		kubeconfigSecret.Data = map[string][]byte{
-			"kubeconfig": kubeconfigBytes,
-		}
-		return nil
-	}
-	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, kubeconfigSecret, mutateFn)
-	if err != nil {
-		return fmt.Errorf("failed to create kubeconfig secret: %w", err)
-	}
-	r.Log.Infof("kubeconfig secret %s", op)
 	return nil
 }
 
@@ -667,7 +641,7 @@ func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigest
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, kubeconfigSecret string) error {
+func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, clusterDeploymentName string) error {
 	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
 	if err != nil {
 		return err
@@ -677,10 +651,14 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 		return fmt.Errorf("No cluster info found for ImageClusterInstall %s/%s", ici.Namespace, ici.Name)
 	}
 
+	kubeconfigSecret := credentials.KubeconfigSecretName(clusterDeploymentName)
+	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(clusterDeploymentName)
 	if ici.Spec.ClusterMetadata != nil &&
 		ici.Spec.ClusterMetadata.ClusterID == clusterInfo.ClusterID &&
 		ici.Spec.ClusterMetadata.InfraID == clusterInfo.InfraID &&
-		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret {
+		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret &&
+		ici.Spec.ClusterMetadata.AdminPasswordSecretRef.Name == kubeadminPasswordSecret {
+
 		return nil
 	}
 
@@ -691,19 +669,24 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
 			Name: kubeconfigSecret,
 		},
+		AdminPasswordSecretRef: &corev1.LocalObjectReference{
+			Name: kubeconfigSecret,
+		},
 	}
 
 	return r.Patch(ctx, ici, patch)
 }
 
 func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context.Context, cd *hivev1.ClusterDeployment, clusterMeta hivev1.ClusterMetadata) error {
-	kubeconfigSecret := kubeconfigSecretName(cd)
+	kubeconfigSecret := credentials.KubeconfigSecretName(cd.Name)
+	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(cd.Name)
 
 	if cd.Spec.Installed &&
 		cd.Spec.ClusterMetadata != nil &&
 		cd.Spec.ClusterMetadata.ClusterID == clusterMeta.ClusterID &&
 		cd.Spec.ClusterMetadata.InfraID == clusterMeta.InfraID &&
-		cd.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret {
+		cd.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret &&
+		cd.Spec.ClusterMetadata.AdminPasswordSecretRef.Name == kubeadminPasswordSecret {
 
 		return nil
 	}
@@ -715,6 +698,9 @@ func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context
 		InfraID:   clusterMeta.InfraID,
 		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
 			Name: kubeconfigSecret,
+		},
+		AdminPasswordSecretRef: &corev1.LocalObjectReference{
+			Name: kubeadminPasswordSecret,
 		},
 	}
 

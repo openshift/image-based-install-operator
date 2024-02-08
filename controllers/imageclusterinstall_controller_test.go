@@ -23,6 +23,7 @@ import (
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/sirupsen/logrus"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -51,12 +52,17 @@ var _ = Describe("Reconcile", func() {
 		var err error
 		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
 		Expect(err).NotTo(HaveOccurred())
-
+		cm := credentials.Credentials{
+			Client: c,
+			Log:    logrus.New(),
+			Scheme: scheme.Scheme,
+		}
 		r = &ImageClusterInstallReconciler{
-			Client:  c,
-			Scheme:  scheme.Scheme,
-			Log:     logrus.New(),
-			BaseURL: "https://images-namespace.cluster.example.com",
+			Client:      c,
+			Credentials: cm,
+			Scheme:      scheme.Scheme,
+			Log:         logrus.New(),
+			BaseURL:     "https://images-namespace.cluster.example.com",
 			Options: &ImageClusterInstallReconcilerOptions{
 				DataDir: dataDir,
 			},
@@ -551,7 +557,7 @@ var _ = Describe("Reconcile", func() {
 
 		// Verify the kubeconfig secret
 		kubeconfigSecret := &corev1.Secret{}
-		err = r.Client.Get(ctx, client.ObjectKey{Namespace: clusterInstallNamespace, Name: clusterDeployment.Spec.ClusterName + "-admin-kubeconfig"}, kubeconfigSecret)
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: clusterInstallNamespace, Name: clusterDeployment.Name + "-admin-kubeconfig"}, kubeconfigSecret)
 		Expect(err).NotTo(HaveOccurred())
 		kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
 		Expect(exists).To(BeTrue())
@@ -562,6 +568,32 @@ var _ = Describe("Reconcile", func() {
 
 		// verify all signer keys exists
 		// verify the admin client CA cert exists
+	})
+
+	It("creates kubeadmin password", func() {
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = "test-cluster"
+		clusterDeployment.Spec.BaseDomain = "redhat.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify the kubeconfig secret
+		kubeconfigSecret := &corev1.Secret{}
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: clusterInstallNamespace, Name: clusterDeployment.Name + "-admin-password"}, kubeconfigSecret)
+		Expect(err).NotTo(HaveOccurred())
+		username, exists := kubeconfigSecret.Data["username"]
+		Expect(exists).To(BeTrue())
+		Expect(string(username)).To(Equal(credentials.DefaultUser))
+		_, exists = kubeconfigSecret.Data["password"]
+		Expect(exists).To(BeTrue())
+
 	})
 
 	It("configures a referenced BMH", func() {
