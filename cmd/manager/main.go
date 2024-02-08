@@ -44,6 +44,7 @@ import (
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/controllers"
 	"github.com/openshift/image-based-install-operator/internal/certs"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )
@@ -55,7 +56,6 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
@@ -117,6 +117,11 @@ func main() {
 		setupLog.Error(err, "unable to process envconfig")
 		os.Exit(1)
 	}
+	credentialsManager := credentials.Credentials{
+		Client: mgr.GetClient(),
+		Log:    logger,
+		Scheme: mgr.GetScheme(),
+	}
 
 	c, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
@@ -131,6 +136,7 @@ func main() {
 
 	if err = (&controllers.ImageClusterInstallReconciler{
 		Client:      mgr.GetClient(),
+		Credentials: credentialsManager,
 		Log:         logger,
 		Scheme:      mgr.GetScheme(),
 		Options:     controllerOptions,
