@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	routev1 "github.com/openshift/api/route/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -39,4 +40,5 @@ var _ = BeforeSuite(func() {
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(bmh_v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(hivev1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(routev1.AddToScheme(scheme.Scheme)).To(Succeed())
 })

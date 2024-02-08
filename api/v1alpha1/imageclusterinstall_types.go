@@ -95,6 +95,9 @@ type ImageClusterInstallStatus struct {
 	InstallRestarts int `json:"installRestarts,omitempty"`
 
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+
+	// ConfigurationImageURL is the externally accessible URL for downloading the image containing the SNO configuration
+	ConfigurationImageURL string `json:"configurationImageURL,omitempty"`
 }
 
 type BareMetalHostReference struct {

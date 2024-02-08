@@ -32,6 +32,7 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
+	routev1 "github.com/openshift/api/route/v1"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -59,11 +60,11 @@ import (
 )
 
 type ImageClusterInstallReconcilerOptions struct {
-	ServiceName      string `envconfig:"SERVICE_NAME"`
-	ServiceNamespace string `envconfig:"SERVICE_NAMESPACE"`
-	ServicePort      string `envconfig:"SERVICE_PORT"`
-	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
-	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
+	RouteName      string `envconfig:"ROUTE_NAME"`
+	RouteNamespace string `envconfig:"ROUTE_NAMESPACE"`
+	RoutePort      string `envconfig:"ROUTE_PORT"`
+	RouteScheme    string `envconfig:"ROUTE_SCHEME"`
+	DataDir        string `envconfig:"DATA_DIR" default:"/data"`
 }
 
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
@@ -89,6 +90,7 @@ const (
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
@@ -136,7 +138,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	if res, err := r.writeInputData(ctx, log, ici, clusterDeployment); !res.IsZero() || err != nil {
 		if err != nil {
-			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
+			if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 			}
 			log.Error(err)
@@ -147,13 +149,13 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
-		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, err
 	}
 
-	if err := r.setImageReadyCondition(ctx, ici, nil); err != nil {
+	if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
 		log.WithError(err).Error("failed to update ImageClusterInstall status")
 		return ctrl.Result{}, err
 	}
@@ -260,23 +262,33 @@ func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj clie
 	return []reconcile.Request{}
 }
 
-func serviceURL(opts *ImageClusterInstallReconcilerOptions) string {
-	host := fmt.Sprintf("%s.%s", opts.ServiceName, opts.ServiceNamespace)
-	if opts.ServicePort != "" {
-		host = fmt.Sprintf("%s:%s", host, opts.ServicePort)
+func routeURL(opts *ImageClusterInstallReconcilerOptions, c client.Client) (string, error) {
+	route := &routev1.Route{}
+	key := client.ObjectKey{Name: opts.RouteName, Namespace: opts.RouteNamespace}
+	if err := c.Get(context.Background(), key, route); err != nil {
+		return "", err
 	}
-	u := url.URL{
-		Scheme: opts.ServiceScheme,
-		Host:   host,
+
+	host := route.Spec.Host
+	if host == "" {
+		return "", fmt.Errorf("route %s host is unset", key)
 	}
-	return u.String()
+	if opts.RoutePort != "" {
+		host = fmt.Sprintf("%s:%s", host, opts.RoutePort)
+	}
+
+	return (&url.URL{Scheme: opts.RouteScheme, Host: host}).String(), nil
 }
 
 func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if r.Options.ServiceName == "" || r.Options.ServiceNamespace == "" || r.Options.ServiceScheme == "" {
-		return fmt.Errorf("SERVICE_NAME, SERVICE_NAMESPACE, and SERVICE_SCHEME must be set")
+	if r.Options.RouteName == "" || r.Options.RouteNamespace == "" || r.Options.RouteScheme == "" {
+		return fmt.Errorf("ROUTE_NAME, ROUTE_NAMESPACE, and ROUTE_SCHEME must be set")
 	}
-	r.BaseURL = serviceURL(r.Options)
+	var err error
+	r.BaseURL, err = routeURL(r.Options, r.Client)
+	if err != nil {
+		return fmt.Errorf("failed to create base URL: %w", err)
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ImageClusterInstall{}).
@@ -489,7 +501,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 	}
 	if !locked {
 		log.Info("requeueing due to lock contention")
-		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data")); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data"), ""); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil

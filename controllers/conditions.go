@@ -65,7 +65,7 @@ func (r *ImageClusterInstallReconciler) initializeConditions(ctx context.Context
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
+func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error, imageURL string) error {
 	cond := hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallRequirementsMet,
 		Status:  corev1.ConditionTrue,
@@ -81,6 +81,7 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 
 	patch := client.MergeFrom(ici.DeepCopy())
 	setClusterInstallCondition(&ici.Status.Conditions, cond)
+	ici.Status.ConfigurationImageURL = imageURL
 	return r.Status().Patch(ctx, ici, patch)
 }
 

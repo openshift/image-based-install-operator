@@ -35,6 +35,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	routev1 "github.com/openshift/api/route/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/controllers"
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
+	utilruntime.Must(routev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
