@@ -20,6 +20,7 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	apicfgv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
@@ -54,12 +55,9 @@ var _ = Describe("Reconcile", func() {
 			Client:  c,
 			Scheme:  scheme.Scheme,
 			Log:     logrus.New(),
-			BaseURL: "http://service.namespace",
+			BaseURL: "https://images-namespace.cluster.example.com",
 			Options: &ImageClusterInstallReconcilerOptions{
-				ServiceName:      "service",
-				ServiceNamespace: "namespace",
-				ServiceScheme:    "http",
-				DataDir:          dataDir,
+				DataDir: dataDir,
 			},
 			CertManager: certs.KubeConfigCertManager{},
 		}
@@ -108,6 +106,10 @@ var _ = Describe("Reconcile", func() {
 	AfterEach(func() {
 		Expect(os.RemoveAll(dataDir)).To(Succeed())
 	})
+
+	imageURL := func() string {
+		return fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName)
+	}
 
 	outputFilePath := func(elem ...string) string {
 		last := filepath.Join(elem...)
@@ -513,7 +515,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(bmh.Spec.Image.URL).To(Equal(fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName)))
+		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
 		Expect(bmh.Spec.Image.DiskFormat).To(HaveValue(Equal("live-iso")))
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
@@ -627,7 +629,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
 
-	It("sets the requirements met condition when the image is ready", func() {
+	It("sets the requirements met condition and image URL when the image is ready", func() {
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -641,11 +643,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(v1alpha1.ImageReadyReason))
 		Expect(cond.Message).To(Equal(v1alpha1.ImageReadyMessage))
+
+		Expect(clusterInstall.Status.ConfigurationImageURL).To(Equal(imageURL()))
 	})
 
 	It("sets conditions to show cluster installed when the host can be configured", func() {
@@ -1160,23 +1165,75 @@ var _ = Describe("mapCDToICI", func() {
 	})
 })
 
-var _ = Describe("serviceURL", func() {
-	It("creates the correct url without a port", func() {
-		opts := &ImageClusterInstallReconcilerOptions{
-			ServiceName:      "name",
-			ServiceNamespace: "namespace",
-			ServiceScheme:    "http",
+var _ = Describe("routeURL", func() {
+	var (
+		c     client.Client
+		ctx   = context.Background()
+		route *routev1.Route
+	)
+
+	BeforeEach(func() {
+		c = fakeclient.NewClientBuilder().
+			WithScheme(scheme.Scheme).
+			Build()
+		route = &routev1.Route{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "name",
+				Namespace: "namespace",
+			},
+			Spec: routev1.RouteSpec{},
 		}
-		Expect(serviceURL(opts)).To(Equal("http://name.namespace"))
 	})
-	It("creates the correct url with a port", func() {
+
+	It("fails when the route doesn't exist", func() {
 		opts := &ImageClusterInstallReconcilerOptions{
-			ServiceName:      "name",
-			ServiceNamespace: "namespace",
-			ServiceScheme:    "http",
-			ServicePort:      "8080",
+			RouteName:      "name",
+			RouteNamespace: "namespace",
+			RouteScheme:    "https",
 		}
-		Expect(serviceURL(opts)).To(Equal("http://name.namespace:8080"))
+		_, err := routeURL(opts, c)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("fails when the route doesn't have Spec.Host set", func() {
+		Expect(c.Create(ctx, route)).To(Succeed())
+		opts := &ImageClusterInstallReconcilerOptions{
+			RouteName:      "name",
+			RouteNamespace: "namespace",
+			RouteScheme:    "https",
+		}
+		_, err := routeURL(opts, c)
+		Expect(err).To(HaveOccurred())
+	})
+
+	Context("when the route exists and has a host set", func() {
+		BeforeEach(func() {
+			route.Spec.Host = "name-namespace.cluster.example.com"
+			Expect(c.Create(ctx, route)).To(Succeed())
+		})
+
+		It("creates the correct url without a port", func() {
+			opts := &ImageClusterInstallReconcilerOptions{
+				RouteName:      "name",
+				RouteNamespace: "namespace",
+				RouteScheme:    "https",
+			}
+			url, err := routeURL(opts, c)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(url).To(Equal("https://name-namespace.cluster.example.com"))
+		})
+
+		It("creates the correct url with a port", func() {
+			opts := &ImageClusterInstallReconcilerOptions{
+				RouteName:      "name",
+				RouteNamespace: "namespace",
+				RouteScheme:    "http",
+				RoutePort:      "8080",
+			}
+			url, err := routeURL(opts, c)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(url).To(Equal("http://name-namespace.cluster.example.com:8080"))
+		})
 	})
 })
 
