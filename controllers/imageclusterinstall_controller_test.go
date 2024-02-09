@@ -20,7 +20,6 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	apicfgv1 "github.com/openshift/api/config/v1"
-	routev1 "github.com/openshift/api/route/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
@@ -1162,78 +1161,6 @@ var _ = Describe("mapCDToICI", func() {
 
 		requests := r.mapCDToICI(ctx, cd)
 		Expect(len(requests)).To(Equal(0))
-	})
-})
-
-var _ = Describe("routeURL", func() {
-	var (
-		c     client.Client
-		ctx   = context.Background()
-		route *routev1.Route
-	)
-
-	BeforeEach(func() {
-		c = fakeclient.NewClientBuilder().
-			WithScheme(scheme.Scheme).
-			Build()
-		route = &routev1.Route{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "name",
-				Namespace: "namespace",
-			},
-			Spec: routev1.RouteSpec{},
-		}
-	})
-
-	It("fails when the route doesn't exist", func() {
-		opts := &ImageClusterInstallReconcilerOptions{
-			RouteName:      "name",
-			RouteNamespace: "namespace",
-			RouteScheme:    "https",
-		}
-		_, err := routeURL(opts, c)
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("fails when the route doesn't have Spec.Host set", func() {
-		Expect(c.Create(ctx, route)).To(Succeed())
-		opts := &ImageClusterInstallReconcilerOptions{
-			RouteName:      "name",
-			RouteNamespace: "namespace",
-			RouteScheme:    "https",
-		}
-		_, err := routeURL(opts, c)
-		Expect(err).To(HaveOccurred())
-	})
-
-	Context("when the route exists and has a host set", func() {
-		BeforeEach(func() {
-			route.Spec.Host = "name-namespace.cluster.example.com"
-			Expect(c.Create(ctx, route)).To(Succeed())
-		})
-
-		It("creates the correct url without a port", func() {
-			opts := &ImageClusterInstallReconcilerOptions{
-				RouteName:      "name",
-				RouteNamespace: "namespace",
-				RouteScheme:    "https",
-			}
-			url, err := routeURL(opts, c)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(url).To(Equal("https://name-namespace.cluster.example.com"))
-		})
-
-		It("creates the correct url with a port", func() {
-			opts := &ImageClusterInstallReconcilerOptions{
-				RouteName:      "name",
-				RouteNamespace: "namespace",
-				RouteScheme:    "http",
-				RoutePort:      "8080",
-			}
-			url, err := routeURL(opts, c)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(url).To(Equal("http://name-namespace.cluster.example.com:8080"))
-		})
 	})
 })
 
