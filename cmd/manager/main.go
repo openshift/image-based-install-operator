@@ -17,7 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
+	"net/url"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -28,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -114,11 +118,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	c, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "failed to create uncached client")
+		os.Exit(1)
+	}
+	baseURL, err := routeURL(controllerOptions, c)
+	if err != nil {
+		setupLog.Error(err, "failed to determine route base URL")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.ImageClusterInstallReconciler{
 		Client:      mgr.GetClient(),
 		Log:         logger,
 		Scheme:      mgr.GetScheme(),
 		Options:     controllerOptions,
+		BaseURL:     baseURL,
 		CertManager: certs.KubeConfigCertManager{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
@@ -144,4 +160,25 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func routeURL(opts *controllers.ImageClusterInstallReconcilerOptions, c client.Client) (string, error) {
+	if opts.RouteName == "" || opts.RouteNamespace == "" || opts.RouteScheme == "" {
+		return "", fmt.Errorf("ROUTE_NAME, ROUTE_NAMESPACE, and ROUTE_SCHEME must be set")
+	}
+	route := &routev1.Route{}
+	key := client.ObjectKey{Name: opts.RouteName, Namespace: opts.RouteNamespace}
+	if err := c.Get(context.Background(), key, route); err != nil {
+		return "", err
+	}
+
+	host := route.Spec.Host
+	if host == "" {
+		return "", fmt.Errorf("route %s host is unset", key)
+	}
+	if opts.RoutePort != "" {
+		host = fmt.Sprintf("%s:%s", host, opts.RoutePort)
+	}
+
+	return (&url.URL{Scheme: opts.RouteScheme, Host: host}).String(), nil
 }

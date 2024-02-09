@@ -32,7 +32,6 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
-	routev1 "github.com/openshift/api/route/v1"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -262,34 +261,7 @@ func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj clie
 	return []reconcile.Request{}
 }
 
-func routeURL(opts *ImageClusterInstallReconcilerOptions, c client.Client) (string, error) {
-	route := &routev1.Route{}
-	key := client.ObjectKey{Name: opts.RouteName, Namespace: opts.RouteNamespace}
-	if err := c.Get(context.Background(), key, route); err != nil {
-		return "", err
-	}
-
-	host := route.Spec.Host
-	if host == "" {
-		return "", fmt.Errorf("route %s host is unset", key)
-	}
-	if opts.RoutePort != "" {
-		host = fmt.Sprintf("%s:%s", host, opts.RoutePort)
-	}
-
-	return (&url.URL{Scheme: opts.RouteScheme, Host: host}).String(), nil
-}
-
 func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if r.Options.RouteName == "" || r.Options.RouteNamespace == "" || r.Options.RouteScheme == "" {
-		return fmt.Errorf("ROUTE_NAME, ROUTE_NAMESPACE, and ROUTE_SCHEME must be set")
-	}
-	var err error
-	r.BaseURL, err = routeURL(r.Options, r.Client)
-	if err != nil {
-		return fmt.Errorf("failed to create base URL: %w", err)
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ImageClusterInstall{}).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToICI)).
