@@ -4,6 +4,8 @@ type PEM string
 
 const (
 	SeedReconfigurationVersion = 1
+	// BlockDeviceLabel is a configuration volume label to set while providing iso with configuration files
+	BlockDeviceLabel = "cluster-config"
 )
 
 // SeedReconfiguration contains all the information that is required to
@@ -69,11 +71,27 @@ type SeedReconfiguration struct {
 	// the SSH keys of the seed cluster.
 	SSHKey string `json:"ssh_key,omitempty"`
 
+	// KubeadminPasswordHash is the hash of the password for the kubeadmin
+	// user, as can be found in the kubeadmin key of the kube-system/kubeadmin
+	// secret. This will replace the kubeadmin password of the seed cluster.
+	// The seed image must have an existing kubeadmin password secret, this is
+	// because the secret is rejected by OCP if its creation timestamp differs
+	// from the kube-system namespace creation timestamp by more than 1 hour.
+	// During IBU, this is taken from the cluster that is being upgraded.
+	// During IBI, this is generated in advance so it can be displayed to the
+	// user. If empty, the kubeadmin password secret of the seed cluster will
+	// be deleted (thus disabling kubeadmin password login), to ensure we're
+	// not accepting a possibly compromised seed password.
+	KubeadminPasswordHash string `json:"kubeadmin_password_hash,omitempty"`
+
 	// RawNMStateConfig contains nmstate configuration YAML file provided as string.
 	// String will be written to file and will be applied with "nmstatectl apply" command.
 	// Example of nmstate configurations can be found in this link https://nmstate.io/examples.html
 	// This field will be used for IBI process as in IBU we will copy nmconnection files
 	RawNMStateConfig string `json:"raw_nm_state_config,omitempty"`
+
+	// PullSecret is the secret to use when pulling images. Equivalent to install-config.yaml's pullSecret.
+	PullSecret string `json:"pull_secret,omitempty"`
 }
 
 type KubeConfigCryptoRetention struct {
