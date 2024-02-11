@@ -618,7 +618,7 @@ func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigest
 
 	imageDigestMirrorSet := &apicfgv1.ImageDigestMirrorSet{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: apicfgv1.SchemeGroupVersion.String(),
+			APIVersion: apicfgv1.GroupVersion.String(),
 			Kind:       "ImageDigestMirrorSet",
 		},
 		ObjectMeta: metav1.ObjectMeta{
