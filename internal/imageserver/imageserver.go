@@ -14,6 +14,7 @@ import (
 	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/sirupsen/logrus"
 )
@@ -80,7 +81,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if err := create(outPath, isoWorkDir, "relocation-config"); err != nil {
+	if err := create(outPath, isoWorkDir, lca_api.BlockDeviceLabel); err != nil {
 		h.Log.WithError(err).Error("failed to create iso")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
