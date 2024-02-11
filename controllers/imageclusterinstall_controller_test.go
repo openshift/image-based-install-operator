@@ -39,6 +39,8 @@ var _ = Describe("Reconcile", func() {
 		clusterInstallNamespace = "test-namespace"
 		clusterInstall          *v1alpha1.ImageClusterInstall
 		clusterDeployment       *hivev1.ClusterDeployment
+		pullSecret              *corev1.Secret
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
 	)
 
 	BeforeEach(func() {
@@ -74,6 +76,14 @@ var _ = Describe("Reconcile", func() {
 			},
 		}
 		Expect(c.Create(ctx, imageSet)).To(Succeed())
+		pullSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte(testPullSecretVal)},
+		}
+		Expect(c.Create(ctx, pullSecret)).To(Succeed())
 
 		clusterInstall = &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
@@ -88,7 +98,6 @@ var _ = Describe("Reconcile", func() {
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
 			},
 		}
-
 		clusterDeployment = &hivev1.ClusterDeployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterInstallName,
@@ -101,8 +110,10 @@ var _ = Describe("Reconcile", func() {
 					Kind:    clusterInstall.GroupVersionKind().Kind,
 					Name:    clusterInstall.Name,
 				},
-			},
-		}
+				PullSecretRef: &corev1.LocalObjectReference{
+					Name: "ps",
+				},
+			}}
 	})
 
 	AfterEach(func() {
@@ -151,6 +162,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.ReleaseRegistry).To(Equal("registry.example.com"))
 		Expect(infoOut.Hostname).To(Equal(clusterInstall.Spec.Hostname))
 		Expect(infoOut.SSHKey).To(Equal(clusterInstall.Spec.SSHKey))
+		Expect(infoOut.PullSecret).To(Equal(testPullSecretVal))
 	})
 
 	It("keep cluster crypto if name and base domain didn't change", func() {
@@ -235,19 +247,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(clusterCrypto).ToNot(Equal(infoOut.KubeconfigCryptoRetention))
 
 	})
-	It("creates the pull secret without extra metadata", func() {
-		pullSecretData := map[string][]byte{"pullsecret": []byte("pullsecret")}
-		s := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-pull-secret",
-				Namespace: clusterInstallNamespace,
-				UID:       types.UID("22ce1ffc-aa2d-477e-87b6-2a755f332e41"),
-			},
-			Data: pullSecretData,
-		}
-		Expect(c.Create(ctx, s)).To(Succeed())
-
-		clusterDeployment.Spec.PullSecretRef = &corev1.LocalObjectReference{Name: "my-pull-secret"}
+	It("pullSecret not set", func() {
+		clusterDeployment.Spec.PullSecretRef = nil
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
@@ -256,20 +257,66 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("missing reference to pull secret"))
 		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", "pull-secret-secret.json"))
-		Expect(err).NotTo(HaveOccurred())
-		secret := &corev1.Secret{}
-		Expect(json.Unmarshal(content, secret)).To(Succeed())
-
-		Expect(secret.Namespace).To(Equal("openshift-config"))
-		Expect(secret.Name).To(Equal("pull-secret"))
-		Expect(secret.UID).To(Equal(types.UID("")))
-		Expect(secret.Data).To(Equal(pullSecretData))
 	})
+	It("missing pullSecret", func() {
+		clusterDeployment.Spec.PullSecretRef.Name = "nonExistingPS"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to find secret"))
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+	It("pullSecret missing dockerconfigjson key", func() {
+		pullSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string][]byte{},
+		}
+		Expect(c.Update(ctx, pullSecret)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("secret ps did not contain key .dockerconfigjson"))
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+	It("malformed pullSecret", func() {
+		pullSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("garbage")},
+		}
+		Expect(c.Update(ctx, pullSecret)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid pull secret data in secret pull secret must be a well-formed JSON"))
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
 	It("creates the ca bundle", func() {
 		caData := map[string]string{caBundleFileName: "mycabundle"}
 		cm := &corev1.ConfigMap{
