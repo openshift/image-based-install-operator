@@ -17,7 +17,9 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -38,6 +40,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	k8serrors "k8s.io/apimachinery/pkg/util/errors"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -74,6 +77,10 @@ type ImageClusterInstallReconciler struct {
 	Options     *ImageClusterInstallReconcilerOptions
 	BaseURL     string
 	CertManager certs.KubeConfigCertManager
+}
+
+type imagePullSecret struct {
+	Auths map[string]map[string]interface{} `json:"auths"`
 }
 
 const (
@@ -383,8 +390,9 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			return err
 		}
 
-		if err := r.writePullSecretToFile(ctx, cd.Spec.PullSecretRef, ici.Namespace, filepath.Join(manifestsPath, "pull-secret-secret.json")); err != nil {
-			return fmt.Errorf("failed to write pull secret: %w", err)
+		psData, err := r.getValidPullSecret(ctx, cd.Spec.PullSecretRef, cd.Namespace)
+		if err != nil {
+			return fmt.Errorf("failed to get valid pull secret: %w", err)
 		}
 
 		if err := r.writeImageDigestSourceToFile(ici.Spec.ImageDigestSources, filepath.Join(manifestsPath, imageDigestMirrorSetFileName)); err != nil {
@@ -460,7 +468,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 				}
 			}
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, clusterInfoFilePath, clusterInfo); err != nil {
+		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, psData, clusterInfoFilePath, clusterInfo); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -533,12 +541,11 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, file string, existingInfo *lca_api.SeedReconfiguration) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, psData string, file string, existingInfo *lca_api.SeedReconfiguration) error {
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
 	}
-
 	var clusterID string
 	if existingInfo != nil && existingInfo.ClusterID != "" {
 		clusterID = existingInfo.ClusterID
@@ -570,6 +577,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,
 		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
+		PullSecret:                psData,
 	}
 	data, err := json.Marshal(info)
 	if err != nil {
@@ -630,34 +638,6 @@ func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *
 	}
 
 	return os.WriteFile(file, []byte(data), 0644)
-}
-
-func (r *ImageClusterInstallReconciler) writePullSecretToFile(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
-	if ref == nil {
-		return nil
-	}
-
-	s := &corev1.Secret{}
-	key := types.NamespacedName{Name: ref.Name, Namespace: ns}
-	if err := r.Get(ctx, key, s); err != nil {
-		return err
-	}
-
-	// override name and namespace and clear metadata
-	s.ObjectMeta = metav1.ObjectMeta{
-		Name:      "pull-secret",
-		Namespace: "openshift-config",
-	}
-
-	data, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigestMirrors []apicfgv1.ImageDigestMirrors, file string) error {
@@ -763,6 +743,61 @@ func generateInfraID(base string) string {
 
 	// add random chars to the end to randomize
 	return fmt.Sprintf("%s-%s", base, utilrand.String(5))
+}
+
+// getValidPullSecret validates the pull secret reference and format, return the pull secret data
+func (r *ImageClusterInstallReconciler) getValidPullSecret(ctx context.Context, psRef *corev1.LocalObjectReference, namespace string) (string, error) {
+	if psRef == nil || psRef.Name == "" || namespace == "" {
+		return "", fmt.Errorf("missing reference to pull secret")
+	}
+	key := types.NamespacedName{Name: psRef.Name, Namespace: namespace}
+	s := &corev1.Secret{}
+	if err := r.Get(ctx, key, s); err != nil {
+		return "", fmt.Errorf("failed to find secret %s: %v", key.Name, err)
+	}
+	psData, ok := s.Data[corev1.DockerConfigJsonKey]
+	if !ok {
+		return "", fmt.Errorf("secret %s did not contain key %s", key.Name, corev1.DockerConfigJsonKey)
+	}
+
+	err := r.validatePullSecret(string(psData))
+	if err != nil {
+		return "", fmt.Errorf("invalid pull secret data in secret %w", err)
+	}
+	return string(psData), nil
+}
+
+// validatePullSecret checks if the given string is a valid image pull secret and returns an error if not.
+func (r *ImageClusterInstallReconciler) validatePullSecret(pullSecret string) error {
+	var s imagePullSecret
+
+	err := json.Unmarshal([]byte(strings.TrimSpace(pullSecret)), &s)
+	if err != nil {
+		return fmt.Errorf("pull secret must be a well-formed JSON: %w", err)
+	}
+
+	if len(s.Auths) == 0 {
+		return fmt.Errorf("pull secret must contain 'auths' JSON-object field")
+	}
+	errs := []error{}
+
+	for d, a := range s.Auths {
+		auth, authPresent := a["auth"]
+		if !authPresent {
+			errs = append(errs, fmt.Errorf("invalid pull secret: %q JSON-object requires 'auth' field", d))
+			continue
+		}
+		data, err := base64.StdEncoding.DecodeString(auth.(string))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid pull secret: 'auth' fields of %q are not base64-encoded", d))
+			continue
+		}
+		res := bytes.Split(data, []byte(":"))
+		if len(res) != 2 {
+			errs = append(errs, fmt.Errorf("invalid pull secret: 'auth' for %s is not in 'user:password' format", d))
+		}
+	}
+	return k8serrors.NewAggregate(errs)
 }
 
 func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall) (ctrl.Result, bool, error) {
