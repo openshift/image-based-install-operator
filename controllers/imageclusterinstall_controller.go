@@ -88,7 +88,7 @@ const (
 	clusterConfigDir             = "cluster-configuration"
 	extraManifestsDir            = "extra-manifests"
 	manifestsDir                 = "manifests"
-	networkConfigDir             = "network-configuration"
+	nmstateCMKey                 = "network-config"
 	kubeconfig                   = "kubeconfig"
 	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
 	caBundleFileName             = "tls-ca-bundle.pem"
@@ -424,28 +424,6 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			}
 		}
 
-		if ici.Spec.NetworkConfigRef != nil {
-			networkConfigPath := filepath.Join(filesDir, networkConfigDir)
-			if err := os.MkdirAll(networkConfigPath, 0700); err != nil {
-				return err
-			}
-
-			cm := &corev1.ConfigMap{}
-			key := types.NamespacedName{Name: ici.Spec.NetworkConfigRef.Name, Namespace: ici.Namespace}
-			if err := r.Get(ctx, key, cm); err != nil {
-				return err
-			}
-
-			for name, content := range cm.Data {
-				if !strings.HasSuffix(name, ".nmconnection") {
-					log.Warnf("Ignoring file name %s without .nmconnection suffix", name)
-					continue
-				}
-				if err := os.WriteFile(filepath.Join(networkConfigPath, name), []byte(content), 0644); err != nil {
-					return fmt.Errorf("failed to write network connection file: %w", err)
-				}
-			}
-		}
 		clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
 		if err != nil {
 			return err
@@ -541,7 +519,31 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
+func (r *ImageClusterInstallReconciler) nmstateConfig(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
+	if ici.Spec.NetworkConfigRef == nil {
+		return "", nil
+	}
+
+	nmstateCM := &corev1.ConfigMap{}
+	key := types.NamespacedName{Name: ici.Spec.NetworkConfigRef.Name, Namespace: ici.Namespace}
+	if err := r.Get(ctx, key, nmstateCM); err != nil {
+		return "", fmt.Errorf("failed to get network config ConfigMap %s: %w", key, err)
+	}
+
+	nmstate, present := nmstateCM.Data[nmstateCMKey]
+	if !present {
+		return "", fmt.Errorf("referenced networking ConfigMap %s does not contain the required key %s", key, nmstateCMKey)
+	}
+
+	return nmstate, nil
+}
+
 func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, psData string, file string, existingInfo *lca_api.SeedReconfiguration) error {
+	nmstate, err := r.nmstateConfig(ctx, ici)
+	if err != nil {
+		return err
+	}
+
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
 	if err != nil {
 		return err
@@ -578,6 +580,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		Hostname:                  ici.Spec.Hostname,
 		KubeconfigCryptoRetention: KubeconfigCryptoRetention,
 		PullSecret:                psData,
+		RawNMStateConfig:          nmstate,
 	}
 	data, err := json.Marshal(info)
 	if err != nil {

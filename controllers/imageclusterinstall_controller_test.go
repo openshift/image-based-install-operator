@@ -396,24 +396,19 @@ var _ = Describe("Reconcile", func() {
 		Expect(content).To(Equal(expectedcontent))
 	})
 
-	It("creates files for referenced nmconnection files", func() {
-		netConfigName := "netconfig"
-		netConfigData := map[string]string{
-			"eth0.nmconnection": "some\nconnection\nstring",
-			"eth1.nmconnection": "other\nconnection\nstring",
-			"file":              "stuff",
-		}
-		s := &corev1.ConfigMap{
+	It("copies the nmstate config from a referenced configmap", func() {
+		nmstateString := "some\nnmstate\nstring"
+		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      netConfigName,
+				Name:      "netconfig",
 				Namespace: "test-namespace",
 			},
-			Data: netConfigData,
+			Data: map[string]string{"network-config": nmstateString},
 		}
-		Expect(c.Create(ctx, s)).To(Succeed())
+		Expect(c.Create(ctx, cm)).To(Succeed())
 
 		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: netConfigName,
+			Name: cm.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -426,16 +421,61 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(networkConfigDir, "eth0.nmconnection"))
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(content).To(Equal([]byte("some\nconnection\nstring")))
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(infoOut.RawNMStateConfig).To(Equal(nmstateString))
+	})
 
-		content, err = os.ReadFile(outputFilePath(networkConfigDir, "eth1.nmconnection"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(content).To(Equal([]byte("other\nconnection\nstring")))
+	It("fails when a referenced nmstate configmap is missing", func() {
+		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
+			Name: "netconfig",
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
-		_, err = os.Stat(outputFilePath(networkConfigDir, "file"))
-		Expect(os.IsNotExist(err)).To(BeTrue())
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+	})
+
+	It("failse when the referenced nmstate configmap is missing the required key", func() {
+		nmstateString := "some\nnmstate\nstring"
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "netconfig",
+				Namespace: "test-namespace",
+			},
+			Data: map[string]string{"wrong-key": nmstateString},
+		}
+		Expect(c.Create(ctx, cm)).To(Succeed())
+
+		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
+			Name: cm.Name,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
 
 	It("creates extra manifests", func() {
