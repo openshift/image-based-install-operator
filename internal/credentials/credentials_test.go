@@ -2,19 +2,23 @@ package credentials
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +29,8 @@ var _ = Describe("Credentials", func() {
 		clusterDeployment          *hivev1.ClusterDeployment
 		clusterDeploymentName      = "test-cluster"
 		clusterDeploymentNamespace = "test-namespace"
-		kubeconfigContent          = "fake kubeconfig content"
+		clusterName                = "sno"
+		baseDomain                 = "redhat.com"
 		ctx                        = context.Background()
 	)
 	v1alpha1.AddToScheme(scheme.Scheme)
@@ -39,6 +44,7 @@ var _ = Describe("Credentials", func() {
 		Expect(err).NotTo(HaveOccurred())
 		cm = Credentials{
 			Client: c,
+			Certs:  certs.KubeConfigCertManager{},
 			Log:    logrus.New(),
 			Scheme: scheme.Scheme,
 		}
@@ -47,37 +53,66 @@ var _ = Describe("Credentials", func() {
 				Name:      clusterDeploymentName,
 				Namespace: clusterDeploymentNamespace,
 			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterName: clusterName,
+				BaseDomain:  baseDomain,
+			},
 		}
 	})
 
 	It("EnsureKubeconfigSecret success", func() {
-		err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, []byte(kubeconfigContent))
+		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
 		Expect(err).NotTo(HaveOccurred())
-		// Verify the kubeconfig secret
-		kubeconfigSecret := &corev1.Secret{}
-		err = cm.Client.Get(ctx, client.ObjectKey{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name + "-admin-kubeconfig"}, kubeconfigSecret)
-		Expect(err).NotTo(HaveOccurred())
-		kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
-		Expect(exists).To(BeTrue())
-		Expect(string(kubeconfigSecretData)).To(Equal(kubeconfigContent))
-
+		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
 	})
-	It("EnsureKubeconfigSecret already exists", func() {
-		err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, []byte(kubeconfigContent))
-		Expect(err).NotTo(HaveOccurred())
-		// Call again with different content
-		otherContent := "Some other content"
-		err = cm.EnsureKubeconfigSecret(ctx, clusterDeployment, []byte(otherContent))
-		Expect(err).NotTo(HaveOccurred())
-		// Verify the kubeconfig secret
-		kubeconfigSecret := &corev1.Secret{}
-		err = cm.Client.Get(ctx, client.ObjectKey{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name + "-admin-kubeconfig"}, kubeconfigSecret)
-		Expect(err).NotTo(HaveOccurred())
-		kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
-		Expect(exists).To(BeTrue())
-		Expect(string(kubeconfigSecretData)).To(Equal(otherContent))
-	})
+	It("EnsureKubeconfigSecret no kubeconfig secret", func() {
+		clusterInfo := lca_api.SeedReconfiguration{
+			ClusterName: clusterName,
+			BaseDomain:  baseDomain,
+		}
 
+		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
+		Expect(err).NotTo(HaveOccurred())
+		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
+	})
+	It("EnsureKubeconfigSecret already exists cluster name changed", func() {
+		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		Expect(err).NotTo(HaveOccurred())
+		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		// Call again and check the content is the same
+		clusterInfo := lca_api.SeedReconfiguration{
+			ClusterName:               clusterName,
+			BaseDomain:                baseDomain,
+			KubeconfigCryptoRetention: kubeConfigCryptoRetention,
+		}
+		clusterDeployment.Spec.ClusterName = "newClusterName"
+		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
+		Expect(err).NotTo(HaveOccurred())
+		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
+		// Verify new cluster crypto
+		Expect(kubeConfigCryptoRetention_2).ToNot(Equal(kubeConfigCryptoRetention))
+		// Verify the kubeconfig secret data changed
+		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		Expect(string(kubeconfigSecretData2)).ToNot(Equal(string(kubeconfigSecretData)))
+	})
+	It("EnsureKubeconfigSecret already exists and valid- no op", func() {
+		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		Expect(err).NotTo(HaveOccurred())
+		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		// Call again and check the content is the same
+		clusterInfo := lca_api.SeedReconfiguration{
+			ClusterName:               clusterName,
+			BaseDomain:                baseDomain,
+			KubeconfigCryptoRetention: kubeConfigCryptoRetention,
+		}
+		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
+		Expect(err).NotTo(HaveOccurred())
+		// Verify same cluster crypto
+		Expect(kubeConfigCryptoRetention_2).To(Equal(kubeConfigCryptoRetention))
+		// Verify the kubeconfig secret data hasn't changed
+		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		Expect(string(kubeconfigSecretData2)).To(Equal(string(kubeconfigSecretData)))
+	})
 	It("EnsureAdminPasswordSecret success", func() {
 		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
@@ -166,6 +201,23 @@ var _ = Describe("Credentials", func() {
 	})
 
 })
+
+func verifyKubeconfigSecret(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment) {
+	kubeconfigSecretData := getKubeconfigFromSecret(ctx, kClient, cd)
+	conifg, err := clientcmd.Load(kubeconfigSecretData)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(conifg.Clusters["cluster"].Server).To(Equal(fmt.Sprintf("https://api.%s.%s:6443", cd.Spec.ClusterName, cd.Spec.BaseDomain)))
+	Expect(conifg.CurrentContext).To(Equal("admin"))
+}
+
+func getKubeconfigFromSecret(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment) []byte {
+	kubeconfigSecret := &corev1.Secret{}
+	err := kClient.Get(ctx, client.ObjectKey{Namespace: cd.Namespace, Name: cd.Name + "-admin-kubeconfig"}, kubeconfigSecret)
+	Expect(err).NotTo(HaveOccurred())
+	kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
+	Expect(exists).To(BeTrue())
+	return kubeconfigSecretData
+}
 
 func TestCertManager(t *testing.T) {
 	RegisterFailHandler(Fail)

@@ -119,6 +119,7 @@ func main() {
 	}
 	credentialsManager := credentials.Credentials{
 		Client: mgr.GetClient(),
+		Certs:  certs.KubeConfigCertManager{},
 		Log:    logger,
 		Scheme: mgr.GetScheme(),
 	}

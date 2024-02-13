@@ -12,12 +12,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,15 +34,41 @@ const (
 
 type Credentials struct {
 	client.Client
+	Certs  certs.KubeConfigCertManager
 	Log    logrus.FieldLogger
 	Scheme *runtime.Scheme
 }
 
-func (r *Credentials) EnsureKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, kubeconfigBytes []byte) error {
+func (r *Credentials) EnsureKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, clusterInfo *lca_api.SeedReconfiguration) (lca_api.KubeConfigCryptoRetention, error) {
+	existsAndValid, err := r.kubeconfigExistsAndValid(ctx, cd, clusterInfo)
+	if err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, err
+	}
+	if existsAndValid {
+		return clusterInfo.KubeconfigCryptoRetention, nil
+	}
+	// Generate cluster certs and create a new kubeconfig.
+	// TODO: handle user provided API and ingress certs
+	r.Log.Infof("Generating cluster crypto")
+	if err := r.Certs.GenerateAllCertificates(); err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate certificates: %w", err)
+	}
+	kubeconfigBytes, err := generateKubeConfig(fmt.Sprintf("%s.%s", cd.Spec.ClusterName, cd.Spec.BaseDomain),
+		r.Certs.GetCertificateAuthData(),
+		r.Certs.GetClientCert(),
+		r.Certs.GetClientKey())
+	if err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to generate kubeconfig: %w", err)
+	}
+
 	data := map[string][]byte{
 		"kubeconfig": kubeconfigBytes,
 	}
-	return r.createOrUpdateClusterCredentialSecret(ctx, cd, KubeconfigSecretName(cd.Name), data, kubeconfig)
+
+	if err := r.createOrUpdateClusterCredentialSecret(ctx, cd, KubeconfigSecretName(cd.Name), data, kubeconfig); err != nil {
+		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to create kubeadmin password secret: %w", err)
+	}
+	return r.Certs.GetCrypto(), nil
 }
 
 func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context, cd *hivev1.ClusterDeployment) (string, error) {
@@ -120,12 +151,62 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 	return nil
 }
 
+func (r *Credentials) kubeconfigExistsAndValid(ctx context.Context, cd *hivev1.ClusterDeployment, clusterInfo *lca_api.SeedReconfiguration) (bool, error) {
+	if clusterInfo == nil || clusterInfo.ClusterName != cd.Spec.ClusterName || clusterInfo.BaseDomain != cd.Spec.BaseDomain {
+		return false, nil
+	}
+	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: KubeconfigSecretName(cd.Name)}
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, secretRef, secret)
+	if err == nil {
+		_, exists := secret.Data["kubeconfig"]
+		if !exists {
+			r.Log.Warn("failed to find kubeconfig in secret, generating new one")
+			return false, nil
+		}
+		// no changes to the cluster info, no error and the secret data have what we want.
+		return true, nil
+	}
+	if !errors.IsNotFound(err) {
+		return false, fmt.Errorf("failed to get kubeconfig secret: %w", err)
+	}
+	return false, nil
+}
+
 func KubeconfigSecretName(clusterDeploymentName string) string {
 	return clusterDeploymentName + "-admin-kubeconfig"
 }
 
 func KubeadminPasswordSecretName(clusterDeploymentName string) string {
 	return clusterDeploymentName + "-admin-password"
+}
+
+func generateKubeConfig(url string, certificateAuthData, userClientCert, userClientKey []byte) ([]byte, error) {
+	kubeCfg := clientcmdapi.Config{
+		Kind:       "Config",
+		APIVersion: "v1",
+	}
+	kubeCfg.Clusters = map[string]*clientcmdapi.Cluster{
+		"cluster": {
+			Server:                   fmt.Sprintf("https://api.%s:6443", url),
+			CertificateAuthorityData: certificateAuthData,
+		},
+	}
+	kubeCfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
+		"admin": {
+			ClientCertificateData: userClientCert,
+			ClientKeyData:         userClientKey,
+		},
+	}
+	kubeCfg.Contexts = map[string]*clientcmdapi.Context{
+		"admin": {
+			Cluster:   "cluster",
+			AuthInfo:  "admin",
+			Namespace: "default",
+		},
+	}
+	kubeCfg.CurrentContext = "admin"
+	return clientcmd.Write(kubeCfg)
 }
 
 func generateKubeadminPassword() (string, error) {

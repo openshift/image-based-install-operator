@@ -3,11 +3,9 @@ package certs
 import (
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"testing"
 	"time"
 
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/cert"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,6 +20,7 @@ var _ = Describe("KubeConfigCertManager", func() {
 		var err error
 		Expect(err).NotTo(HaveOccurred())
 		cm = KubeConfigCertManager{}
+		cm.dumpExistingCertificates()
 	})
 
 	It("generateCA success", func() {
@@ -37,9 +36,9 @@ var _ = Describe("KubeConfigCertManager", func() {
 		Expect(string(cm.GetCrypto().KubeAPICrypto.ServingCrypto.LoadbalancerSignerPrivateKey)).Should(ContainSubstring("BEGIN RSA PRIVATE KEY"))
 		Expect(string(cm.GetCrypto().KubeAPICrypto.ServingCrypto.LocalhostSignerPrivateKey)).Should(ContainSubstring("BEGIN RSA PRIVATE KEY"))
 		Expect(string(cm.GetCrypto().KubeAPICrypto.ServingCrypto.ServiceNetworkSignerPrivateKey)).Should(ContainSubstring("BEGIN RSA PRIVATE KEY"))
-		// verify All 3 api certs are in CertificateAuthData
-		Expect(cm.CertificateAuthData).ToNot(BeNil())
-		certs, err := cert.ParseCertsPEM(cm.CertificateAuthData)
+		// verify All 3 api certs are in certificateAuthData
+		Expect(cm.certificateAuthData).ToNot(BeNil())
+		certs, err := cert.ParseCertsPEM(cm.certificateAuthData)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(certs)).To(Equal(3))
 		for _, cert := range certs {
@@ -53,14 +52,14 @@ var _ = Describe("KubeConfigCertManager", func() {
 		// verify ingress CA exists
 		Expect(string(cm.GetCrypto().IngresssCrypto.IngressCA)).Should(ContainSubstring("BEGIN RSA PRIVATE KEY"))
 
-		block, _ := pem.Decode(cm.CertificateAuthData)
+		block, _ := pem.Decode(cm.certificateAuthData)
 		Expect(block).NotTo(Equal(nil))
 		// Parse the CA certificate
 		ingressCert, err := x509.ParseCertificate(block.Bytes)
 		checkCertValidity(ingressCert, time.Duration(validityTwoYearsInDays)*24*time.Hour)
-		// verify ingress cert in CertificateAuthData
-		Expect(cm.CertificateAuthData).ToNot(BeNil())
-		certs, err := cert.ParseCertsPEM(cm.CertificateAuthData)
+		// verify ingress cert in certificateAuthData
+		Expect(cm.certificateAuthData).ToNot(BeNil())
+		certs, err := cert.ParseCertsPEM(cm.certificateAuthData)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(certs)).To(Equal(1))
 		Expect(certs[0].Subject.CommonName).Should(ContainSubstring("ingress-operator"))
@@ -77,21 +76,6 @@ var _ = Describe("KubeConfigCertManager", func() {
 		Expect(err).NotTo(HaveOccurred())
 		cert.CheckSignatureFrom(ca.Config.Certs[0])
 		checkCertValidity(cert, time.Duration(validityTenYearsInDays)*24*time.Hour)
-	})
-
-	It("GenerateKubeConfig", func() {
-		apiUrl := "apiurl.com"
-		cm.userClientCert = []byte("userClientCert")
-		cm.userClientKey = []byte("userClientKey")
-		kubeconifg, err := cm.GenerateKubeConfig(apiUrl)
-		Expect(err).NotTo(HaveOccurred())
-		// Load the kubeconfig
-		conifg, err := clientcmd.Load(kubeconifg)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(conifg.Clusters["cluster"].Server).To(Equal(fmt.Sprintf("https://api.%s:6443", apiUrl)))
-		Expect(string(conifg.AuthInfos["admin"].ClientKeyData)).To(Equal("userClientKey"))
-		Expect(string(conifg.AuthInfos["admin"].ClientCertificateData)).To(Equal("userClientCert"))
-		Expect(conifg.CurrentContext).To(Equal("admin"))
 	})
 })
 
