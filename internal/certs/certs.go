@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"k8s.io/apiserver/pkg/authentication/user"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -15,7 +13,7 @@ import (
 
 type KubeConfigCertManager struct {
 	crypto              lca_api.KubeConfigCryptoRetention
-	CertificateAuthData []byte
+	certificateAuthData []byte
 	userClientCert      []byte
 	userClientKey       []byte
 }
@@ -34,6 +32,7 @@ const (
 )
 
 func (r *KubeConfigCertManager) GenerateAllCertificates() error {
+	r.dumpExistingCertificates()
 	err := r.GenerateKubeApiserverServingSigningCerts()
 	if err != nil {
 		return fmt.Errorf("failed to generate the kube apiserver serving signing certificates: %w", err)
@@ -68,7 +67,7 @@ func (r *KubeConfigCertManager) GenerateKubeApiserverServingSigningCerts() error
 		return err
 	}
 	// Append the PEM-encoded certificate to the cluster CA bundle
-	r.CertificateAuthData = append(r.CertificateAuthData, certBytes...)
+	r.certificateAuthData = append(r.certificateAuthData, certBytes...)
 	// Save the private key to be added to cluster config
 	r.crypto.KubeAPICrypto.ServingCrypto.LoadbalancerSignerPrivateKey = lca_api.PEM(keyBytes)
 
@@ -77,7 +76,7 @@ func (r *KubeConfigCertManager) GenerateKubeApiserverServingSigningCerts() error
 		return err
 	}
 	// Append the PEM-encoded certificate to the cluster CA bundle
-	r.CertificateAuthData = append(r.CertificateAuthData, certBytes...)
+	r.certificateAuthData = append(r.certificateAuthData, certBytes...)
 	// Save the private key to be added to cluster config
 	r.crypto.KubeAPICrypto.ServingCrypto.LocalhostSignerPrivateKey = lca_api.PEM(keyBytes)
 
@@ -86,15 +85,27 @@ func (r *KubeConfigCertManager) GenerateKubeApiserverServingSigningCerts() error
 		return err
 	}
 	// Append the PEM-encoded certificate to the cluster CA bundle
-	r.CertificateAuthData = append(r.CertificateAuthData, certBytes...)
+	r.certificateAuthData = append(r.certificateAuthData, certBytes...)
 	// Save the private key to be added to cluster config
 	r.crypto.KubeAPICrypto.ServingCrypto.ServiceNetworkSignerPrivateKey = lca_api.PEM(keyBytes)
 
 	return nil
 }
 
-func (r *KubeConfigCertManager) GetCrypto() *lca_api.KubeConfigCryptoRetention {
-	return &r.crypto
+func (r *KubeConfigCertManager) GetCrypto() lca_api.KubeConfigCryptoRetention {
+	return r.crypto
+}
+
+func (r *KubeConfigCertManager) GetCertificateAuthData() []byte {
+	return r.certificateAuthData
+}
+
+func (r *KubeConfigCertManager) GetClientCert() []byte {
+	return r.userClientCert
+}
+
+func (r *KubeConfigCertManager) GetClientKey() []byte {
+	return r.userClientCert
 }
 
 // GenerateIngressServingSigningCerts Create the ingress serving signer CAs and adds them to the cluster CA bundle
@@ -106,7 +117,7 @@ func (r *KubeConfigCertManager) generateIngressServingSigningCerts() error {
 		return err
 	}
 	// Append the PEM-encoded certificate to the cluster CA bundle
-	r.CertificateAuthData = append(r.CertificateAuthData, certBytes...)
+	r.certificateAuthData = append(r.certificateAuthData, certBytes...)
 	// Append the PEM-encoded certificate to the cluster CA bundle
 	r.crypto.IngresssCrypto.IngressCA = lca_api.PEM(keyBytes)
 	return nil
@@ -121,32 +132,11 @@ func (r *KubeConfigCertManager) generateServingSigningCerts(commonName string, v
 	return ca.Config.GetPEMBytes()
 }
 
-func (r *KubeConfigCertManager) GenerateKubeConfig(url string) ([]byte, error) {
-	kubeCfg := clientcmdapi.Config{
-		Kind:       "Config",
-		APIVersion: "v1",
-	}
-	kubeCfg.Clusters = map[string]*clientcmdapi.Cluster{
-		"cluster": {
-			Server:                   fmt.Sprintf("https://api.%s:6443", url),
-			CertificateAuthorityData: r.CertificateAuthData,
-		},
-	}
-	kubeCfg.AuthInfos = map[string]*clientcmdapi.AuthInfo{
-		"admin": {
-			ClientCertificateData: r.userClientCert,
-			ClientKeyData:         r.userClientKey,
-		},
-	}
-	kubeCfg.Contexts = map[string]*clientcmdapi.Context{
-		"admin": {
-			Cluster:   "cluster",
-			AuthInfo:  "admin",
-			Namespace: "default",
-		},
-	}
-	kubeCfg.CurrentContext = "admin"
-	return clientcmd.Write(kubeCfg)
+func (r *KubeConfigCertManager) dumpExistingCertificates() {
+	r.certificateAuthData = nil
+	r.userClientCert = nil
+	r.userClientKey = nil
+	r.crypto = lca_api.KubeConfigCryptoRetention{}
 }
 
 func generateSelfSignedCACertificate(commonName string, validity int) (*crypto.CA, error) {

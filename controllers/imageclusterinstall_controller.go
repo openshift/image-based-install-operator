@@ -431,21 +431,16 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			return err
 		}
 		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
-		crypto := &lca_api.KubeConfigCryptoRetention{}
-		if clusterInfo == nil || clusterInfo.ClusterName != cd.Spec.ClusterName || clusterInfo.BaseDomain != cd.Spec.BaseDomain {
-			// handle first cert generation as well as cases the cluster name or baseDomain changed, and we need a new kubeconfig.
-			crypto, err = r.generateClusterCrypto(ctx, cd)
-			if err != nil {
-				return err
-			}
-		} else {
-			crypto = &clusterInfo.KubeconfigCryptoRetention
+		crypto, err := r.Credentials.EnsureKubeconfigSecret(ctx, cd, clusterInfo)
+		if err != nil {
+			return fmt.Errorf("failed to ensure kubeconifg secret: %w", err)
 		}
+
 		kubeadminPasswordHash, err := r.Credentials.EnsureAdminPasswordSecret(ctx, cd)
 		if err != nil {
 			return fmt.Errorf("failed to ensure admin password secret: %w", err)
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, *crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo); err != nil {
+		if err := r.writeClusterInfo(ctx, log, ici, cd, crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -479,23 +474,6 @@ func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(clusterInfoFilePa
 		return nil
 	}
 	return &clusterInfo
-}
-
-func (r *ImageClusterInstallReconciler) generateClusterCrypto(ctx context.Context, cd *hivev1.ClusterDeployment) (*lca_api.KubeConfigCryptoRetention, error) {
-	// TODO: handle user provided API and ingress certs
-	r.Log.Infof("Generating cluster crypto")
-	if err := r.CertManager.GenerateAllCertificates(); err != nil {
-		return nil, fmt.Errorf("failed to generate certificates: %w", err)
-	}
-	kubeconfigBytes, err := r.CertManager.GenerateKubeConfig(fmt.Sprintf("%s.%s", cd.Spec.ClusterName, cd.Spec.BaseDomain))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate kubeconfig: %w", err)
-	}
-	err = r.EnsureKubeconfigSecret(ctx, cd, kubeconfigBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to creata kubeconfig secret: %w", err)
-	}
-	return r.CertManager.GetCrypto(), nil
 }
 
 func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
