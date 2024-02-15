@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -136,7 +136,7 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 		Kind:               deploymentGVK.Kind,
 		Name:               cd.Name,
 		UID:                cd.UID,
-		BlockOwnerDeletion: pointer.Bool(true),
+		BlockOwnerDeletion: ptr.To(true),
 	}}
 	mutateFn := func() error {
 		// Update the Secret object with the desired data
