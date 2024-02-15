@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-13T13:57:45Z"
+    createdAt: "2024-02-15T13:53:12Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -108,6 +108,12 @@ spec:
           - patch
           - update
           - watch
+        - apiGroups:
+          - hive.openshift.io
+          resources:
+          - clusterdeployments/finalizers
+          verbs:
+          - update
         - apiGroups:
           - hive.openshift.io
           resources:
