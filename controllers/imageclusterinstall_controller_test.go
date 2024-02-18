@@ -354,6 +354,24 @@ var _ = Describe("Reconcile", func() {
 
 		Expect(content).To(Equal([]byte("mycabundle")))
 	})
+	It("creates the invoker CM", func() {
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", invokerCMFileName))
+		Expect(err).NotTo(HaveOccurred())
+		cm := corev1.ConfigMap{}
+		json.Unmarshal(content, &cm)
+		Expect(cm.Data["invoker"]).To(Equal(imageBasedInstallInvoker))
+	})
 	It("creates the imageDigestMirrorSet", func() {
 		imageDigestMirrors := []apicfgv1.ImageDigestMirrors{
 			{
