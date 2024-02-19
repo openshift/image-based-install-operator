@@ -138,8 +138,20 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		Name:      ici.Spec.ClusterDeploymentRef.Name,
 	}
 	if err := r.Get(ctx, cdKey, clusterDeployment); err != nil {
-		log.WithError(err).Errorf("failed to get ClusterDeployment %s", cdKey)
-		return ctrl.Result{}, err
+		if !errors.IsNotFound(err) {
+			log.WithError(err).Error(fmt.Sprintf(
+				"failed to get ClusterDeployment with name '%s' in namespace '%s'",
+				cdKey.Name, cdKey.Namespace))
+			return ctrl.Result{}, err
+		}
+		errorMessagge := fmt.Errorf("clusterDeployment with name '%s' in namespace '%s' not found",
+			cdKey.Name, cdKey.Namespace)
+		log.WithError(err).Error(errorMessagge)
+		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge, ""); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			return ctrl.Result{}, updateErr
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
