@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-15T13:53:12Z"
+    createdAt: "2024-02-22T14:26:41Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -189,10 +189,10 @@ spec:
                 resources:
                   limits:
                     cpu: 500m
-                    memory: 128Mi
+                    memory: 750Mi
                   requests:
                     cpu: 10m
-                    memory: 64Mi
+                    memory: 250Mi
                 securityContext:
                   allowPrivilegeEscalation: false
                   capabilities:
