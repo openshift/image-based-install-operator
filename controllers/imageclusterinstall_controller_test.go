@@ -1687,7 +1687,6 @@ var _ = Describe("proxy", func() {
 	)
 
 	BeforeEach(func() {
-
 		r = &ImageClusterInstallReconciler{
 			Client: nil,
 			Scheme: scheme.Scheme,
