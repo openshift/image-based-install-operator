@@ -250,6 +250,21 @@ spec:
                 description: 'NodeIP is the desired IP for the host Deprecated: this
                   field is ignored (will be removed in a future release).'
                 type: string
+              proxy:
+                description: Proxy defines the proxy settings to be applied in relocated
+                  cluster
+                properties:
+                  httpProxy:
+                    description: HTTPProxy is the URL of the proxy for HTTP requests.
+                    type: string
+                  httpsProxy:
+                    description: HTTPSProxy is the URL of the proxy for HTTPS requests.
+                    type: string
+                  noProxy:
+                    description: NoProxy is a comma-separated list of domains and
+                      CIDRs for which the proxy should not be used.
+                    type: string
+                type: object
               sshKey:
                 description: SSHKey is the public Secure Shell (SSH) key to provide
                   access to instances. Equivalent to install-config.yaml's sshKey.

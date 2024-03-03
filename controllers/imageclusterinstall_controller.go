@@ -576,6 +576,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		PullSecret:                psData,
 		RawNMStateConfig:          nmstate,
 		KubeadminPasswordHash:     kubeadminPasswordHash,
+		Proxy:                     r.proxy(ici.Spec.Proxy),
 	}
 	data, err := json.Marshal(info)
 	if err != nil {
@@ -586,6 +587,18 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 	}
 
 	return nil
+}
+
+// all the logic of creating right noProxy is part of LCA, here we just pass it as is
+func (r *ImageClusterInstallReconciler) proxy(iciProxy *v1alpha1.Proxy) *lca_api.Proxy {
+	if iciProxy == nil || (iciProxy.HTTPSProxy == "" && iciProxy.HTTPProxy == "") {
+		return nil
+	}
+	return &lca_api.Proxy{
+		HTTPProxy:  iciProxy.HTTPProxy,
+		HTTPSProxy: iciProxy.HTTPSProxy,
+		NoProxy:    iciProxy.NoProxy,
+	}
 }
 
 func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
