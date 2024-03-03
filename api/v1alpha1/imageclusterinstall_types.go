@@ -91,6 +91,10 @@ type ImageClusterInstallSpec struct {
 	// Equivalent to install-config.yaml's machineNetwork.
 	// +optional.
 	MachineNetwork string `json:"machine_network,omitempty"`
+
+	// Proxy defines the proxy settings to be applied in relocated cluster
+	// +optional
+	Proxy *Proxy `json:"proxy,omitempty"`
 }
 
 // ImageClusterInstallStatus defines the observed state of ImageClusterInstall
@@ -125,6 +129,23 @@ type ImageClusterInstall struct {
 
 	Spec   ImageClusterInstallSpec   `json:"spec,omitempty"`
 	Status ImageClusterInstallStatus `json:"status,omitempty"`
+}
+
+// Proxy defines the proxy settings for the cluster.
+// At least one of HTTPProxy or HTTPSProxy is required.
+type Proxy struct {
+	// HTTPProxy is the URL of the proxy for HTTP requests.
+	// +optional
+	HTTPProxy string `json:"httpProxy,omitempty"`
+
+	// HTTPSProxy is the URL of the proxy for HTTPS requests.
+	// +optional
+	HTTPSProxy string `json:"httpsProxy,omitempty"`
+
+	// NoProxy is a comma-separated list of domains and CIDRs for which the proxy should not be
+	// used.
+	// +optional
+	NoProxy string `json:"noProxy,omitempty"`
 }
 
 //+kubebuilder:object:root=true

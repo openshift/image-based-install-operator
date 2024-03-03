@@ -1507,3 +1507,33 @@ var _ = Describe("handleFinalizer", func() {
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
 	})
 })
+
+var _ = Describe("proxy", func() {
+	var (
+		r *ImageClusterInstallReconciler
+	)
+
+	BeforeEach(func() {
+
+		r = &ImageClusterInstallReconciler{
+			Client: nil,
+			Scheme: scheme.Scheme,
+			Log:    logrus.New(),
+		}
+	})
+
+	It("Proxy is nil, nothing to change", func() {
+		Expect(r.proxy(nil)).To(BeNil())
+	})
+
+	It("If https and http proxy were not set, nothing to set", func() {
+		Expect(r.proxy(&v1alpha1.Proxy{})).To(BeNil())
+	})
+
+	It("Verify no proxy was set", func() {
+		iciProxy := &v1alpha1.Proxy{HTTPSProxy: "aaa", NoProxy: "test"}
+		proxy := r.proxy(iciProxy)
+		Expect(proxy.HTTPSProxy).To(Equal(iciProxy.HTTPSProxy))
+		Expect(proxy.NoProxy).To(Equal(iciProxy.NoProxy))
+	})
+})
