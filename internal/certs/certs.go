@@ -105,7 +105,7 @@ func (r *KubeConfigCertManager) GetClientCert() []byte {
 }
 
 func (r *KubeConfigCertManager) GetClientKey() []byte {
-	return r.userClientCert
+	return r.userClientKey
 }
 
 // GenerateIngressServingSigningCerts Create the ingress serving signer CAs and adds them to the cluster CA bundle
