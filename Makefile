@@ -107,6 +107,23 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet ## Run tests.
 	go test ./... -coverprofile cover.out
 
+.PHONY: deploy-integration-test
+deploy-integration-test:
+	./hack/integration-test/wait-for-ready.sh
+	oc apply -f './hack/crds/*.yaml'
+	oc apply -f ./hack/integration-test/namespace.yaml
+	oc create secret docker-registry -n ibi-test pull-secret --from-file=.dockerconfigjson=./hack/integration-test/pull-secret.json
+	oc apply -f ./hack/integration-test/clusterimageset.yaml
+	oc apply -f ./hack/integration-test/clusterdeployment.yaml
+	oc apply -f ./hack/integration-test/imageclusterinstall.yaml
+
+.PHONY: validate-integration-test
+validate-integration-test:
+	./hack/integration-test/validate.sh
+
+.PHONY: run-integration-test
+run-integration-test: deploy deploy-integration-test validate-integration-test
+
 ##@ Build
 
 .PHONY: build

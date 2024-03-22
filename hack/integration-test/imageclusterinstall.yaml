@@ -1,0 +1,12 @@
+apiVersion: extensions.hive.openshift.io/v1alpha1
+kind: ImageClusterInstall
+metadata:
+  name: ibi-test
+  namespace: ibi-test
+spec:
+  clusterDeploymentRef:
+    name: ibi-test
+  hostname: ibitesthost
+  nodeIP: 192.168.111.25
+  imageSetRef:
+    name: 4.14.10
