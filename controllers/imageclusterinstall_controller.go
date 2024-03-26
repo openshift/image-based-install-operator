@@ -562,6 +562,9 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		log.Infof("created new infra ID %s", infraID)
 	}
 
+	// TODO: add proxy to SeedReconfiguration when it will be supported
+	ici.Spec.Proxy = r.updateNoProxy(ici.Spec.Proxy, cd.Spec.ClusterName, cd.Spec.ClusterName)
+
 	info := lca_api.SeedReconfiguration{
 		APIVersion:                lca_api.SeedReconfigurationVersion,
 		BaseDomain:                cd.Spec.BaseDomain,
@@ -586,6 +589,36 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 	}
 
 	return nil
+}
+
+// updateNoProxy taken from assisted-service, adds required no-proxy params
+// https://github.com/openshift/assisted-service/blob/master/internal/host/hostcommands/install_cmd.go#L194
+func (r *ImageClusterInstallReconciler) updateNoProxy(proxy *v1alpha1.Proxy, clusterName, baseDomain string) *v1alpha1.Proxy {
+	if proxy == nil || (proxy.HTTPSProxy == "" && proxy.HTTPProxy == "") {
+		return nil
+	}
+	noProxyTrim := strings.TrimSpace(proxy.NoProxy)
+	// everything is allowed, no point to add new values
+	if noProxyTrim == "*" {
+		proxy.NoProxy = noProxyTrim
+		return proxy
+	}
+
+	var noProxyUpdated []string
+	if noProxyTrim != "" {
+		noProxyUpdated = append(noProxyUpdated, noProxyTrim)
+	}
+	// if we set proxy we need to update no proxy with no proxy params as installer.
+	// it must be able to connect to api int.
+	noProxyUpdated = append(noProxyUpdated,
+		"127.0.0.1",
+		"localhost",
+		".svc",
+		".cluster.local",
+		fmt.Sprintf("api-int.%s.%s", clusterName, baseDomain))
+	proxy.NoProxy = strings.Join(noProxyUpdated, ",")
+
+	return proxy
 }
 
 func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {

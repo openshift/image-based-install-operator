@@ -1506,3 +1506,46 @@ var _ = Describe("handleFinalizer", func() {
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
 	})
 })
+
+var _ = Describe("updateProxy", func() {
+	var (
+		r                       *ImageClusterInstallReconciler
+		clusterInstallNamespace = "test-namespace"
+		cd                      *hivev1.ClusterDeployment
+	)
+
+	BeforeEach(func() {
+		cd = &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-cd",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterName: "proxy",
+				BaseDomain:  "proxy.com",
+			},
+		}
+		r = &ImageClusterInstallReconciler{
+			Client: nil,
+			Scheme: scheme.Scheme,
+			Log:    logrus.New(),
+		}
+	})
+
+	It("Proxy is nil, nothing to change", func() {
+		//proxy := r.updateNoProxy(nil, cd.Spec.ClusterName, cd.Spec.BaseDomain)
+		Expect(r.updateNoProxy(nil, cd.Spec.ClusterName, cd.Spec.BaseDomain)).To(BeNil())
+	})
+
+	It("If https and http proxy were not set, nothing to set", func() {
+		Expect(r.updateNoProxy(&v1alpha1.Proxy{}, cd.Spec.ClusterName, cd.Spec.BaseDomain)).To(BeNil())
+	})
+
+	It("Verify no proxy was set", func() {
+		proxy := &v1alpha1.Proxy{HTTPSProxy: "aaa", NoProxy: "test"}
+		proxy = r.updateNoProxy(proxy, cd.Spec.ClusterName, cd.Spec.BaseDomain)
+		Expect(proxy.HTTPSProxy).To(Equal("aaa"))
+		Expect(proxy.NoProxy).Should(ContainSubstring(
+			fmt.Sprintf("api-int.%s.%s", cd.Spec.ClusterName, cd.Spec.BaseDomain)))
+	})
+})
