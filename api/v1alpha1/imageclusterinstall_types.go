@@ -106,6 +106,9 @@ type ImageClusterInstallStatus struct {
 
 	// ConfigurationImageURL is the externally accessible URL for downloading the image containing the SNO configuration
 	ConfigurationImageURL string `json:"configurationImageURL,omitempty"`
+
+	// BootTime indicates the time at which the host was requested to boot. Used to determine install timeouts.
+	BootTime metav1.Time `json:"bootTime,omitempty"`
 }
 
 type BareMetalHostReference struct {
