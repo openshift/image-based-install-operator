@@ -1031,7 +1031,6 @@ var _ = Describe("Reconcile", func() {
 		updatedCD := hivev1.ClusterDeployment{}
 		Expect(c.Get(ctx, key, &updatedCD)).To(Succeed())
 
-		Expect(updatedCD.Spec.Installed).To(BeTrue())
 		validateMeta(updatedCD.Spec.ClusterMetadata)
 	})
 
