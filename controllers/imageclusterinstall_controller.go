@@ -201,6 +201,9 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 		patch := client.MergeFrom(ici.DeepCopy())
 		ici.Status.BareMetalHostRef = ici.Spec.BareMetalHostRef.DeepCopy()
+		if ici.Status.BootTime.IsZero() {
+			ici.Status.BootTime = metav1.Now()
+		}
 		if err := r.Status().Patch(ctx, ici, patch); err != nil {
 			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 			return ctrl.Result{}, err
