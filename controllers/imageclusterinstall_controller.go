@@ -677,8 +677,7 @@ func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context
 	kubeconfigSecret := credentials.KubeconfigSecretName(cd.Name)
 	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(cd.Name)
 
-	if cd.Spec.Installed &&
-		cd.Spec.ClusterMetadata != nil &&
+	if cd.Spec.ClusterMetadata != nil &&
 		cd.Spec.ClusterMetadata.ClusterID == clusterMeta.ClusterID &&
 		cd.Spec.ClusterMetadata.InfraID == clusterMeta.InfraID &&
 		cd.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret &&
@@ -688,7 +687,6 @@ func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context
 	}
 
 	patch := client.MergeFrom(cd.DeepCopy())
-	cd.Spec.Installed = true
 	cd.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
 		ClusterID: clusterMeta.ClusterID,
 		InfraID:   clusterMeta.InfraID,
