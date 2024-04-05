@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -45,6 +46,7 @@ import (
 	"github.com/openshift/image-based-install-operator/controllers"
 	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
+	"github.com/openshift/image-based-install-operator/internal/monitor"
 	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )
@@ -136,13 +138,15 @@ func main() {
 	}
 
 	if err = (&controllers.ImageClusterInstallReconciler{
-		Client:      mgr.GetClient(),
-		Credentials: credentialsManager,
-		Log:         logger,
-		Scheme:      mgr.GetScheme(),
-		Options:     controllerOptions,
-		BaseURL:     baseURL,
-		CertManager: certs.KubeConfigCertManager{},
+		Client:                       mgr.GetClient(),
+		Credentials:                  credentialsManager,
+		Log:                          logger,
+		Scheme:                       mgr.GetScheme(),
+		Options:                      controllerOptions,
+		BaseURL:                      baseURL,
+		CertManager:                  certs.KubeConfigCertManager{},
+		DefaultInstallTimeout:        time.Hour,
+		GetSpokeClusterInstallStatus: monitor.IsClusterInstalled,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)
