@@ -42,6 +42,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8serrors "k8s.io/apimachinery/pkg/util/errors"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -59,6 +61,7 @@ import (
 	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
+	"github.com/openshift/image-based-install-operator/internal/monitor"
 	"github.com/sirupsen/logrus"
 )
 
@@ -74,11 +77,13 @@ type ImageClusterInstallReconcilerOptions struct {
 type ImageClusterInstallReconciler struct {
 	client.Client
 	credentials.Credentials
-	Log         logrus.FieldLogger
-	Scheme      *runtime.Scheme
-	Options     *ImageClusterInstallReconcilerOptions
-	BaseURL     string
-	CertManager certs.KubeConfigCertManager
+	Log                          logrus.FieldLogger
+	Scheme                       *runtime.Scheme
+	Options                      *ImageClusterInstallReconcilerOptions
+	BaseURL                      string
+	CertManager                  certs.KubeConfigCertManager
+	DefaultInstallTimeout        time.Duration
+	GetSpokeClusterInstallStatus monitor.GetInstallStatusFunc
 }
 
 type imagePullSecret struct {
@@ -96,6 +101,7 @@ const (
 	imageBasedInstallInvoker     = "image-based-install"
 	invokerCMFileName            = "invoker-cm.yaml"
 	imageDigestMirrorSetFileName = "image-digest-sources.json"
+	installTimeoutAnnotation     = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -219,13 +225,130 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
-			log.WithError(err).Error("failed to set installed conditions")
+		// Don't check timeout or install status if cluster is already installed
+		if clusterDeployment.Spec.Installed {
+			return ctrl.Result{}, nil
+		}
+
+		timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
+		if err != nil {
+			log.WithError(err).Error("failed to check for install timeout")
 			return ctrl.Result{}, err
 		}
+		if timedout {
+			log.Info("cluster install timed out")
+			return ctrl.Result{}, nil
+		}
+
+		res, err := r.checkClusterStatus(ctx, log, ici, clusterDeployment)
+		if err != nil {
+			log.WithError(err).Error("failed to check cluster status")
+			return ctrl.Result{}, err
+		}
+		return res, nil
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ImageClusterInstallReconciler) checkClusterTimeout(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, defaultTimeout time.Duration) (bool, error) {
+	timeout := defaultTimeout
+
+	if timeoutOverride, present := ici.Annotations[installTimeoutAnnotation]; present {
+		var err error
+		timeout, err = time.ParseDuration(timeoutOverride)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse install timeout annotation value %s: %w", timeoutOverride, err)
+		}
+	}
+
+	if ici.Status.BootTime.Add(timeout).Before(time.Now()) {
+		log.Error("timed out waiting for cluster to finish installation")
+		err := r.setClusterTimeoutConditions(ctx, ici, timeout.String())
+		if err != nil {
+			log.WithError(err).Error("failed to set cluster timeout conditions")
+		}
+		return true, err
+	}
+
+	return false, nil
+}
+
+func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, clusterDeployment *hivev1.ClusterDeployment) (ctrl.Result, error) {
+	spokeClient, err := r.spokeClient(ctx, ici)
+	if err != nil {
+		log.WithError(err).Error("failed to create spoke client")
+		return ctrl.Result{}, err
+	}
+	installed, err := r.GetSpokeClusterInstallStatus(ctx, log, spokeClient)
+	if err != nil {
+		log.WithError(err).Error("failed to monitor spoke cluster")
+		return ctrl.Result{}, err
+	}
+	if !installed {
+		log.Info("cluster install in progress")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+	log.Info("cluster is installed")
+
+	// set installed in spec and conditions after monitoring has finished
+	patch := client.MergeFrom(clusterDeployment.DeepCopy())
+	clusterDeployment.Spec.Installed = true
+	if err := r.Patch(ctx, clusterDeployment, patch); err != nil {
+		log.WithError(err).Error("failed to mark cluster deployment as installed")
+		return ctrl.Result{}, err
+	}
+	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
+		log.WithError(err).Error("failed to set installed conditions")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ImageClusterInstallReconciler) spokeClient(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (client.Client, error) {
+	if ici.Spec.ClusterMetadata == nil || ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == "" {
+		return nil, fmt.Errorf("kubeconfig secret must be set to get spoke client")
+	}
+	key := types.NamespacedName{
+		Namespace: ici.Namespace,
+		Name:      ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name,
+	}
+
+	secret := corev1.Secret{}
+	if err := r.Get(ctx, key, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get admin kubeconfig secret %s: %w", key, err)
+	}
+
+	if secret.Data == nil {
+		return nil, fmt.Errorf("Secret %s/%s does not contain any data", secret.Namespace, secret.Name)
+	}
+
+	kubeconfig, ok := secret.Data["kubeconfig"]
+	if !ok || len(kubeconfig) == 0 {
+		return nil, fmt.Errorf("Secret data for %s/%s does not contain kubeconfig", secret.Namespace, secret.Name)
+	}
+
+	clientConfig, err := clientcmd.NewClientConfigFromBytes(kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get clientconfig from kubeconfig data: %w", err)
+	}
+
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get restconfig for kube client: %w", err)
+	}
+
+	var schemes = runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(schemes))
+	utilruntime.Must(apicfgv1.AddToScheme(schemes))
+
+	spokeClient, err := client.New(restConfig, client.Options{Scheme: schemes})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize spoke client: %s", err)
+	}
+
+	return spokeClient, nil
 }
 
 func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj client.Object) []reconcile.Request {

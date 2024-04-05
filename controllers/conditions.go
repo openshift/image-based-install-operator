@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -117,6 +118,29 @@ func (r *ImageClusterInstallReconciler) setClusterInstalledConditions(ctx contex
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:   hivev1.ClusterInstallFailed,
 		Status: corev1.ConditionFalse,
+	})
+
+	return r.Status().Patch(ctx, ici, patch)
+}
+
+func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, timeout string) error {
+	message := fmt.Sprintf("Cluster failed to install within the timeout (%s)", timeout)
+	patch := client.MergeFrom(ici.DeepCopy())
+	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
+		Type:    hivev1.ClusterInstallCompleted,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallTimedoutReason,
+		Message: message,
+	})
+	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
+		Type:   hivev1.ClusterInstallStopped,
+		Status: corev1.ConditionTrue,
+	})
+	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
+		Type:    hivev1.ClusterInstallFailed,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallTimedoutReason,
+		Message: message,
 	})
 
 	return r.Status().Patch(ctx, ici, patch)

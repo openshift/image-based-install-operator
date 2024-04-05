@@ -32,6 +32,8 @@ const (
 	HostConfiguraionFailedReason      = "HostConfigurationFailed"
 	HostConfiguraionSucceededReason   = "HostConfigurationSucceeded"
 	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
+
+	InstallTimedoutReason = "ClusterInstallationTimedOut"
 )
 
 // ImageClusterInstallSpec defines the desired state of ImageClusterInstall
