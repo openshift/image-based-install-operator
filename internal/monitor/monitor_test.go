@@ -17,7 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("IsClusterInstalled", func() {
+var _ = Describe("GetClusterInstallStatus", func() {
 	var (
 		ctx = context.Background()
 		log = logrus.New()
@@ -72,9 +72,11 @@ var _ = Describe("IsClusterInstalled", func() {
 		createNode("node3", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionTrue)
 
-		installed, err := IsClusterInstalled(ctx, log, c)
+		status, err := GetClusterInstallStatus(ctx, log, c)
 		Expect(err).To(BeNil())
-		Expect(installed).To(BeTrue())
+		Expect(status.Installed).To(BeTrue())
+		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
+		Expect(status.NodesStatus).To(Equal(nodesReadyMessage))
 	})
 
 	It("returns false when the cluster version is available and a node is not ready", func() {
@@ -83,34 +85,40 @@ var _ = Describe("IsClusterInstalled", func() {
 		createNode("node3", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionTrue)
 
-		installed, err := IsClusterInstalled(ctx, log, c)
+		status, err := GetClusterInstallStatus(ctx, log, c)
 		Expect(err).To(BeNil())
-		Expect(installed).To(BeFalse())
+		Expect(status.Installed).To(BeFalse())
+		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
+		Expect(status.NodesStatus).ToNot(Equal(nodesReadyMessage))
 	})
 
 	It("returns false when the cluster version is not available", func() {
 		createNode("node1", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionFalse)
 
-		installed, err := IsClusterInstalled(ctx, log, c)
+		status, err := GetClusterInstallStatus(ctx, log, c)
 		Expect(err).To(BeNil())
-		Expect(installed).To(BeFalse())
+		Expect(status.Installed).To(BeFalse())
+		Expect(status.ClusterVersionStatus).ToNot(Equal(clusterVersionAvailableMessage))
+		Expect(status.NodesStatus).To(Equal(nodesReadyMessage))
 	})
 
 	It("returns false when no nodes exist", func() {
 		createClusterVersion(configv1.ConditionTrue)
 
-		installed, err := IsClusterInstalled(ctx, log, c)
+		status, err := GetClusterInstallStatus(ctx, log, c)
 		Expect(err).To(BeNil())
-		Expect(installed).To(BeFalse())
+		Expect(status.Installed).To(BeFalse())
+		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
+		Expect(status.NodesStatus).ToNot(Equal(nodesReadyMessage))
 	})
 
 	It("returns an error when the cluster version does not exist", func() {
 		createNode("node1", corev1.ConditionTrue)
 
-		installed, err := IsClusterInstalled(ctx, log, c)
+		status, err := GetClusterInstallStatus(ctx, log, c)
 		Expect(err).ToNot(BeNil())
-		Expect(installed).To(BeFalse())
+		Expect(status.Installed).To(BeFalse())
 	})
 })
 

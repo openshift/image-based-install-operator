@@ -146,7 +146,7 @@ func main() {
 		BaseURL:                      baseURL,
 		CertManager:                  certs.KubeConfigCertManager{},
 		DefaultInstallTimeout:        time.Hour,
-		GetSpokeClusterInstallStatus: monitor.IsClusterInstalled,
+		GetSpokeClusterInstallStatus: monitor.GetClusterInstallStatus,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)
