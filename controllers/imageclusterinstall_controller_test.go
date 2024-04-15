@@ -851,7 +851,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 	})
 
-	It("requeues reconcile after a minute when spoke cluster is not ready yet", func() {
+	It("requeues and sets conditions when spoke cluster is not ready yet", func() {
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 
 		bmh := &bmh_v1alpha1.BareMetalHost{
@@ -881,6 +881,19 @@ var _ = Describe("Reconcile", func() {
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(Equal(time.Minute))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal("Cluster is installing\nClusterVersion Status: Cluster version is not available\nNodes Status: Node test is NotReady"))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
 
 	It("returns an error when spoke cluster monitoring fails", func() {
@@ -912,6 +925,19 @@ var _ = Describe("Reconcile", func() {
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal("Failed to monitor spoke cluster: monitoring failed"))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
 
 	It("sets conditions to show cluster timeout when the default timeout has passed", func() {
