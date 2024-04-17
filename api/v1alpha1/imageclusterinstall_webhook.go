@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 
@@ -45,24 +46,34 @@ var _ webhook.Validator = &ImageClusterInstall{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *ImageClusterInstall) ValidateCreate() (admission.Warnings, error) {
 	icilog.Info("validate create", "name", r.Name)
+	if err := r.validate(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (r *ImageClusterInstall) validate() error {
 	if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
-		return nil, fmt.Errorf("invalid ssh key: %v", err)
+		return fmt.Errorf("invalid ssh key: %v", err)
 	}
 	if err := isValidHostname(r.Spec.Hostname); err != nil {
-		return nil, fmt.Errorf("invalid hostname: %w", err)
+		return fmt.Errorf("invalid hostname: %w", err)
 	}
-	return nil, nil
+
+	if err := isValidMachineNetwork(r.Spec.MachineNetwork); err != nil {
+		return fmt.Errorf("invalid machine network: %w", err)
+	}
+
+	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *ImageClusterInstall) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	icilog.Info("validate update", "name", r.Name)
 
-	if err := isValidSSHPublicKey(r.Spec.SSHKey); err != nil {
-		return nil, fmt.Errorf("invalid ssh key: %w", err)
-	}
-	if err := isValidHostname(r.Spec.Hostname); err != nil {
-		return nil, fmt.Errorf("invalid hostname: %w", err)
+	if err := r.validate(); err != nil {
+		return nil, err
 	}
 
 	oldClusterInstall, ok := old.(*ImageClusterInstall)
@@ -115,6 +126,18 @@ func isValidHostname(hostname string) error {
 	errs := validation.IsDNS1123Subdomain(hostname)
 	if len(errs) != 0 {
 		return errors.New(strings.Join(errs, ";"))
+	}
+	return nil
+}
+
+func isValidMachineNetwork(machineNetwork string) error {
+	if machineNetwork == "" {
+		return nil
+	}
+
+	_, _, err := net.ParseCIDR(machineNetwork)
+	if err != nil {
+		return fmt.Errorf("error parsing machine network, check that it is valid cidr: %w", err)
 	}
 	return nil
 }

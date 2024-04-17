@@ -568,7 +568,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		ClusterName:               cd.Spec.ClusterName,
 		ClusterID:                 clusterID,
 		InfraID:                   infraID,
-		NodeIP:                    ici.Spec.NodeIP,
+		MachineNetwork:            ici.Spec.MachineNetwork,
 		SSHKey:                    ici.Spec.SSHKey,
 		ReleaseRegistry:           releaseRegistry,
 		Hostname:                  ici.Spec.Hostname,

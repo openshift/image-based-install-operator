@@ -17,7 +17,8 @@ var _ = Describe("ValidateUpdate", func() {
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				Hostname: "test",
+				Hostname:       "test",
+				MachineNetwork: "192.168.126.0/24",
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -140,6 +141,22 @@ var _ = Describe("ValidateUpdate", func() {
 		warns, err := newClusterInstall.ValidateCreate()
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid hostname"))
+	})
+
+	It("create fail when machine network is invalid", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				MachineNetwork: "test_not_valid",
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid machine network"))
 	})
 
 	It("succeeds when BMH ref is changed from nil to non-nil", func() {

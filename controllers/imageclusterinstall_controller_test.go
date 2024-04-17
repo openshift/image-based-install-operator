@@ -139,7 +139,7 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	It("creates the correct cluster info manifest", func() {
-		clusterInstall.Spec.NodeIP = "192.0.2.1"
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
 		clusterInstall.Spec.Hostname = "thing"
 		clusterInstall.Spec.SSHKey = "my ssh key"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -166,6 +166,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.ClusterName).To(Equal(clusterDeployment.Spec.ClusterName))
 		Expect(infoOut.ClusterID).ToNot(Equal(""))
 		Expect(infoOut.NodeIP).To(Equal(clusterInstall.Spec.NodeIP))
+		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 		Expect(infoOut.ReleaseRegistry).To(Equal("registry.example.com"))
 		Expect(infoOut.Hostname).To(Equal(clusterInstall.Spec.Hostname))
 		Expect(infoOut.SSHKey).To(Equal(clusterInstall.Spec.SSHKey))
@@ -994,7 +995,6 @@ var _ = Describe("Reconcile", func() {
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
-		clusterInstall.Spec.NodeIP = "192.0.2.1"
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
