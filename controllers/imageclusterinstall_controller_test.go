@@ -896,50 +896,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
 
-	It("returns an error when spoke cluster monitoring fails", func() {
-		r.GetSpokeClusterInstallStatus = monitor.ErrorMonitor
-
-		bmh := &bmh_v1alpha1.BareMetalHost{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
-			},
-			Status: bmh_v1alpha1.BareMetalHostStatus{
-				Provisioning: bmh_v1alpha1.ProvisionStatus{
-					State: bmh_v1alpha1.StateAvailable,
-				},
-			},
-		}
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
-
-		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-
-		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Message).To(Equal("Failed to monitor spoke cluster: monitoring failed"))
-		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-	})
-
 	It("sets conditions to show cluster timeout when the default timeout has passed", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute

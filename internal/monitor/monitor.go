@@ -32,24 +32,24 @@ func (status *ClusterInstallStatus) String() string {
 	return fmt.Sprintf("Cluster is %s\nClusterVersion Status: %s\nNodes Status: %s", installStatus, status.ClusterVersionStatus, status.NodesStatus)
 }
 
-type GetInstallStatusFunc func(ctx context.Context, log logrus.FieldLogger, c client.Client) (ClusterInstallStatus, error)
+type GetInstallStatusFunc func(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus
 
-func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (ClusterInstallStatus, error) {
+func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus {
 	cvAvailable, cvMessage, err := clusterVersionStatus(ctx, log, c)
 	if err != nil {
-		return ClusterInstallStatus{}, fmt.Errorf("failed to check cluster version status: %w", err)
+		cvMessage = fmt.Sprintf("Failed to check cluster version status: %s", err)
 	}
 
 	nodesReady, nodesMessage, err := nodesStatus(ctx, log, c)
 	if err != nil {
-		return ClusterInstallStatus{}, fmt.Errorf("failed to check node status: %w", err)
+		nodesMessage = fmt.Sprintf("Failed to check node status: %s", err)
 	}
 
 	return ClusterInstallStatus{
 		Installed:            cvAvailable && nodesReady,
 		ClusterVersionStatus: cvMessage,
 		NodesStatus:          nodesMessage,
-	}, nil
+	}
 }
 
 func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (bool, string, error) {

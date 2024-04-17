@@ -72,8 +72,7 @@ var _ = Describe("GetClusterInstallStatus", func() {
 		createNode("node3", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionTrue)
 
-		status, err := GetClusterInstallStatus(ctx, log, c)
-		Expect(err).To(BeNil())
+		status := GetClusterInstallStatus(ctx, log, c)
 		Expect(status.Installed).To(BeTrue())
 		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
 		Expect(status.NodesStatus).To(Equal(nodesReadyMessage))
@@ -85,8 +84,7 @@ var _ = Describe("GetClusterInstallStatus", func() {
 		createNode("node3", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionTrue)
 
-		status, err := GetClusterInstallStatus(ctx, log, c)
-		Expect(err).To(BeNil())
+		status := GetClusterInstallStatus(ctx, log, c)
 		Expect(status.Installed).To(BeFalse())
 		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
 		Expect(status.NodesStatus).ToNot(Equal(nodesReadyMessage))
@@ -96,8 +94,7 @@ var _ = Describe("GetClusterInstallStatus", func() {
 		createNode("node1", corev1.ConditionTrue)
 		createClusterVersion(configv1.ConditionFalse)
 
-		status, err := GetClusterInstallStatus(ctx, log, c)
-		Expect(err).To(BeNil())
+		status := GetClusterInstallStatus(ctx, log, c)
 		Expect(status.Installed).To(BeFalse())
 		Expect(status.ClusterVersionStatus).ToNot(Equal(clusterVersionAvailableMessage))
 		Expect(status.NodesStatus).To(Equal(nodesReadyMessage))
@@ -106,19 +103,10 @@ var _ = Describe("GetClusterInstallStatus", func() {
 	It("returns false when no nodes exist", func() {
 		createClusterVersion(configv1.ConditionTrue)
 
-		status, err := GetClusterInstallStatus(ctx, log, c)
-		Expect(err).To(BeNil())
+		status := GetClusterInstallStatus(ctx, log, c)
 		Expect(status.Installed).To(BeFalse())
 		Expect(status.ClusterVersionStatus).To(Equal(clusterVersionAvailableMessage))
 		Expect(status.NodesStatus).ToNot(Equal(nodesReadyMessage))
-	})
-
-	It("returns an error when the cluster version does not exist", func() {
-		createNode("node1", corev1.ConditionTrue)
-
-		status, err := GetClusterInstallStatus(ctx, log, c)
-		Expect(err).ToNot(BeNil())
-		Expect(status.Installed).To(BeFalse())
 	})
 })
 
