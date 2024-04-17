@@ -53,6 +53,8 @@ type ImageClusterInstallSpec struct {
 	Version string `json:"version,omitempty"`
 
 	// NodeIP is the desired IP for the host
+	// +optional
+	// Deprecated: this field is ignored (will be removed in a future release).
 	NodeIP string `json:"nodeIP,omitempty"`
 
 	// Hostname is the desired hostname for the host
@@ -83,6 +85,12 @@ type ImageClusterInstallSpec struct {
 	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
 	// +optional
 	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+
+	// MachineNetwork is the subnet provided by user for the ocp cluster.
+	// This will be used to create the node network and choose ip address for the node.
+	// Equivalent to install-config.yaml's machineNetwork.
+	// +optional.
+	MachineNetwork string `json:"machine_network,omitempty"`
 }
 
 // ImageClusterInstallStatus defines the observed state of ImageClusterInstall
