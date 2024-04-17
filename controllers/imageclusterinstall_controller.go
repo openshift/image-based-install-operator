@@ -145,9 +145,9 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	if err := r.Get(ctx, cdKey, clusterDeployment); err != nil {
 		if !errors.IsNotFound(err) {
-			log.WithError(err).Error(fmt.Sprintf(
+			log.WithError(err).Errorf(
 				"failed to get ClusterDeployment with name '%s' in namespace '%s'",
-				cdKey.Name, cdKey.Namespace))
+				cdKey.Name, cdKey.Namespace)
 			return ctrl.Result{}, err
 		}
 		errorMessagge := fmt.Errorf("clusterDeployment with name '%s' in namespace '%s' not found",
@@ -290,7 +290,7 @@ func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context, 
 		return ctrl.Result{}, err
 	}
 	if !status.Installed {
-		log.Info("cluster install in progress: %s", status)
+		log.Infof("cluster install in progress: %s", status.String())
 		if err := r.setClusterInstallingConditions(ctx, ici, status.String()); err != nil {
 			log.WithError(err).Error("failed to set installing conditions")
 		}
@@ -390,7 +390,7 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 		}
 	}
 	if len(requests) > 1 {
-		r.Log.Warn("found multiple ImageClusterInstalls referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
+		r.Log.Warnf("found multiple ImageClusterInstalls referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
 	}
 	return requests
 }
@@ -981,7 +981,7 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 		}
 		patch := client.MergeFrom(bmh.DeepCopy())
 		if bmh.Spec.Image != nil {
-			log.Info("removing image from BareMetalHost %s", key)
+			log.Infof("removing image from BareMetalHost %s", key)
 			bmh.Spec.Image = nil
 			if err := r.Patch(ctx, bmh, patch); err != nil {
 				return ctrl.Result{}, true, fmt.Errorf("failed to patch BareMetalHost %s: %w", key, err)
