@@ -666,7 +666,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 			Name: kubeconfigSecret,
 		},
 		AdminPasswordSecretRef: &corev1.LocalObjectReference{
-			Name: kubeconfigSecret,
+			Name: kubeadminPasswordSecret,
 		},
 	}
 
