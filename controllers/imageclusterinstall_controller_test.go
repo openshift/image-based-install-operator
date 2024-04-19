@@ -1021,6 +1021,7 @@ var _ = Describe("Reconcile", func() {
 			Expect(meta.InfraID).To(HavePrefix("thingcluster"))
 			Expect(meta.InfraID).To(Equal(infoOut.InfraID))
 			Expect(meta.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
+			Expect(meta.AdminPasswordSecretRef.Name).To(Equal("test-cluster-admin-password"))
 		}
 
 		updatedICI := v1alpha1.ImageClusterInstall{}
