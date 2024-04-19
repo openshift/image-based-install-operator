@@ -220,11 +220,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.setClusterDeploymentMetadata(ctx, clusterDeployment, *ici.Spec.ClusterMetadata); err != nil {
-			log.WithError(err).Error("failed to set ClusterDeployment metadata")
-			return ctrl.Result{}, err
-		}
-
 		// Don't check timeout or install status if cluster is already installed
 		if clusterDeployment.Spec.Installed {
 			return ctrl.Result{}, nil
@@ -802,34 +797,6 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 	}
 
 	return r.Patch(ctx, ici, patch)
-}
-
-func (r *ImageClusterInstallReconciler) setClusterDeploymentMetadata(ctx context.Context, cd *hivev1.ClusterDeployment, clusterMeta hivev1.ClusterMetadata) error {
-	kubeconfigSecret := credentials.KubeconfigSecretName(cd.Name)
-	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(cd.Name)
-
-	if cd.Spec.ClusterMetadata != nil &&
-		cd.Spec.ClusterMetadata.ClusterID == clusterMeta.ClusterID &&
-		cd.Spec.ClusterMetadata.InfraID == clusterMeta.InfraID &&
-		cd.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret &&
-		cd.Spec.ClusterMetadata.AdminPasswordSecretRef.Name == kubeadminPasswordSecret {
-
-		return nil
-	}
-
-	patch := client.MergeFrom(cd.DeepCopy())
-	cd.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
-		ClusterID: clusterMeta.ClusterID,
-		InfraID:   clusterMeta.InfraID,
-		AdminKubeconfigSecretRef: corev1.LocalObjectReference{
-			Name: kubeconfigSecret,
-		},
-		AdminPasswordSecretRef: &corev1.LocalObjectReference{
-			Name: kubeadminPasswordSecret,
-		},
-	}
-
-	return r.Patch(ctx, cd, patch)
 }
 
 // Implementation from openshift-installer here: https://github.com/openshift/installer/blob/67c114a4b82ed509dc292fa81d63030c8b4118ee/pkg/asset/installconfig/clusterid.go#L60-L79

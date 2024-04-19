@@ -1197,23 +1197,15 @@ var _ = Describe("Reconcile", func() {
 		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
-		validateMeta := func(meta *hivev1.ClusterMetadata) {
-			Expect(meta).ToNot(BeNil())
-			Expect(meta.ClusterID).To(Equal(infoOut.ClusterID))
-			Expect(meta.InfraID).To(HavePrefix("thingcluster"))
-			Expect(meta.InfraID).To(Equal(infoOut.InfraID))
-			Expect(meta.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
-			Expect(meta.AdminPasswordSecretRef.Name).To(Equal("test-cluster-admin-password"))
-		}
-
 		updatedICI := v1alpha1.ImageClusterInstall{}
 		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
-		validateMeta(updatedICI.Spec.ClusterMetadata)
-
-		updatedCD := hivev1.ClusterDeployment{}
-		Expect(c.Get(ctx, key, &updatedCD)).To(Succeed())
-
-		validateMeta(updatedCD.Spec.ClusterMetadata)
+		meta := updatedICI.Spec.ClusterMetadata
+		Expect(meta).ToNot(BeNil())
+		Expect(meta.ClusterID).To(Equal(infoOut.ClusterID))
+		Expect(meta.InfraID).To(HavePrefix("thingcluster"))
+		Expect(meta.InfraID).To(Equal(infoOut.InfraID))
+		Expect(meta.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
+		Expect(meta.AdminPasswordSecretRef.Name).To(Equal("test-cluster-admin-password"))
 	})
 
 	It("sets the clusterID to the manifest.json value if it exists", func() {
