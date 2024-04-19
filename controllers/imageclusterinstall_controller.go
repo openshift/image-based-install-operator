@@ -290,13 +290,6 @@ func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context, 
 	}
 	log.Info("cluster is installed")
 
-	// set installed in spec and conditions after monitoring has finished
-	patch := client.MergeFrom(clusterDeployment.DeepCopy())
-	clusterDeployment.Spec.Installed = true
-	if err := r.Patch(ctx, clusterDeployment, patch); err != nil {
-		log.WithError(err).Error("failed to mark cluster deployment as installed")
-		return ctrl.Result{}, err
-	}
 	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
 		log.WithError(err).Error("failed to set installed conditions")
 		return ctrl.Result{}, err
