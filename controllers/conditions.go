@@ -46,20 +46,38 @@ func setClusterInstallCondition(conditions *[]hivev1.ClusterInstallCondition, ne
 }
 
 func (r *ImageClusterInstallReconciler) initializeConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
-	initialTypeStatus := map[hivev1.ClusterInstallConditionType]corev1.ConditionStatus{
-		hivev1.ClusterInstallRequirementsMet: corev1.ConditionUnknown,
-		hivev1.ClusterInstallCompleted:       corev1.ConditionUnknown,
-		hivev1.ClusterInstallFailed:          corev1.ConditionUnknown,
-		hivev1.ClusterInstallStopped:         corev1.ConditionFalse,
+	initialConditions := []hivev1.ClusterInstallCondition{
+		{
+			Type:    hivev1.ClusterInstallRequirementsMet,
+			Status:  corev1.ConditionUnknown,
+			Reason:  "Unknown",
+			Message: "Unknown",
+		},
+		{
+			Type:    hivev1.ClusterInstallCompleted,
+			Status:  corev1.ConditionUnknown,
+			Reason:  "Unknown",
+			Message: "Unknown",
+		},
+		{
+			Type:    hivev1.ClusterInstallFailed,
+			Status:  corev1.ConditionUnknown,
+			Reason:  "Unknown",
+			Message: "Unknown",
+		},
+		{
+			Type:    hivev1.ClusterInstallStopped,
+			Status:  corev1.ConditionUnknown,
+			Reason:  "Unknown",
+			Message: "Unknown",
+		},
 	}
 
 	patch := client.MergeFrom(ici.DeepCopy())
-	for condType, status := range initialTypeStatus {
-		if findCondition(ici.Status.Conditions, condType) == nil {
-			setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-				Type:   condType,
-				Status: status,
-			})
+	for _, cond := range initialConditions {
+		// only set the initial status if the condition doesn't exist already
+		if findCondition(ici.Status.Conditions, cond.Type) == nil {
+			setClusterInstallCondition(&ici.Status.Conditions, cond)
 		}
 	}
 
@@ -108,16 +126,22 @@ func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.C
 func (r *ImageClusterInstallReconciler) setClusterInstalledConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallCompleted,
-		Status: corev1.ConditionTrue,
+		Type:    hivev1.ClusterInstallCompleted,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallStopped,
-		Status: corev1.ConditionTrue,
+		Type:    hivev1.ClusterInstallStopped,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallFailed,
-		Status: corev1.ConditionFalse,
+		Type:    hivev1.ClusterInstallFailed,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
 
 	return r.Status().Patch(ctx, ici, patch)
@@ -133,8 +157,10 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 		Message: message,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallStopped,
-		Status: corev1.ConditionTrue,
+		Type:    hivev1.ClusterInstallStopped,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallTimedoutReason,
+		Message: v1alpha1.InstallTimedoutMessage,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallFailed,
@@ -149,9 +175,10 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 func (r *ImageClusterInstallReconciler) setClusterInstallingConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, message string) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallCompleted,
-		Status: corev1.ConditionFalse,
-		Reason: v1alpha1.InstallInProgressReason,
+		Type:    hivev1.ClusterInstallCompleted,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallInProgressReason,
+		Message: v1alpha1.InstallInProgressMessage,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallStopped,
@@ -160,9 +187,10 @@ func (r *ImageClusterInstallReconciler) setClusterInstallingConditions(ctx conte
 		Message: message,
 	})
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
-		Type:   hivev1.ClusterInstallFailed,
-		Status: corev1.ConditionFalse,
-		Reason: v1alpha1.InstallInProgressReason,
+		Type:    hivev1.ClusterInstallFailed,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallInProgressReason,
+		Message: v1alpha1.InstallInProgressMessage,
 	})
 
 	return r.Status().Patch(ctx, ici, patch)
