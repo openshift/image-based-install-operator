@@ -33,8 +33,14 @@ const (
 	HostConfiguraionSucceededReason   = "HostConfigurationSucceeded"
 	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
 
-	InstallTimedoutReason   = "ClusterInstallationTimedOut"
-	InstallInProgressReason = "ClusterInstallationInProgress"
+	InstallTimedoutReason  = "ClusterInstallationTimedOut"
+	InstallTimedoutMessage = "Cluster installation has timed out"
+
+	InstallInProgressReason  = "ClusterInstallationInProgress"
+	InstallInProgressMessage = "Cluster installation is in progress"
+
+	InstallSucceededReason  = "ClusterInstallationSucceeded"
+	InstallSucceededMessage = "Cluster installation has succeeded"
 )
 
 // ImageClusterInstallSpec defines the desired state of ImageClusterInstall
