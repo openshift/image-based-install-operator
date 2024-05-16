@@ -562,6 +562,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 			return err
 		}
 		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+
 		crypto, err := r.Credentials.EnsureKubeconfigSecret(ctx, cd, clusterInfo)
 		if err != nil {
 			return fmt.Errorf("failed to ensure kubeconifg secret: %w", err)
@@ -646,7 +647,12 @@ func (r *ImageClusterInstallReconciler) nmstateConfig(ctx context.Context, ici *
 	return nmstate, nil
 }
 
-func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment, KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention, psData, kubeadminPasswordHash string, file string, existingInfo *lca_api.SeedReconfiguration) error {
+func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger,
+	ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment,
+	KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention,
+	psData, kubeadminPasswordHash, file string,
+	existingInfo *lca_api.SeedReconfiguration) error {
+
 	nmstate, err := r.nmstateConfig(ctx, ici)
 	if err != nil {
 		return err
