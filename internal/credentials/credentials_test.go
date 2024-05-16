@@ -113,6 +113,19 @@ var _ = Describe("Credentials", func() {
 		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
 		Expect(string(kubeconfigSecretData2)).To(Equal(string(kubeconfigSecretData)))
 	})
+	It("EnsureKubeconfigSecret already exists and valid - but seed reconfiguration is nil, content should be the same", func() {
+		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		Expect(err).NotTo(HaveOccurred())
+		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		// Call again and check the content is the same
+		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		Expect(err).NotTo(HaveOccurred())
+		// Verify same cluster crypto
+		Expect(kubeConfigCryptoRetention_2).To(Equal(kubeConfigCryptoRetention))
+		// Verify the kubeconfig secret data hasn't changed
+		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
+		Expect(string(kubeconfigSecretData2)).To(Equal(string(kubeconfigSecretData)))
+	})
 	It("EnsureAdminPasswordSecret success", func() {
 		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
