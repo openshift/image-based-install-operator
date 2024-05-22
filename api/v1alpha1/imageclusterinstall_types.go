@@ -99,7 +99,7 @@ type ImageClusterInstallSpec struct {
 	// This will be used to create the node network and choose ip address for the node.
 	// Equivalent to install-config.yaml's machineNetwork.
 	// +optional.
-	MachineNetwork string `json:"machine_network,omitempty"`
+	MachineNetwork string `json:"machineNetwork,omitempty"`
 
 	// Proxy defines the proxy settings to be applied in relocated cluster
 	// +optional

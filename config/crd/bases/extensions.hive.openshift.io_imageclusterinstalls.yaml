@@ -229,7 +229,7 @@ spec:
                 required:
                 - name
                 type: object
-              machine_network:
+              machineNetwork:
                 description: MachineNetwork is the subnet provided by user for the
                   ocp cluster. This will be used to create the node network and choose
                   ip address for the node. Equivalent to install-config.yaml's machineNetwork.
