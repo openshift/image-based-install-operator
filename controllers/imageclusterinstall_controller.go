@@ -34,7 +34,6 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
-	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -63,7 +62,7 @@ import (
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/openshift/image-based-install-operator/internal/utils"
+	"github.com/sirupsen/logrus"
 )
 
 type ImageClusterInstallReconcilerOptions struct {
@@ -198,14 +197,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.BareMetalHostRef != nil {
-		if err := r.validateSeedReconfigurationWithBMH(ctx, ici); err != nil {
-			log.WithError(err).Error("failed to validate iso with BMH")
-			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
-			return ctrl.Result{}, err
-		}
-
 		if err := r.setBMHImage(ctx, ici.Spec.BareMetalHostRef, imageUrl); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
 			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
@@ -253,48 +244,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
-	ctx context.Context,
-	ici *v1alpha1.ImageClusterInstall) error {
-
-	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
-	if err != nil {
-		return err
-	}
-	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
-
-	hwDetails, err := r.getBMHHWDetails(ctx, ici.Spec.BareMetalHostRef)
-	if err != nil {
-		return err
-	}
-	if hwDetails == nil {
-		return fmt.Errorf("hardware details not found for BareMetalHost %s/%s",
-			ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
-	}
-
-	if err := r.validateBMHMachineNetwork(clusterInfo, *hwDetails); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
-	clusterInfo *lca_api.SeedReconfiguration,
-	hwDetails bmh_v1alpha1.HardwareDetails) error {
-	if clusterInfo.MachineNetwork == "" {
-		return nil
-	}
-	for _, nic := range hwDetails.NIC {
-		inCIDR, _ := utils.IpInCidr(nic.IP, clusterInfo.MachineNetwork)
-		if inCIDR {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("bmh host doesn't have any nic with ip in provided machineNetwork %s", clusterInfo.MachineNetwork)
 }
 
 func (r *ImageClusterInstallReconciler) checkClusterTimeout(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, defaultTimeout time.Duration) (bool, error) {
@@ -502,19 +451,6 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef 
 	}
 
 	return nil
-}
-
-func (r *ImageClusterInstallReconciler) getBMHHWDetails(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.HardwareDetails, error) {
-	bmh := &bmh_v1alpha1.BareMetalHost{}
-	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
-	}
-	if err := r.Get(ctx, key, bmh); err != nil {
-		return nil, err
-	}
-
-	return bmh.Status.HardwareDetails, nil
 }
 
 func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
