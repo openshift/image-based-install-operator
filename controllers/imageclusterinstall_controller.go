@@ -93,6 +93,7 @@ type imagePullSecret struct {
 
 const (
 	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	inspectAnnotation            = "inspect.metal3.io"
 	clusterConfigDir             = "cluster-configuration"
 	extraManifestsDir            = "extra-manifests"
 	manifestsDir                 = "manifests"
@@ -198,7 +199,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.BareMetalHostRef != nil {
-		if err := r.validateSeedReconfigurationWithBMH(ctx, ici); err != nil {
+
+		bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
+		if err != nil {
+			log.WithError(err).Error("failed to get BareMetalHost")
+			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
+				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			}
+			return ctrl.Result{}, err
+		}
+
+		if err := r.validateSeedReconfigurationWithBMH(ici, bmh); err != nil {
 			log.WithError(err).Error("failed to validate iso with BMH")
 			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -206,7 +217,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.setBMHImage(ctx, ici.Spec.BareMetalHostRef, imageUrl); err != nil {
+		if err := r.setBMHImage(ctx, bmh, imageUrl); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
 			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -256,8 +267,14 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
-	ctx context.Context,
-	ici *v1alpha1.ImageClusterInstall) error {
+	ici *v1alpha1.ImageClusterInstall,
+	bmh *bmh_v1alpha1.BareMetalHost) error {
+
+	// no need to validate if inspect annotation is disabled
+	if bmh.ObjectMeta.Annotations != nil && bmh.ObjectMeta.Annotations[inspectAnnotation] == "disabled" {
+		r.Log.Infof("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
+		return nil
+	}
 
 	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
 	if err != nil {
@@ -265,16 +282,11 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	}
 	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
 
-	hwDetails, err := r.getBMHHWDetails(ctx, ici.Spec.BareMetalHostRef)
-	if err != nil {
-		return err
-	}
-	if hwDetails == nil {
-		return fmt.Errorf("hardware details not found for BareMetalHost %s/%s",
-			ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+	if bmh.Status.HardwareDetails == nil {
+		return fmt.Errorf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 	}
 
-	if err := r.validateBMHMachineNetwork(clusterInfo, *hwDetails); err != nil {
+	if err := r.validateBMHMachineNetwork(clusterInfo, *bmh.Status.HardwareDetails); err != nil {
 		return err
 	}
 
@@ -457,15 +469,7 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference, url string) error {
-	bmh := &bmh_v1alpha1.BareMetalHost{}
-	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
-	}
-	if err := r.Get(ctx, key, bmh); err != nil {
-		return err
-	}
+func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
 
 	dirty := false
@@ -504,7 +508,7 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmhRef 
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) getBMHHWDetails(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.HardwareDetails, error) {
+func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
 		Name:      bmhRef.Name,
@@ -514,7 +518,7 @@ func (r *ImageClusterInstallReconciler) getBMHHWDetails(ctx context.Context, bmh
 		return nil, err
 	}
 
-	return bmh.Status.HardwareDetails, nil
+	return bmh, nil
 }
 
 func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
