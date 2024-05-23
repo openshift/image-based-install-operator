@@ -1238,6 +1238,109 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
+	It("succeeds in case bmh has disabled inspection and no hw details", func() {
+		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails = nil
+		if bmh.ObjectMeta.Annotations == nil {
+			bmh.ObjectMeta.Annotations = make(map[string]string)
+		}
+		bmh.ObjectMeta.Annotations[inspectAnnotation] = "disabled"
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+	})
+
+	It("fails in case there is not actual bmh under the reference", func() {
+		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("baremetalhosts.metal3.io \"test-bmh\" not found"))
+	})
+
+	It("fails in case bmh has no hw details but after adding them it succeeds", func() {
+		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails = nil
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("hardware details not found for BareMetalHost"))
+
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).ToNot(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		// good one
+		Expect(c.Get(ctx, types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}, bmh)).To(Succeed())
+
+		bmh.Status.HardwareDetails = &bmh_v1alpha1.HardwareDetails{NIC: []bmh_v1alpha1.NIC{
+			{IP: "192.168.50.30"},
+			{IP: "192.168.1.30"}}}
+
+		Expect(c.Update(ctx, bmh)).To(Succeed())
+		_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+	})
+
 	It("fails in case bmh has no ip in provided machine network but after changing machine network it succeeds", func() {
 		bmh := getBHM(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
