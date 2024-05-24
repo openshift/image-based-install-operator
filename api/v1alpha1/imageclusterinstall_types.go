@@ -41,6 +41,11 @@ const (
 
 	InstallSucceededReason  = "ClusterInstallationSucceeded"
 	InstallSucceededMessage = "Cluster installation has succeeded"
+
+	HostValidationFailedReason = "HostValidationFailed"
+	HostValidationSucceeded    = "HostValidationSucceeded"
+	HostValidationPending      = "HostValidationPending"
+	HostValidationsOKMsg       = "The host's validations are passing and image is ready"
 )
 
 // ImageClusterInstallSpec defines the desired state of ImageClusterInstall

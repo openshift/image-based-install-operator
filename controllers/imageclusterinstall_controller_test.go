@@ -32,7 +32,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func getBHM(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
+func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
 	return &bmh_v1alpha1.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-bmh",
@@ -650,7 +650,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -683,7 +683,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the BMH ref in the cluster install status", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -713,7 +713,7 @@ var _ = Describe("Reconcile", func() {
 
 	It("sets detached on a referenced BMH after it is provisioned", func() {
 		liveISO := "live-iso"
-		bmh := getBHM(bmh_v1alpha1.StateProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
 		bmh.Spec = bmh_v1alpha1.BareMetalHostSpec{
 			Image: &bmh_v1alpha1.Image{
 				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
@@ -795,7 +795,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets conditions to show cluster installed when the host can be configured and cluster is ready", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -830,7 +830,7 @@ var _ = Describe("Reconcile", func() {
 	It("requeues and sets conditions when spoke cluster is not ready yet", func() {
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -866,7 +866,7 @@ var _ = Describe("Reconcile", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
 
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -900,7 +900,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets conditions to show cluster timeout when the override timeout has passed", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -939,7 +939,7 @@ var _ = Describe("Reconcile", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
 
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -990,7 +990,7 @@ var _ = Describe("Reconcile", func() {
 
 	It("removes the image from a BMH when the reference is removed", func() {
 		liveISO := "live-iso"
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec = bmh_v1alpha1.BareMetalHostSpec{
 			Image: &bmh_v1alpha1.Image{
 				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
@@ -1029,7 +1029,7 @@ var _ = Describe("Reconcile", func() {
 
 	It("removes the reference and configures a new BMH when the reference is changed", func() {
 		liveISO := "live-iso"
-		oldBMH := getBHM(bmh_v1alpha1.StateAvailable)
+		oldBMH := bmhInState(bmh_v1alpha1.StateAvailable)
 		oldBMH.Spec = bmh_v1alpha1.BareMetalHostSpec{
 			Image: &bmh_v1alpha1.Image{
 				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
@@ -1089,7 +1089,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("updates the cluster install and cluster deployment metadata", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1128,7 +1128,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the clusterID to the manifest.json value if it exists", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1168,7 +1168,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the infraID to the manifest.json value if it exists", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1210,7 +1210,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds in case bmh has ip in provided machine network", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -1239,7 +1239,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds in case bmh has disabled inspection and no hw details", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails = nil
 		if bmh.ObjectMeta.Annotations == nil {
 			bmh.ObjectMeta.Annotations = make(map[string]string)
@@ -1272,7 +1272,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails in case there is not actual bmh under the reference", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
@@ -1292,8 +1292,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(err.Error()).To(ContainSubstring("baremetalhosts.metal3.io \"test-bmh\" not found"))
 	})
 
-	It("fails in case bmh has no hw details but after adding them it succeeds", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails = nil
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -1311,9 +1311,16 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
-		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("hardware details not found for BareMetalHost"))
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(res).ToNot(Equal(ctrl.Result{}))
+		Expect(res.RequeueAfter).To(Equal(30 * time.Second))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
 
 		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).ToNot(HaveOccurred())
@@ -1339,10 +1346,16 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationSucceeded))
 	})
 
 	It("fails in case bmh has no ip in provided machine network but after changing machine network it succeeds", func() {
-		bmh := getBHM(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -1371,6 +1384,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+
 		// good one
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
@@ -1383,6 +1402,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationSucceeded))
 	})
 })
 

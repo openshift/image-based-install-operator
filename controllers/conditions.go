@@ -123,6 +123,20 @@ func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.C
 	return r.Status().Patch(ctx, ici, patch)
 }
 
+func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall,
+	status corev1.ConditionStatus, reason, msg string) error {
+	cond := hivev1.ClusterInstallCondition{
+		Type:    hivev1.ClusterInstallRequirementsMet,
+		Status:  status,
+		Reason:  reason,
+		Message: msg,
+	}
+
+	patch := client.MergeFrom(ici.DeepCopy())
+	setClusterInstallCondition(&ici.Status.Conditions, cond)
+	return r.Status().Patch(ctx, ici, patch)
+}
+
 func (r *ImageClusterInstallReconciler) setClusterInstalledConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
