@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -63,7 +64,6 @@ import (
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/openshift/image-based-install-operator/internal/utils"
 )
 
 type ImageClusterInstallReconcilerOptions struct {
@@ -186,9 +186,13 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
-		log.WithError(err).Error("failed to update ImageClusterInstall status")
-		return ctrl.Result{}, err
+	// in case there is no bmh we should set requirements met condition to true with image ready message
+	// in case bmh was set we will set this condition after host validations
+	if ici.Status.BareMetalHostRef == nil {
+		if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
+			log.WithError(err).Error("failed to update ImageClusterInstall status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
@@ -199,7 +203,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.BareMetalHostRef != nil {
-
 		bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
 		if err != nil {
 			log.WithError(err).Error("failed to get BareMetalHost")
@@ -209,12 +212,9 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		if err := r.validateSeedReconfigurationWithBMH(ici, bmh); err != nil {
-			log.WithError(err).Error("failed to validate iso with BMH")
-			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
-			return ctrl.Result{}, err
+		res, err := r.validateSeedReconfigurationWithBMH(ctx, ici, bmh)
+		if err != nil || !res.IsZero() {
+			return res, err
 		}
 
 		if err := r.setBMHImage(ctx, bmh, imageUrl); err != nil {
@@ -255,7 +255,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 
-		res, err := r.checkClusterStatus(ctx, log, ici, clusterDeployment)
+		res, err = r.checkClusterStatus(ctx, log, ici, clusterDeployment)
 		if err != nil {
 			log.WithError(err).Error("failed to check cluster status")
 			return ctrl.Result{}, err
@@ -267,30 +267,57 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
+	ctx context.Context,
 	ici *v1alpha1.ImageClusterInstall,
-	bmh *bmh_v1alpha1.BareMetalHost) error {
+	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
 
 	// no need to validate if inspect annotation is disabled
 	if bmh.ObjectMeta.Annotations != nil && bmh.ObjectMeta.Annotations[inspectAnnotation] == "disabled" {
-		r.Log.Infof("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
-		return nil
+		msg := fmt.Sprintf("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
+		r.Log.Info(msg)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
+			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+		return ctrl.Result{}, nil
 	}
 
-	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
+	if bmh.Status.HardwareDetails == nil {
+		msg := fmt.Sprintf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
+			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	var err error
+	clusterInfoFilePath := ""
+	defer func() {
+		reason := v1alpha1.HostValidationSucceeded
+		msg := v1alpha1.HostValidationsOKMsg
+		if err != nil {
+			reason = v1alpha1.HostValidationFailedReason
+			msg = fmt.Sprintf("failed to validate host: %s", err.Error())
+		}
+
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, reason, msg); updateErr != nil {
+			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+	}()
+
+	clusterInfoFilePath, err = r.clusterInfoFilePath(ici)
 	if err != nil {
-		return err
+		r.Log.WithError(err).Error("failed to read cluster info file")
+		return ctrl.Result{}, err
 	}
 	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
 
-	if bmh.Status.HardwareDetails == nil {
-		return fmt.Errorf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+	err = r.validateBMHMachineNetwork(clusterInfo, *bmh.Status.HardwareDetails)
+	if err != nil {
+		r.Log.WithError(err).Error("failed to validate BMH machine network")
+		return ctrl.Result{}, err
 	}
 
-	if err := r.validateBMHMachineNetwork(clusterInfo, *bmh.Status.HardwareDetails); err != nil {
-		return err
-	}
-
-	return nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
@@ -300,7 +327,7 @@ func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
 		return nil
 	}
 	for _, nic := range hwDetails.NIC {
-		inCIDR, _ := utils.IpInCidr(nic.IP, clusterInfo.MachineNetwork)
+		inCIDR, _ := ipInCidr(nic.IP, clusterInfo.MachineNetwork)
 		if inCIDR {
 			return nil
 		}
@@ -1040,4 +1067,16 @@ func (r *ImageClusterInstallReconciler) writeInvokerCM(filePath string) error {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	return nil
+}
+
+func ipInCidr(ipAddr, cidr string) (bool, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false, err
+	}
+	ip := net.ParseIP(ipAddr)
+	if ip == nil {
+		return false, fmt.Errorf("ip is nil")
+	}
+	return ipNet.Contains(ip), nil
 }
