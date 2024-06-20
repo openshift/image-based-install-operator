@@ -140,8 +140,8 @@ type BareMetalHostReference struct {
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="RequirementsMet",type="string",JSONPath=".status.conditions[?(@.type=='RequirementsMet')].reason"
 // +kubebuilder:printcolumn:name="Completed",type="string",JSONPath=".status.conditions[?(@.type=='Completed')].reason"
-// +kubebuilder:printcolumn:name="ConfigurationImageURL",type="string",JSONPath=".status.ConfigurationImageURL"
-// +kubebuilder:printcolumn:name="BareMetalHostRef",type="string",JSONPath=".status.BareMetalHostRef.Name"
+// +kubebuilder:printcolumn:name="ConfigurationImageURL",type="string",JSONPath=".status.configurationImageURL"
+// +kubebuilder:printcolumn:name="BareMetalHostRef",type="string",JSONPath=".spec.bareMetalHostRef.name"
 
 // ImageClusterInstall is the Schema for the imageclusterinstall API
 type ImageClusterInstall struct {

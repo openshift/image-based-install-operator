@@ -22,10 +22,10 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Completed')].reason
       name: Completed
       type: string
-    - jsonPath: .status.ConfigurationImageURL
+    - jsonPath: .status.configurationImageURL
       name: ConfigurationImageURL
       type: string
-    - jsonPath: .status.BareMetalHostRef.Name
+    - jsonPath: .spec.bareMetalHostRef.name
       name: BareMetalHostRef
       type: string
     name: v1alpha1
