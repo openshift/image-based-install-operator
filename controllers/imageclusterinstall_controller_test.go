@@ -32,6 +32,32 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const validNMStateConfig = `
+interfaces:
+  - name: enp1s0
+    type: ethernet
+    state: up
+    identifier: mac-address
+    mac-address: 52:54:00:8A:88:A8
+    ipv4:
+      address:
+        - ip: 192.168.136.15
+          prefix-length: "24"
+      enabled: true
+    ipv6:
+      enabled: false
+routes:
+  config:
+    - destination: 0.0.0.0/0
+      next-hop-address: 192.168.136.1
+      next-hop-interface: enp1s0
+      table-id: 254
+dns-resolver:
+  config:
+    server:
+      - 192.168.136.1
+`
+
 func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
 	return &bmh_v1alpha1.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -441,13 +467,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("copies the nmstate config from a referenced configmap", func() {
-		nmstateString := "some\nnmstate\nstring"
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "netconfig",
 				Namespace: "test-namespace",
 			},
-			Data: map[string]string{"network-config": nmstateString},
+			Data: map[string]string{"network-config": validNMStateConfig},
 		}
 		Expect(c.Create(ctx, cm)).To(Succeed())
 
@@ -469,7 +494,36 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.RawNMStateConfig).To(Equal(nmstateString))
+		Expect(infoOut.RawNMStateConfig).To(Equal(validNMStateConfig))
+	})
+	It("fails if nmstate config is bad yaml", func() {
+		nmstateString := "some\nnmstate\nstring"
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "netconfig",
+				Namespace: "test-namespace",
+			},
+			Data: map[string]string{"network-config": nmstateString},
+		}
+		Expect(c.Create(ctx, cm)).To(Succeed())
+
+		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
+			Name: cm.Name,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
 
 	It("fails when a referenced nmstate configmap is missing", func() {
@@ -508,13 +562,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Message).To(Equal("clusterDeployment with name 'test-cluster' in namespace 'test-namespace' not found"))
 	})
 	It("failse when the referenced nmstate configmap is missing the required key", func() {
-		nmstateString := "some\nnmstate\nstring"
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "netconfig",
 				Namespace: "test-namespace",
 			},
-			Data: map[string]string{"wrong-key": nmstateString},
+			Data: map[string]string{"wrong-key": validNMStateConfig},
 		}
 		Expect(c.Create(ctx, cm)).To(Succeed())
 

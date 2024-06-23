@@ -739,6 +739,11 @@ func (r *ImageClusterInstallReconciler) nmstateConfig(ctx context.Context, ici *
 		return "", fmt.Errorf("referenced networking ConfigMap %s does not contain the required key %s", key, nmstateCMKey)
 	}
 
+	var nmstateData map[string]any
+	if err := yaml.Unmarshal([]byte(nmstate), &nmstateData); err != nil {
+		return "", fmt.Errorf("failed to unmarshal nmstate data: %w", err)
+	}
+
 	return nmstate, nil
 }
 
