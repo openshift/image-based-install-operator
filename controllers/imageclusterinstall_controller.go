@@ -35,10 +35,10 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
-	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -52,6 +52,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/google/uuid"
@@ -186,7 +188,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// in case there is no bmh we should set requirements met condition to true with image ready message
 	// in case bmh was set we will set this condition after host validations
 	if ici.Status.BareMetalHostRef == nil {
 		if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
@@ -196,7 +197,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
-		if err := r.removeBMHImage(ctx, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
+		if err := r.removeBMHDataImage(ctx, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
 			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", ici.Status.BareMetalHostRef.Namespace, ici.Status.BareMetalHostRef.Name)
 			return ctrl.Result{}, err
 		}
@@ -217,7 +218,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return res, err
 		}
 
-		if err := r.setBMHImage(ctx, bmh, imageUrl); err != nil {
+		if err := r.setBMHDataImage(ctx, bmh, imageUrl); err != nil {
 			log.WithError(err).Error("failed to set BareMetalHost image")
 			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -496,25 +497,39 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	patch := client.MergeFrom(bmh.DeepCopy())
+func (r *ImageClusterInstallReconciler) setBMHDataImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
+	dataImage := bmh_v1alpha1.DataImage{}
+	key := client.ObjectKey{
+		Name:      bmh.Name,
+		Namespace: bmh.Namespace,
+	}
+	err := r.Get(ctx, key, &dataImage)
+	if apierrors.IsNotFound(err) {
+		r.Log.Info("creating new dataImage", "name", bmh.Name, "namespace", bmh.Namespace)
+		dataImage = bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      key.Name,
+				Namespace: key.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: url,
+			},
+		}
+		err = controllerutil.SetControllerReference(bmh, &dataImage, r.Client.Scheme())
+		if err != nil {
+			return fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
+		}
+
+		err = r.Create(ctx, &dataImage)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve dataImage due to %w", err)
+		}
+	}
 
 	dirty := false
+	patch := client.MergeFrom(bmh.DeepCopy())
 	if !bmh.Spec.Online {
 		bmh.Spec.Online = true
-		dirty = true
-	}
-	if bmh.Spec.Image == nil {
-		bmh.Spec.Image = &bmh_v1alpha1.Image{}
-		dirty = true
-	}
-	if bmh.Spec.Image.URL != url {
-		bmh.Spec.Image.URL = url
-		dirty = true
-	}
-	liveIso := "live-iso"
-	if bmh.Spec.Image.DiskFormat == nil || *bmh.Spec.Image.DiskFormat != liveIso {
-		bmh.Spec.Image.DiskFormat = &liveIso
 		dirty = true
 	}
 
@@ -548,30 +563,19 @@ func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1al
 	return bmh, nil
 }
 
-func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
-	bmh := &bmh_v1alpha1.BareMetalHost{}
+func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	dataImage := &bmh_v1alpha1.DataImage{}
 	key := types.NamespacedName{
 		Name:      bmhRef.Name,
 		Namespace: bmhRef.Namespace,
 	}
-	if err := r.Get(ctx, key, bmh); err != nil {
+	if err := r.Get(ctx, key, dataImage); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
-	patch := client.MergeFrom(bmh.DeepCopy())
-
-	dirty := false
-	if bmh.Spec.Image != nil {
-		bmh.Spec.Image = nil
-		dirty = true
-	}
-
-	if dirty {
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return r.Client.Delete(ctx, dataImage)
 }
 
 func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterInstall) (string, string, error) {

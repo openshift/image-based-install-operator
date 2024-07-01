@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -703,7 +704,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -728,11 +729,13 @@ var _ = Describe("Reconcile", func() {
 			Name:      bmh.Name,
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
-		Expect(bmh.Spec.Image.DiskFormat).To(HaveValue(Equal("live-iso")))
+		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 
 	It("sets the BMH ref in the cluster install status", func() {
@@ -1041,17 +1044,24 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
 	})
 
-	It("removes the image from a BMH when the reference is removed", func() {
-		liveISO := "live-iso"
+	It("removes the data image when the reference is removed", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec = bmh_v1alpha1.BareMetalHostSpec{
-			Image: &bmh_v1alpha1.Image{
-				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
-				DiskFormat: &liveISO,
-			},
 			Online: true,
 		}
+		imageURL, err := url.JoinPath(r.BaseURL, "images", clusterInstallNamespace, fmt.Sprintf("%s.iso", clusterInstallName))
+		Expect(err).NotTo(HaveOccurred())
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL,
+			},
+		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
 
 		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
 			BareMetalHostRef: &v1alpha1.BareMetalHostReference{
@@ -1078,19 +1088,30 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).To(BeNil())
+		err = c.Get(ctx, key, &dataImage)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(Equal(fmt.Sprintf("dataimages.metal3.io \"%s\" not found", key.Name)))
+
 	})
 
-	It("removes the reference and configures a new BMH when the reference is changed", func() {
-		liveISO := "live-iso"
+	It("deletes the old dataImage and create dataImage for the new BMH when the reference is changed", func() {
 		oldBMH := bmhInState(bmh_v1alpha1.StateAvailable)
 		oldBMH.Spec = bmh_v1alpha1.BareMetalHostSpec{
-			Image: &bmh_v1alpha1.Image{
-				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
-				DiskFormat: &liveISO,
-			},
 			Online: true,
 		}
+		imageURL, err := url.JoinPath(r.BaseURL, "images", clusterInstallNamespace, fmt.Sprintf("%s.iso", clusterInstallName))
+		Expect(err).NotTo(HaveOccurred())
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL,
+			},
+		}
 		Expect(c.Create(ctx, oldBMH)).To(Succeed())
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
 
 		newBMH := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1132,13 +1153,21 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, oldKey, oldBMH)).To(Succeed())
 		Expect(oldBMH.Spec.Image).To(BeNil())
+		err = c.Get(ctx, oldKey, &dataImage)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(Equal(fmt.Sprintf("dataimages.metal3.io \"%s\" not found", oldKey.Name)))
 
 		newKey := types.NamespacedName{
 			Namespace: newBMH.Namespace,
 			Name:      newBMH.Name,
 		}
 		Expect(c.Get(ctx, newKey, newBMH)).To(Succeed())
-		Expect(newBMH.Spec.Image).ToNot(BeNil())
+		Expect(newBMH.Spec.Image).To(BeNil())
+		imageURL, err = url.JoinPath(r.BaseURL, "images", clusterInstallNamespace, fmt.Sprintf("%s.iso", clusterInstallName))
+		Expect(err).NotTo(HaveOccurred())
+		err = c.Get(ctx, newKey, &dataImage)
+		Expect(err).To(BeNil())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL))
 	})
 
 	It("updates the cluster install and cluster deployment metadata", func() {
