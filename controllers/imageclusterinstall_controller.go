@@ -99,6 +99,7 @@ const (
 	extraManifestsDir            = "extra-manifests"
 	manifestsDir                 = "manifests"
 	nmstateCMKey                 = "network-config"
+	nmstateSecretKey             = "nmstate"
 	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
 	caBundleFileName             = "tls-ca-bundle.pem"
 	imageBasedInstallInvoker     = "image-based-install"
@@ -170,7 +171,20 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if res, err := r.writeInputData(ctx, log, ici, clusterDeployment); !res.IsZero() || err != nil {
+	var bmh *bmh_v1alpha1.BareMetalHost
+	var err error
+	if ici.Spec.BareMetalHostRef != nil {
+		bmh, err = r.getBMH(ctx, ici.Spec.BareMetalHostRef)
+		if err != nil {
+			log.WithError(err).Error("failed to get BareMetalHost")
+			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
+				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			}
+			return ctrl.Result{}, err
+		}
+	}
+
+	if res, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh); !res.IsZero() || err != nil {
 		if err != nil {
 			if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -207,16 +221,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 	}
 
-	if ici.Spec.BareMetalHostRef != nil {
-		bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
-		if err != nil {
-			log.WithError(err).Error("failed to get BareMetalHost")
-			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
-			return ctrl.Result{}, err
-		}
-
+	if bmh != nil {
 		res, err := r.validateSeedReconfigurationWithBMH(ctx, ici, bmh)
 		if err != nil || !res.IsZero() {
 			return res, err
@@ -680,7 +685,12 @@ func (r *ImageClusterInstallReconciler) clusterInfoFilePath(ici *v1alpha1.ImageC
 }
 
 // writeInputData writes the required info based on the ImageClusterInstall to the config cache dir
-func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) (ctrl.Result, error) {
+func (r *ImageClusterInstallReconciler) writeInputData(
+	ctx context.Context, log logrus.FieldLogger,
+	ici *v1alpha1.ImageClusterInstall,
+	cd *hivev1.ClusterDeployment,
+	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
+
 	lockDir, filesDir, err := r.configDirs(ici)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -753,7 +763,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(ctx context.Context, log 
 		if err != nil {
 			return fmt.Errorf("failed to ensure admin password secret: %w", err)
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo); err != nil {
+		if err := r.writeClusterInfo(ctx, log, ici, cd, crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo, bmh); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -809,7 +819,42 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) nmstateConfig(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
+func (r *ImageClusterInstallReconciler) nmstateConfigFromBMH(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost) (string, error) {
+	if bmh == nil || bmh.Spec.PreprovisioningNetworkDataName == "" {
+		return "", nil
+	}
+
+	nmstateConfigSecret := &corev1.Secret{}
+	key := types.NamespacedName{Name: bmh.Spec.PreprovisioningNetworkDataName, Namespace: bmh.Namespace}
+	if err := r.Get(ctx, key, nmstateConfigSecret); err != nil {
+		return "", fmt.Errorf("failed to get network config secret %s: %w", key, err)
+	}
+
+	nmstate, present := nmstateConfigSecret.Data[nmstateSecretKey]
+	if !present {
+		return "", fmt.Errorf("referenced networking ConfigMap %s does not contain the required key %s", key, nmstateCMKey)
+	}
+
+	var nmstateData map[string]any
+	if err := yaml.Unmarshal(nmstate, &nmstateData); err != nil {
+		return "", fmt.Errorf("failed to unmarshal nmstate data: %w", err)
+	}
+
+	return string(nmstate), nil
+}
+
+// in case bmh was configured with static networking we want to use it's configuration
+// and in case it was not configured we will use configmap
+func (r *ImageClusterInstallReconciler) nmstateConfig(
+	ctx context.Context,
+	ici *v1alpha1.ImageClusterInstall,
+	bmh *bmh_v1alpha1.BareMetalHost) (string, error) {
+	// in case there is configured networking on BMH we should use it
+	nmstate, err := r.nmstateConfigFromBMH(ctx, bmh)
+	if err != nil || nmstate != "" {
+		return nmstate, err
+	}
+
 	if ici.Spec.NetworkConfigRef == nil {
 		return "", nil
 	}
@@ -837,9 +882,10 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 	ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment,
 	KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention,
 	psData, kubeadminPasswordHash, file string,
-	existingInfo *lca_api.SeedReconfiguration) error {
+	existingInfo *lca_api.SeedReconfiguration,
+	bmh *bmh_v1alpha1.BareMetalHost) error {
 
-	nmstate, err := r.nmstateConfig(ctx, ici)
+	nmstate, err := r.nmstateConfig(ctx, ici, bmh)
 	if err != nil {
 		return err
 	}
