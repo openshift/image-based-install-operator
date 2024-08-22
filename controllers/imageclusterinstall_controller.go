@@ -104,6 +104,8 @@ const (
 	invokerCMFileName            = "invoker-cm.yaml"
 	imageDigestMirrorSetFileName = "image-digest-sources.json"
 	installTimeoutAnnotation     = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
+	backupLabel                  = "cluster.open-cluster-management.io/backup"
+	backupLabelValue             = "true"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -176,6 +178,8 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		return res, err
 	}
+
+	r.labelReferencedObjectsForBackup(ctx, log, ici, clusterDeployment)
 
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
 	if err != nil {
@@ -572,6 +576,89 @@ func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhR
 	}
 
 	return nil
+}
+
+func setBackupLabel(obj client.Object) bool {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if labels[backupLabel] == backupLabelValue {
+		return false
+	}
+
+	labels[backupLabel] = backupLabelValue
+	obj.SetLabels(labels)
+	return true
+}
+
+func (r *ImageClusterInstallReconciler) labelConfigMapForBackup(ctx context.Context, key types.NamespacedName) error {
+	cm := &corev1.ConfigMap{}
+	if err := r.Get(ctx, key, cm); err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(cm.DeepCopy())
+	if setBackupLabel(cm) {
+		return r.Patch(ctx, cm, patch)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context, key types.NamespacedName) error {
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(secret.DeepCopy())
+	if setBackupLabel(secret) {
+		return r.Patch(ctx, secret, patch)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) {
+	if ici.Spec.ClusterMetadata != nil {
+		kubeconfigKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name, Namespace: ici.Namespace}
+		if err := r.labelSecretForBackup(ctx, kubeconfigKey); err != nil {
+			log.WithError(err).Errorf("failed to label Secret %s for backup", kubeconfigKey)
+		}
+		if ici.Spec.ClusterMetadata.AdminPasswordSecretRef != nil {
+			passwordKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminPasswordSecretRef.Name, Namespace: ici.Namespace}
+			if err := r.labelSecretForBackup(ctx, passwordKey); err != nil {
+				log.WithError(err).Errorf("failed to label Secret %s for backup", passwordKey)
+			}
+		}
+	}
+
+	if ici.Spec.NetworkConfigRef != nil {
+		networkConfigKey := types.NamespacedName{Name: ici.Spec.NetworkConfigRef.Name, Namespace: ici.Namespace}
+		if err := r.labelConfigMapForBackup(ctx, networkConfigKey); err != nil {
+			log.WithError(err).Errorf("failed to label ConfigMap %s for backup", networkConfigKey)
+		}
+	}
+
+	if ici.Spec.CABundleRef != nil {
+		caBundleKey := types.NamespacedName{Name: ici.Spec.CABundleRef.Name, Namespace: ici.Namespace}
+		if err := r.labelConfigMapForBackup(ctx, caBundleKey); err != nil {
+			log.WithError(err).Errorf("failed to label ConfigMap %s for backup", caBundleKey)
+		}
+	}
+
+	for _, manifestRef := range ici.Spec.ExtraManifestsRefs {
+		manifestKey := types.NamespacedName{Name: manifestRef.Name, Namespace: ici.Namespace}
+		if err := r.labelConfigMapForBackup(ctx, manifestKey); err != nil {
+			log.WithError(err).Errorf("failed to label ConfigMap %s for backup", manifestKey)
+		}
+	}
+
+	if cd.Spec.PullSecretRef != nil {
+		psKey := types.NamespacedName{Name: cd.Spec.PullSecretRef.Name, Namespace: cd.Namespace}
+		if err := r.labelSecretForBackup(ctx, psKey); err != nil {
+			log.WithError(err).Errorf("failed to label Secret %s for backup", psKey)
+		}
+	}
 }
 
 func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterInstall) (string, string, error) {

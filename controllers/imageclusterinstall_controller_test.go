@@ -1462,6 +1462,112 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationSucceeded))
 	})
+
+	It("labels secrets for backup", func() {
+		clusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
+			AdminKubeconfigSecretRef: corev1.LocalObjectReference{Name: clusterDeployment.Name + "-admin-kubeconfig"},
+			AdminPasswordSecretRef:   &corev1.LocalObjectReference{Name: clusterDeployment.Name + "-admin-password"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = "test"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		secretRefs := []types.NamespacedName{
+			{Namespace: pullSecret.Namespace, Name: pullSecret.Name},
+			{Namespace: clusterInstallNamespace, Name: clusterInstall.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name},
+			{Namespace: clusterInstallNamespace, Name: clusterInstall.Spec.ClusterMetadata.AdminPasswordSecretRef.Name},
+		}
+		for _, key := range secretRefs {
+			testSecret := &corev1.Secret{}
+			Expect(c.Get(ctx, key, testSecret)).To(Succeed())
+			Expect(testSecret.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "Secret %s/%s missing annotation", testSecret.Namespace, testSecret.Name)
+		}
+	})
+
+	It("labels configmaps for backup", func() {
+		configMaps := []*corev1.ConfigMap{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "manifest1",
+					Namespace: clusterInstallNamespace,
+				},
+				Data: map[string]string{
+					"manifest1.yaml": "thing: stuff",
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "manifest2",
+					Namespace: clusterInstallNamespace,
+				},
+				Data: map[string]string{
+					"manifest2.yaml": "other: foo",
+				},
+			},
+		}
+		clusterInstall.Spec.ExtraManifestsRefs = []corev1.LocalObjectReference{
+			{Name: "manifest1"},
+			{Name: "manifest2"},
+		}
+		configMaps = append(configMaps,
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "netconfig",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{"network-config": validNMStateConfig},
+			},
+		)
+		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
+			Name: "netconfig",
+		}
+		configMaps = append(configMaps,
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ca-bundle",
+					Namespace: "test-namespace",
+				},
+				Data: map[string]string{caBundleFileName: "mycabundle"},
+			},
+		)
+		clusterInstall.Spec.CABundleRef = &corev1.LocalObjectReference{
+			Name: "ca-bundle",
+		}
+
+		for _, cm := range configMaps {
+			Expect(c.Create(ctx, cm)).To(Succeed())
+		}
+
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		for _, cm := range configMaps {
+			testCM := &corev1.ConfigMap{}
+			key := types.NamespacedName{
+				Name:      cm.Name,
+				Namespace: cm.Namespace,
+			}
+			Expect(c.Get(ctx, key, testCM)).To(Succeed())
+			Expect(testCM.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "ConfigMap %s/%s missing annotation", testCM.Namespace, testCM.Name)
+		}
+	})
 })
 
 var _ = Describe("mapBMHToICI", func() {
