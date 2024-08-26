@@ -798,7 +798,15 @@ var _ = Describe("Reconcile", func() {
 			Name:      bmh.Name,
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Annotations[detachedAnnotation]).To(Equal("imageclusterinstall-controller"))
+		Expect(bmh.Annotations[detachedAnnotation]).To(Equal(detachedAnnotationValue))
+
+		By("Verify that bmh was not updated on second run")
+		resourceVersion := bmh.ResourceVersion
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.ObjectMeta.ResourceVersion).To(Equal(resourceVersion))
 	})
 
 	It("doesn't error for a missing imageclusterinstall", func() {
