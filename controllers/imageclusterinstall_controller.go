@@ -93,6 +93,7 @@ type imagePullSecret struct {
 
 const (
 	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	detachedAnnotationValue      = "imageclusterinstall-controller"
 	inspectAnnotation            = "inspect.metal3.io"
 	clusterConfigDir             = "cluster-configuration"
 	extraManifestsDir            = "extra-manifests"
@@ -519,11 +520,9 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmh *bm
 	}
 
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateProvisioned {
-		if bmh.ObjectMeta.Annotations == nil {
-			bmh.ObjectMeta.Annotations = make(map[string]string)
+		if setAnnotaitonIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
+			dirty = true
 		}
-		bmh.ObjectMeta.Annotations[detachedAnnotation] = "imageclusterinstall-controller"
-		dirty = true
 	}
 
 	if dirty {
@@ -1072,6 +1071,17 @@ func (r *ImageClusterInstallReconciler) writeInvokerCM(filePath string) error {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	return nil
+}
+
+func setAnnotaitonIfNotExists(meta *metav1.ObjectMeta, key string, value string) bool {
+	if meta.Annotations == nil {
+		meta.Annotations = make(map[string]string)
+	}
+	if _, ok := meta.Annotations[key]; !ok {
+		meta.Annotations[key] = value
+		return true
+	}
+	return false
 }
 
 func ipInCidr(ipAddr, cidr string) (bool, error) {
