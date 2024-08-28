@@ -134,7 +134,7 @@ func (r *Credentials) ensureCryptoKeys(ctx context.Context, cd *hivev1.ClusterDe
 	return cryptoSecret, nil
 }
 
-func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context, cd *hivev1.ClusterDeployment) (string, error) {
+func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context, cd *hivev1.ClusterDeployment, currentHash string) (string, error) {
 	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: KubeadminPasswordSecretName(cd.Name)}
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, secretRef, secret)
@@ -143,10 +143,17 @@ func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context, cd *hivev1.
 		if !exists {
 			r.Log.Warn("failed to find password in secret, generating new one")
 		} else {
+			// in case password was not changed, return the existing hash
+			if err := bcrypt.CompareHashAndPassword([]byte(currentHash), password); err == nil {
+				r.Log.Infof("Admin password already exists and is valid")
+				return currentHash, nil
+			}
+			// we will generate a new hash in case password was changed
 			passwordHash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
 			if err != nil {
 				return "", fmt.Errorf("failed to generate password hash: %w", err)
 			}
+
 			return string(passwordHash), nil
 		}
 	} else if !errors.IsNotFound(err) {

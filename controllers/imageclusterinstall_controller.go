@@ -36,6 +36,7 @@ import (
 	_ "crypto/sha512"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/mod/sumdb/dirhash"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -184,7 +185,8 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 	}
 
-	if res, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh); !res.IsZero() || err != nil {
+	res, updated, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
+	if !res.IsZero() || err != nil {
 		if err != nil {
 			if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
@@ -207,7 +209,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// in case there is no bmh we should set requirements met condition to true with image ready message
 	// in case bmh was set we will set this condition after host validations
-	if ici.Status.BareMetalHostRef == nil {
+	if ici.Spec.BareMetalHostRef == nil {
 		if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
 			log.WithError(err).Error("failed to update ImageClusterInstall status")
 			return ctrl.Result{}, err
@@ -215,13 +217,26 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
-		if err := r.removeBMHImage(ctx, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
+		if _, err := r.removeBMHImage(ctx, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
 			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", ici.Status.BareMetalHostRef.Namespace, ici.Status.BareMetalHostRef.Name)
 			return ctrl.Result{}, err
 		}
 	}
 
 	if bmh != nil {
+		// in case image data was changed and bmh has image url configured
+		// we should remove image from it in order to invalidate ironic cache
+		if bmh.Spec.Image != nil && updated {
+			r.Log.Info("Image data was changed, removing image from BareMetalHost")
+			removed, err := r.removeBMHImage(ctx, ici.Spec.BareMetalHostRef)
+			if err != nil || removed {
+				if err != nil {
+					log.WithError(err).Error("failed to remove image from BareMetalHost")
+				}
+				return ctrl.Result{}, err
+			}
+		}
+
 		res, err := r.validateSeedReconfigurationWithBMH(ctx, ici, bmh)
 		if err != nil || !res.IsZero() {
 			return res, err
@@ -454,7 +469,7 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 		return []reconcile.Request{}
 	}
 
-	requests := []reconcile.Request{}
+	var requests []reconcile.Request
 	for _, ici := range iciList.Items {
 		if ici.Spec.BareMetalHostRef == nil {
 			continue
@@ -535,6 +550,7 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmh *bm
 	}
 
 	if dirty {
+		r.Log.Infof("Setting image URL to %s for BareMetalHost %s/%s", url, bmh.Namespace, bmh.Name)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
 			return err
 		}
@@ -556,14 +572,14 @@ func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1al
 	return bmh, nil
 }
 
-func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (bool, error) {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
 		Name:      bmhRef.Name,
 		Namespace: bmhRef.Namespace,
 	}
 	if err := r.Get(ctx, key, bmh); err != nil {
-		return err
+		return false, err
 	}
 	patch := client.MergeFrom(bmh.DeepCopy())
 
@@ -575,11 +591,11 @@ func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhR
 
 	if dirty {
 		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return err
+			return false, err
 		}
 	}
 
-	return nil
+	return dirty, nil
 }
 
 func setBackupLabel(obj client.Object) bool {
@@ -689,15 +705,19 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 	ctx context.Context, log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
 	cd *hivev1.ClusterDeployment,
-	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
+	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, bool, error) {
 
 	lockDir, filesDir, err := r.configDirs(ici)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
 	}
 	clusterConfigPath := filepath.Join(filesDir, clusterConfigDir)
 	if err := os.MkdirAll(clusterConfigPath, 0700); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
+	}
+	hashBeforeChanges, err := dirhash.HashDir(clusterConfigPath, "", dirhash.DefaultHash)
+	if err != nil {
+		return ctrl.Result{}, false, fmt.Errorf("failed to hash cluster config dir: %w", err)
 	}
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
@@ -753,13 +773,16 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return err
 		}
 		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+		if clusterInfo == nil {
+			clusterInfo = &lca_api.SeedReconfiguration{}
+		}
 
 		crypto, err := r.Credentials.EnsureKubeconfigSecret(ctx, cd, clusterInfo)
 		if err != nil {
 			return fmt.Errorf("failed to ensure kubeconifg secret: %w", err)
 		}
 
-		kubeadminPasswordHash, err := r.Credentials.EnsureAdminPasswordSecret(ctx, cd)
+		kubeadminPasswordHash, err := r.Credentials.EnsureAdminPasswordSecret(ctx, cd, clusterInfo.KubeadminPasswordHash)
 		if err != nil {
 			return fmt.Errorf("failed to ensure admin password secret: %w", err)
 		}
@@ -769,19 +792,25 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		return nil
 	})
 	if lockErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to acquire file lock: %w", lockErr)
+		return ctrl.Result{}, false, fmt.Errorf("failed to acquire file lock: %w", lockErr)
 	}
 	if funcErr != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to write input data: %w", funcErr)
+		return ctrl.Result{}, false, fmt.Errorf("failed to write input data: %w", funcErr)
 	}
 	if !locked {
 		log.Info("requeueing due to lock contention")
 		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data"), ""); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		return ctrl.Result{RequeueAfter: time.Second * 5}, false, nil
 	}
-	return ctrl.Result{}, nil
+
+	hashAfter, err := dirhash.HashDir(clusterConfigPath, "", dirhash.DefaultHash)
+	if err != nil {
+		return ctrl.Result{}, false, fmt.Errorf("failed to hash cluster config dir: %w", err)
+	}
+
+	return ctrl.Result{}, hashBeforeChanges != hashAfter, nil
 }
 
 func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(clusterInfoFilePath string) *lca_api.SeedReconfiguration {

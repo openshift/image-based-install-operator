@@ -127,7 +127,7 @@ var _ = Describe("Credentials", func() {
 		Expect(string(kubeconfigSecretData2)).To(Equal(string(kubeconfigSecretData)))
 	})
 	It("EnsureAdminPasswordSecret success", func() {
-		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
+		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment, "")
 		Expect(err).NotTo(HaveOccurred())
 		// Verify the password secret
 		passwordSecret := &corev1.Secret{}
@@ -139,7 +139,7 @@ var _ = Describe("Credentials", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("EnsureAdminPasswordSecret already exists", func() {
-		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
+		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment, "")
 		Expect(err).NotTo(HaveOccurred())
 		// Verify the password secret
 		passwordSecret := &corev1.Secret{}
@@ -147,10 +147,12 @@ var _ = Describe("Credentials", func() {
 		Expect(err).NotTo(HaveOccurred())
 		password, exists := passwordSecret.Data["password"]
 		Expect(exists).To(BeTrue())
-		// Call again, the password hash should change but the password shouldn't
-		passwordHash2, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
+
+		// Call again, the password hash should be the same
+		passwordHash2, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment, passwordHash)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(passwordHash).NotTo(Equal(passwordHash2))
+		Expect(passwordHash).To(Equal(passwordHash2))
+
 		// Verify the secret didn't change
 		passwordSecret2 := &corev1.Secret{}
 		err = cm.Client.Get(ctx, client.ObjectKey{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name + "-admin-password"}, passwordSecret2)
@@ -179,7 +181,7 @@ var _ = Describe("Credentials", func() {
 		err := cm.Client.Create(ctx, passwordSecret)
 		Expect(err).NotTo(HaveOccurred())
 
-		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
+		passwordHash, err := cm.EnsureAdminPasswordSecret(ctx, clusterDeployment, "")
 		Expect(err).NotTo(HaveOccurred())
 		// Verify the password secret
 		err = cm.Client.Get(ctx, client.ObjectKey{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name + "-admin-password"}, passwordSecret)
@@ -208,7 +210,7 @@ var _ = Describe("Credentials", func() {
 		err := cm.Client.Create(ctx, passwordSecret)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = cm.EnsureAdminPasswordSecret(ctx, clusterDeployment)
+		_, err = cm.EnsureAdminPasswordSecret(ctx, clusterDeployment, "")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to generate password hash"))
 	})
