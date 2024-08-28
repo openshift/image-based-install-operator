@@ -17,6 +17,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/crypto v0.22.0
+	golang.org/x/mod v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.28.3
 	k8s.io/apimachinery v0.28.3
