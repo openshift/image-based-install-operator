@@ -543,6 +543,11 @@ func (r *ImageClusterInstallReconciler) setBMHImage(ctx context.Context, bmh *bm
 		dirty = true
 	}
 
+	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
+		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
+		dirty = true
+	}
+
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateProvisioned {
 		if setAnnotaitonIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
 			dirty = true
