@@ -929,6 +929,43 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.ObjectMeta.ResourceVersion).To(Equal(resourceVersion))
 	})
 
+	It("sets disables AutomatedCleaningMode", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateProvisioning)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.AutomatedCleaningMode).To(Equal(bmh_v1alpha1.CleaningModeDisabled))
+
+		By("Verify that bmh was not updated on second run")
+		resourceVersion := bmh.ResourceVersion
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.ObjectMeta.ResourceVersion).To(Equal(resourceVersion))
+	})
+
 	It("doesn't error for a missing imageclusterinstall", func() {
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
