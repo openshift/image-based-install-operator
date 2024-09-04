@@ -440,6 +440,7 @@ func (r *ImageClusterInstallReconciler) spokeClient(ctx context.Context, ici *v1
 	if err != nil {
 		return nil, fmt.Errorf("failed to get restconfig for kube client: %w", err)
 	}
+	restConfig.Timeout = 10 * time.Second
 
 	var schemes = runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(schemes))
