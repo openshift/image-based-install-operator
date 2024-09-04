@@ -885,6 +885,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("validate image cleanup on data change", func() {
+		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -908,7 +909,6 @@ var _ = Describe("Reconcile", func() {
 
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
@@ -927,15 +927,15 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
 		res, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
 		resourceVersion = bmh.ResourceVersion
 
 		By("Next reconcile after image cleanup should set the new image")
-		res, err = r.Reconcile(ctx, req)
+		_, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
 		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
@@ -1221,6 +1221,17 @@ var _ = Describe("Reconcile", func() {
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
 		}
+		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
+			Conditions: []hivev1.ClusterInstallCondition{
+				hivev1.ClusterInstallCondition{
+					Type:    hivev1.ClusterInstallStopped,
+					Status:  corev1.ConditionTrue,
+					Reason:  v1alpha1.InstallSucceededReason,
+					Message: v1alpha1.InstallSucceededMessage,
+				},
+			},
+		}
+
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		clusterDeployment.Spec.Installed = true
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1236,11 +1247,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Reason).ToNot(Equal(v1alpha1.InstallTimedoutReason))
+		Expect(cond).To(BeNil())
 	})
 
-	It("sets the stopped condition to true when the host is missing", func() {
+	It("sets the ClusterInstallRequirementsMet condition to true when the host is missing", func() {
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      "test-bmh",
 			Namespace: "test-bmh-namespace",
@@ -1257,9 +1267,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
 	})
 
