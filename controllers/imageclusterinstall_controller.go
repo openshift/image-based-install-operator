@@ -202,6 +202,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
+	if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment.Name); err != nil {
+		log.WithError(err).Error("failed to set ImageClusterInstall data")
+		return ctrl.Result{}, err
+	}
+
 	r.labelReferencedObjectsForBackup(ctx, log, ici, clusterDeployment)
 
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
@@ -256,19 +261,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 
-		patch := client.MergeFrom(ici.DeepCopy())
-		ici.Status.BareMetalHostRef = ici.Spec.BareMetalHostRef.DeepCopy()
-		if ici.Status.BootTime.IsZero() {
-			ici.Status.BootTime = metav1.Now()
-		}
-		if err := r.Status().Patch(ctx, ici, patch); err != nil {
-			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
-			return ctrl.Result{}, err
-		}
-
-		if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment.Name); err != nil {
-			log.WithError(err).Error("failed to set ImageClusterInstall metadata")
-			return ctrl.Result{}, err
+		if !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
+			patch := client.MergeFrom(ici.DeepCopy())
+			ici.Status.BareMetalHostRef = ici.Spec.BareMetalHostRef.DeepCopy()
+			if ici.Status.BootTime.IsZero() {
+				ici.Status.BootTime = metav1.Now()
+			}
+			r.Log.Info("Setting Status.BareMetalHostRef and installation starting condition")
+			if err := r.Status().Patch(ctx, ici, patch); err != nil {
+				log.WithError(err).Error("failed to set Status.BareMetalHostRef")
+				return ctrl.Result{}, err
+			}
 		}
 
 		timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
@@ -598,6 +601,7 @@ func (r *ImageClusterInstallReconciler) removeBMHImage(ctx context.Context, bmhR
 	}
 
 	if dirty {
+		r.Log.Infof("Removing image from BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
 			return false, err
 		}
@@ -1055,7 +1059,6 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Co
 		ici.Spec.ClusterMetadata.InfraID == clusterInfo.InfraID &&
 		ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == kubeconfigSecret &&
 		ici.Spec.ClusterMetadata.AdminPasswordSecretRef.Name == kubeadminPasswordSecret {
-
 		return nil
 	}
 
