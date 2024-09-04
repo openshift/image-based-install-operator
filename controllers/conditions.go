@@ -106,14 +106,14 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 
 func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
 	cond := hivev1.ClusterInstallCondition{
-		Type:    hivev1.ClusterInstallStopped,
-		Status:  corev1.ConditionFalse,
+		Type:    hivev1.ClusterInstallRequirementsMet,
+		Status:  corev1.ConditionTrue,
 		Reason:  v1alpha1.HostConfiguraionSucceededReason,
 		Message: v1alpha1.HostConfigurationSucceededMessage,
 	}
 
 	if err != nil {
-		cond.Status = corev1.ConditionTrue
+		cond.Status = corev1.ConditionFalse
 		cond.Reason = v1alpha1.HostConfiguraionFailedReason
 		cond.Message = err.Error()
 	}
@@ -184,6 +184,11 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 	})
 
 	return r.Status().Patch(ctx, ici, patch)
+}
+
+func installationStopped(ici *v1alpha1.ImageClusterInstall) bool {
+	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallStopped)
+	return cond != nil && cond.Status == corev1.ConditionTrue
 }
 
 func (r *ImageClusterInstallReconciler) setClusterInstallingConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, message string) error {
