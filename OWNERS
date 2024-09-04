@@ -20,6 +20,7 @@ filters:
     - sakhoury
     - sudomakeinstall2
     - tsorya
+    - eliorerz
     approvers:
     - browsell
     - carbonin
@@ -30,3 +31,4 @@ filters:
     - oourfali
     - romfreiman
     - tsorya
+    - eliorerz
