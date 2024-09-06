@@ -272,6 +272,14 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 				log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 				return ctrl.Result{}, err
 			}
+			// as we are updating ici here we should return without RequeueAfter
+			// as reconcilation will run on update
+			return ctrl.Result{}, nil
+		}
+
+		if bmh.Status.Provisioning.State != bmh_v1alpha1.StateProvisioned {
+			log.Infof("BareMetalHost %s/%s is not provisioned yet, requeueing", bmh.Name, bmh.Namespace)
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 
 		timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
