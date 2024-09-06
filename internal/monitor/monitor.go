@@ -5,23 +5,25 @@ import (
 	"fmt"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	nodesReadyMessage              = "All nodes are ready"
 	clusterVersionAvailableMessage = "ClusterVersion is available"
+	imageBasedInstallInvoker       = "image-based-install"
 )
 
 type ClusterInstallStatus struct {
 	Installed            bool
 	ClusterVersionStatus string
 	NodesStatus          string
+	InvokerCmStatus      string
 }
 
 func (status *ClusterInstallStatus) String() string {
@@ -35,6 +37,15 @@ func (status *ClusterInstallStatus) String() string {
 type GetInstallStatusFunc func(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus
 
 func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus {
+	invokerSet, invokerMessage, err := getInvokerCm(ctx, c)
+	if err != nil {
+		invokerMessage = fmt.Sprintf("Failed to check invoker ConfigMap: %s", err)
+		return ClusterInstallStatus{
+			Installed:       false,
+			InvokerCmStatus: invokerMessage,
+		}
+	}
+
 	cvAvailable, cvMessage, err := clusterVersionStatus(ctx, log, c)
 	if err != nil {
 		cvMessage = fmt.Sprintf("Failed to check cluster version status: %s", err)
@@ -50,10 +61,44 @@ func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c clie
 	}
 
 	return ClusterInstallStatus{
-		Installed:            cvAvailable && nodesReady,
+		Installed:            cvAvailable && nodesReady && invokerSet,
 		ClusterVersionStatus: cvMessage,
 		NodesStatus:          nodesMessage,
+		InvokerCmStatus:      invokerMessage,
 	}
+}
+
+func CreateInvokerCMObject() *corev1.ConfigMap {
+	cm := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: corev1.SchemeGroupVersion.String(),
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "openshift-config",
+			Name:      "openshift-install-manifests",
+		},
+		Data: map[string]string{
+			"invoker": imageBasedInstallInvoker,
+		},
+	}
+	return cm
+}
+
+func getInvokerCm(ctx context.Context, c client.Client) (bool, string, error) {
+	cm := CreateInvokerCMObject()
+	if err := c.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, cm); err != nil {
+		return false, "", err
+	}
+	cmInvoker, ok := cm.Data["invoker"]
+	if !ok {
+		return false, "", fmt.Errorf("invoker not found in ConfigMap")
+	}
+	if cmInvoker != imageBasedInstallInvoker {
+		return true, fmt.Sprintf("ConfigMap invoker %s was set", imageBasedInstallInvoker), nil
+	}
+
+	return false, fmt.Sprintf("Invoker %s was not set yet", imageBasedInstallInvoker), nil
 }
 
 func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (bool, string, error) {

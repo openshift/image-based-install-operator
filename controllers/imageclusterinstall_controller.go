@@ -1240,19 +1240,7 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 }
 
 func (r *ImageClusterInstallReconciler) writeInvokerCM(filePath string) error {
-	cm := &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "ConfigMap",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "openshift-config",
-			Name:      "openshift-install-manifests",
-		},
-		Data: map[string]string{
-			"invoker": imageBasedInstallInvoker,
-		},
-	}
+	cm := monitor.CreateInvokerCMObject()
 	data, err := json.Marshal(cm)
 	if err != nil {
 		return fmt.Errorf("failed to marshal openshift-install-manifests: %w", err)
