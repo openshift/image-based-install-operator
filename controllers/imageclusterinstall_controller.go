@@ -235,9 +235,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if bmh != nil {
-		// in case image data was changed and bmh has image url configured
+		// in case image data was changed, bmh has image url configured and bmh is not provisioning yet,
 		// we should remove image from it in order to invalidate ironic cache
-		if bmh.Spec.Image != nil && updated {
+		if bmh.Spec.Image != nil && bmh.Status.Provisioning.State != bmh_v1alpha1.StateProvisioned &&
+			bmh.Status.Provisioning.State != bmh_v1alpha1.StateProvisioning &&
+			updated {
 			r.Log.Info("Image data was changed, removing image from BareMetalHost")
 			removed, err := r.removeBMHImage(ctx, ici.Spec.BareMetalHostRef)
 			if err != nil || removed {

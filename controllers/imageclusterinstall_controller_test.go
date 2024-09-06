@@ -939,6 +939,66 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
 		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
+	})
+
+	It("validate image is not cleanuped on data change if bmh is provisioning or provisioned", func() {
+		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
+		bmh := bmhInState(bmh_v1alpha1.StateProvisioning)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		expectedUrl := "https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
+		resourceVersion := bmh.ResourceVersion
+
+		By("Changing cluster install params nothing should change in bmh")
+		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
+		clusterInstall.Spec.Hostname = "test"
+		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).NotTo(BeNil())
+		Expect(resourceVersion).To(Equal(bmh.ResourceVersion))
+		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
+
+		By("verify image not cleanuped in case bmh is provisioned")
+		bmh.Status.Provisioning.State = bmh_v1alpha1.StateProvisioned
+		Expect(c.Update(ctx, bmh)).To(Succeed())
+
+		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
+		clusterInstall.Spec.Hostname = "test2"
+		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).NotTo(BeNil())
+		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
 
 	})
 
