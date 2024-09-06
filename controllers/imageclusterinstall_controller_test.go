@@ -421,10 +421,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, caBundleFileName))
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		Expect("mycabundle").To(Equal(infoOut.AdditionalTrustBundle.UserCaBundle))
 
-		Expect(content).To(Equal([]byte("mycabundle")))
 	})
 	It("creates the invoker CM", func() {
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())

@@ -742,10 +742,6 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() error {
 
-		if err := r.writeCABundle(ctx, ici.Spec.CABundleRef, ici.Namespace, filepath.Join(clusterConfigPath, caBundleFileName)); err != nil {
-			return fmt.Errorf("failed to write ca bundle: %w", err)
-		}
-
 		manifestsPath := filepath.Join(clusterConfigPath, manifestsDir)
 		if err := os.MkdirAll(manifestsPath, 0700); err != nil {
 			return err
@@ -806,7 +802,13 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		if err != nil {
 			return fmt.Errorf("failed to ensure admin password secret: %w", err)
 		}
-		if err := r.writeClusterInfo(ctx, log, ici, cd, crypto, psData, kubeadminPasswordHash, clusterInfoFilePath, clusterInfo, bmh); err != nil {
+
+		caBundle, err := r.getCABundle(ctx, ici.Spec.CABundleRef, ici.Namespace)
+		if err != nil {
+			return fmt.Errorf("failed to get ca bundle: %w", err)
+		}
+
+		if err := r.writeClusterInfo(ctx, log, ici, cd, crypto, psData, kubeadminPasswordHash, caBundle, clusterInfoFilePath, clusterInfo, bmh); err != nil {
 			return fmt.Errorf("failed to write cluster info: %w", err)
 		}
 		return nil
@@ -930,7 +932,7 @@ func (r *ImageClusterInstallReconciler) nmstateConfig(
 func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment,
 	KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention,
-	psData, kubeadminPasswordHash, file string,
+	psData, kubeadminPasswordHash, caBundle, file string,
 	existingInfo *lca_api.SeedReconfiguration,
 	bmh *bmh_v1alpha1.BareMetalHost) error {
 
@@ -978,6 +980,11 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 		KubeadminPasswordHash:     kubeadminPasswordHash,
 		Proxy:                     r.proxy(ici.Spec.Proxy),
 	}
+
+	if caBundle != "" {
+		info.AdditionalTrustBundle = lca_api.AdditionalTrustBundle{UserCaBundle: caBundle}
+	}
+
 	data, err := json.Marshal(info)
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster info: %w", err)
@@ -1001,23 +1008,23 @@ func (r *ImageClusterInstallReconciler) proxy(iciProxy *v1alpha1.Proxy) *lca_api
 	}
 }
 
-func (r *ImageClusterInstallReconciler) writeCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string, file string) error {
+func (r *ImageClusterInstallReconciler) getCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string) (string, error) {
 	if ref == nil {
-		return nil
+		return "", nil
 	}
 
 	cm := &corev1.ConfigMap{}
 	key := types.NamespacedName{Name: ref.Name, Namespace: ns}
 	if err := r.Get(ctx, key, cm); err != nil {
-		return fmt.Errorf("failed to get CABundle config map: %w", err)
+		return "", fmt.Errorf("failed to get CABundle config map: %w", err)
 	}
 
 	data, ok := cm.Data[caBundleFileName]
 	if !ok {
-		return fmt.Errorf("%s key missing from CABundle config map", caBundleFileName)
+		return "", fmt.Errorf("%s key missing from CABundle config map", caBundleFileName)
 	}
 
-	return os.WriteFile(file, []byte(data), 0644)
+	return data, nil
 }
 
 func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigestMirrors []apicfgv1.ImageDigestMirrors, file string) error {
