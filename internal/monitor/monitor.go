@@ -38,6 +38,10 @@ func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c clie
 	cvAvailable, cvMessage, err := clusterVersionStatus(ctx, log, c)
 	if err != nil {
 		cvMessage = fmt.Sprintf("Failed to check cluster version status: %s", err)
+		return ClusterInstallStatus{
+			Installed:            false,
+			ClusterVersionStatus: cvMessage,
+		}
 	}
 
 	nodesReady, nodesMessage, err := nodesStatus(ctx, log, c)
