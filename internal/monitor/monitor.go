@@ -4,18 +4,22 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	nodesReadyMessage              = "All nodes are ready"
-	clusterVersionAvailableMessage = "ClusterVersion is available"
+	nodesReadyMessage                 = "All nodes are ready"
+	clusterVersionAvailableMessage    = "ClusterVersion is available"
+	clusterVersionNotAvailableMessage = "ClusterVersion is not yet available due to stale data"
+	IBIOStartTimeCM                   = "ibi-monitor-cm"
+	OcpConfigNamespace                = "openshift-config"
 )
 
 type ClusterInstallStatus struct {
@@ -34,8 +38,24 @@ func (status *ClusterInstallStatus) String() string {
 
 type GetInstallStatusFunc func(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus
 
+func getIBIOStartTime(ctx context.Context, c client.Client) (metav1.Time, error) {
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(ctx, types.NamespacedName{Name: IBIOStartTimeCM, Namespace: OcpConfigNamespace}, cm); err != nil {
+		return metav1.Time{}, err
+	}
+
+	return cm.CreationTimestamp, nil
+}
+
 func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) ClusterInstallStatus {
-	cvAvailable, cvMessage, err := clusterVersionStatus(ctx, log, c)
+	reconfigurationStartTime, err := getIBIOStartTime(ctx, c)
+	if err != nil {
+		return ClusterInstallStatus{
+			Installed:            false,
+			ClusterVersionStatus: fmt.Sprintf("Failed to get %s : %s", IBIOStartTimeCM, err),
+		}
+	}
+	cvAvailable, cvMessage, err := clusterVersionStatus(ctx, log, c, reconfigurationStartTime)
 	if err != nil {
 		cvMessage = fmt.Sprintf("Failed to check cluster version status: %s", err)
 		return ClusterInstallStatus{
@@ -56,7 +76,7 @@ func GetClusterInstallStatus(ctx context.Context, log logrus.FieldLogger, c clie
 	}
 }
 
-func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (bool, string, error) {
+func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.Client, reconfigurationStartTime metav1.Time) (bool, string, error) {
 	cv := &configv1.ClusterVersion{}
 	if err := c.Get(ctx, types.NamespacedName{Name: "version"}, cv); err != nil {
 		return false, "", err
@@ -64,9 +84,14 @@ func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.
 
 	for _, cond := range cv.Status.Conditions {
 		if cond.Type == configv1.OperatorAvailable {
+			if !didCVOStarted(log, cv, reconfigurationStartTime) {
+				log.Infof(clusterVersionNotAvailableMessage)
+				return false, clusterVersionNotAvailableMessage, nil
+			}
 			if cond.Status == configv1.ConditionTrue {
 				return true, clusterVersionAvailableMessage, nil
-			} else {
+			}
+			if cond.Type == configv1.OperatorAvailable {
 				message := fmt.Sprintf("ClusterVersion is not yet available because %s: %s", cond.Reason, cond.Message)
 				log.Infof(message)
 				return false, message, nil
@@ -75,6 +100,20 @@ func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.
 	}
 
 	return false, "ClusterVersion Available condition not found", nil
+}
+
+// didCVOStarted checks if the ClusterVersionOperator has started to run by updating at least one of its conditions
+// by comparing the last transition time of the conditions with the reconfiguration start time taken from the  ConfigMap
+// We check all the conditions in order to find at least one updated
+func didCVOStarted(log logrus.FieldLogger, cvo *configv1.ClusterVersion, reconfigurationStartTime metav1.Time) bool {
+	startTime := reconfigurationStartTime.Add(-60 * time.Minute)
+	log.Infof("Checking if CVO has started and updated at least one of its conditions after %s", startTime)
+	for _, cond := range cvo.Status.Conditions {
+		if cond.LastTransitionTime.After(startTime) {
+			return true
+		}
+	}
+	return false
 }
 
 func nodesStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (bool, string, error) {
