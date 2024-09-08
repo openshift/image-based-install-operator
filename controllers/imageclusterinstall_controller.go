@@ -760,6 +760,9 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		if err := r.writeInvokerCM(filepath.Join(manifestsPath, invokerCMFileName)); err != nil {
 			return fmt.Errorf("failed to write invoker config map: %w", err)
 		}
+		if err := r.writeIBIOStartTimeCM(filepath.Join(manifestsPath, monitor.IBIOStartTimeCM+".yaml")); err != nil {
+			return fmt.Errorf("failed to write %s config map: %w", monitor.IBIOStartTimeCM, err)
+		}
 
 		if ici.Spec.ExtraManifestsRefs != nil {
 			extraManifestsPath := filepath.Join(filesDir, extraManifestsDir)
@@ -1256,6 +1259,27 @@ func (r *ImageClusterInstallReconciler) writeInvokerCM(filePath string) error {
 	data, err := json.Marshal(cm)
 	if err != nil {
 		return fmt.Errorf("failed to marshal openshift-install-manifests: %w", err)
+	}
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) writeIBIOStartTimeCM(filePath string) error {
+	cm := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: corev1.SchemeGroupVersion.String(),
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: monitor.OcpConfigNamespace,
+			Name:      monitor.IBIOStartTimeCM,
+		},
+	}
+	data, err := json.Marshal(cm)
+	if err != nil {
+		return fmt.Errorf("failed to marshal %s: %w", monitor.IBIOStartTimeCM, err)
 	}
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
