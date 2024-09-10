@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	"github.com/google/uuid"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	apicfgv1 "github.com/openshift/api/config/v1"
@@ -164,6 +165,7 @@ var _ = Describe("Reconcile", func() {
 				Name:       clusterInstallName,
 				Namespace:  clusterInstallNamespace,
 				Finalizers: []string{clusterInstallFinalizerName},
+				UID:        types.UID(uuid.New().String()),
 			},
 			Spec: v1alpha1.ImageClusterInstallSpec{
 				ImageSetRef: hivev1.ClusterImageSetReference{
@@ -195,12 +197,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	imageURL := func() string {
-		return fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName)
+		return fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID)
 	}
 
 	outputFilePath := func(elem ...string) string {
 		last := filepath.Join(elem...)
-		return filepath.Join(dataDir, "namespaces", clusterInstallNamespace, clusterInstallName, "files", last)
+		return filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), "files", last)
 	}
 
 	validateExtraManifestContent := func(file string, data string) {
@@ -913,14 +915,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
+		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
 		resourceVersion := bmh.ResourceVersion
 
 		By("Nothing was changed in the clusterInstall, so no bmh change should happen")
 		res, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
+		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
 		Expect(resourceVersion).To(Equal(bmh.ResourceVersion))
 
 		By("Changing cluster install params should trigger bmh image cleanup")
@@ -939,7 +941,7 @@ var _ = Describe("Reconcile", func() {
 		_, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal("https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"))
+		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
 		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
 	})
 
@@ -968,7 +970,7 @@ var _ = Describe("Reconcile", func() {
 
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-		expectedUrl := "https://images-namespace.cluster.example.com/images/test-namespace/test-cluster.iso"
+		expectedUrl := imageURL()
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
 		resourceVersion := bmh.ResourceVersion
