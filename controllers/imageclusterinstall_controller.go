@@ -35,7 +35,6 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
-	"github.com/sirupsen/logrus"
 	"golang.org/x/mod/sumdb/dirhash"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -65,6 +64,7 @@ import (
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
+	"github.com/sirupsen/logrus"
 )
 
 type ImageClusterInstallReconcilerOptions struct {
@@ -209,7 +209,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	r.labelReferencedObjectsForBackup(ctx, log, ici, clusterDeployment)
 
-	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", req.Name))
+	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", ici.ObjectMeta.UID))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
 		if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
@@ -704,7 +704,7 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 }
 
 func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterInstall) (string, string, error) {
-	lockDir := filepath.Join(r.Options.DataDir, "namespaces", ici.Namespace, ici.Name)
+	lockDir := filepath.Join(r.Options.DataDir, "namespaces", ici.Namespace, string(ici.ObjectMeta.UID))
 	filesDir := filepath.Join(lockDir, "files")
 	if err := os.MkdirAll(filesDir, 0700); err != nil {
 		return "", "", err
