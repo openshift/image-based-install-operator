@@ -48,17 +48,12 @@ type Credentials struct {
 	Scheme *runtime.Scheme
 }
 
-func (r *Credentials) EnsureKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment, clusterInfo *lca_api.SeedReconfiguration) (lca_api.KubeConfigCryptoRetention, error) {
+func (r *Credentials) EnsureKubeconfigSecret(ctx context.Context, cd *hivev1.ClusterDeployment) (lca_api.KubeConfigCryptoRetention, error) {
 	url := fmt.Sprintf("https://api.%s.%s:6443", cd.Spec.ClusterName, cd.Spec.BaseDomain)
 
 	existsAndValid, err := r.kubeconfigExistsAndValid(ctx, cd, url)
 	if err != nil {
 		return lca_api.KubeConfigCryptoRetention{}, err
-	}
-	// nothing was changed, return the existing crypto
-	if existsAndValid && clusterInfo != nil {
-		r.Log.Infof("Kubeconfig already exists and is valid, taking crypto from seed reconfiguration")
-		return clusterInfo.KubeconfigCryptoRetention, nil
 	}
 
 	cryptoData, err := r.ensureCryptoKeys(ctx, cd, !existsAndValid)
