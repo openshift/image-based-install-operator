@@ -15,7 +15,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/certs"
@@ -61,32 +60,22 @@ var _ = Describe("Credentials", func() {
 	})
 
 	It("EnsureKubeconfigSecret success", func() {
-		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
 	})
 	It("EnsureKubeconfigSecret no kubeconfig secret", func() {
-		clusterInfo := lca_api.SeedReconfiguration{
-			ClusterName: clusterName,
-			BaseDomain:  baseDomain,
-		}
-
-		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
+		_, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
 	})
 	It("EnsureKubeconfigSecret already exists cluster name changed", func() {
-		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
 		// Call again and check the content is the same
-		clusterInfo := lca_api.SeedReconfiguration{
-			ClusterName:               clusterName,
-			BaseDomain:                baseDomain,
-			KubeconfigCryptoRetention: kubeConfigCryptoRetention,
-		}
 		clusterDeployment.Spec.ClusterName = "newClusterName"
-		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
+		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment)
 		// Verify new cluster crypto
@@ -95,30 +84,12 @@ var _ = Describe("Credentials", func() {
 		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
 		Expect(string(kubeconfigSecretData2)).ToNot(Equal(string(kubeconfigSecretData)))
 	})
-	It("EnsureKubeconfigSecret already exists and valid- no op", func() {
-		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+	It("EnsureKubeconfigSecret already exists and valid - content should be the same", func() {
+		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
 		// Call again and check the content is the same
-		clusterInfo := lca_api.SeedReconfiguration{
-			ClusterName:               clusterName,
-			BaseDomain:                baseDomain,
-			KubeconfigCryptoRetention: kubeConfigCryptoRetention,
-		}
-		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, &clusterInfo)
-		Expect(err).NotTo(HaveOccurred())
-		// Verify same cluster crypto
-		Expect(kubeConfigCryptoRetention_2).To(Equal(kubeConfigCryptoRetention))
-		// Verify the kubeconfig secret data hasn't changed
-		kubeconfigSecretData2 := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
-		Expect(string(kubeconfigSecretData2)).To(Equal(string(kubeconfigSecretData)))
-	})
-	It("EnsureKubeconfigSecret already exists and valid - but seed reconfiguration is nil, content should be the same", func() {
-		kubeConfigCryptoRetention, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
-		Expect(err).NotTo(HaveOccurred())
-		kubeconfigSecretData := getKubeconfigFromSecret(ctx, cm.Client, clusterDeployment)
-		// Call again and check the content is the same
-		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment, nil)
+		kubeConfigCryptoRetention_2, err := cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
 		Expect(err).NotTo(HaveOccurred())
 		// Verify same cluster crypto
 		Expect(kubeConfigCryptoRetention_2).To(Equal(kubeConfigCryptoRetention))

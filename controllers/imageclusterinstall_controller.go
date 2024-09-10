@@ -798,7 +798,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			clusterInfo = &lca_api.SeedReconfiguration{}
 		}
 
-		crypto, err := r.Credentials.EnsureKubeconfigSecret(ctx, cd, clusterInfo)
+		crypto, err := r.Credentials.EnsureKubeconfigSecret(ctx, cd)
 		if err != nil {
 			return fmt.Errorf("failed to ensure kubeconifg secret: %w", err)
 		}
