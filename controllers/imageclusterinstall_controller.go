@@ -674,13 +674,6 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 		}
 	}
 
-	if ici.Spec.NetworkConfigRef != nil {
-		networkConfigKey := types.NamespacedName{Name: ici.Spec.NetworkConfigRef.Name, Namespace: ici.Namespace}
-		if err := r.labelConfigMapForBackup(ctx, networkConfigKey); err != nil {
-			log.WithError(err).Errorf("failed to label ConfigMap %s for backup", networkConfigKey)
-		}
-	}
-
 	if ici.Spec.CABundleRef != nil {
 		caBundleKey := types.NamespacedName{Name: ici.Spec.CABundleRef.Name, Namespace: ici.Namespace}
 		if err := r.labelConfigMapForBackup(ctx, caBundleKey); err != nil {
@@ -875,7 +868,10 @@ func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ic
 	return strings.Split(namedRef.Name(), "/")[0], nil
 }
 
-func (r *ImageClusterInstallReconciler) nmstateConfigFromBMH(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost) (string, error) {
+// nmstateConfig in case bmh was configured with static networking we want to use this configuration
+func (r *ImageClusterInstallReconciler) nmstateConfig(
+	ctx context.Context,
+	bmh *bmh_v1alpha1.BareMetalHost) (string, error) {
 	if bmh == nil || bmh.Spec.PreprovisioningNetworkDataName == "" {
 		return "", nil
 	}
@@ -888,7 +884,7 @@ func (r *ImageClusterInstallReconciler) nmstateConfigFromBMH(ctx context.Context
 
 	nmstate, present := nmstateConfigSecret.Data[nmstateSecretKey]
 	if !present {
-		return "", fmt.Errorf("referenced networking ConfigMap %s does not contain the required key %s", key, nmstateCMKey)
+		return "", fmt.Errorf("referenced networking secret %s does not contain the required key %s", key, nmstateSecretKey)
 	}
 
 	var nmstateData map[string]any
@@ -899,41 +895,6 @@ func (r *ImageClusterInstallReconciler) nmstateConfigFromBMH(ctx context.Context
 	return string(nmstate), nil
 }
 
-// in case bmh was configured with static networking we want to use it's configuration
-// and in case it was not configured we will use configmap
-func (r *ImageClusterInstallReconciler) nmstateConfig(
-	ctx context.Context,
-	ici *v1alpha1.ImageClusterInstall,
-	bmh *bmh_v1alpha1.BareMetalHost) (string, error) {
-	// in case there is configured networking on BMH we should use it
-	nmstate, err := r.nmstateConfigFromBMH(ctx, bmh)
-	if err != nil || nmstate != "" {
-		return nmstate, err
-	}
-
-	if ici.Spec.NetworkConfigRef == nil {
-		return "", nil
-	}
-
-	nmstateCM := &corev1.ConfigMap{}
-	key := types.NamespacedName{Name: ici.Spec.NetworkConfigRef.Name, Namespace: ici.Namespace}
-	if err := r.Get(ctx, key, nmstateCM); err != nil {
-		return "", fmt.Errorf("failed to get network config ConfigMap %s: %w", key, err)
-	}
-
-	nmstate, present := nmstateCM.Data[nmstateCMKey]
-	if !present {
-		return "", fmt.Errorf("referenced networking ConfigMap %s does not contain the required key %s", key, nmstateCMKey)
-	}
-
-	var nmstateData map[string]any
-	if err := yaml.Unmarshal([]byte(nmstate), &nmstateData); err != nil {
-		return "", fmt.Errorf("failed to unmarshal nmstate data: %w", err)
-	}
-
-	return nmstate, nil
-}
-
 func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment,
 	KubeconfigCryptoRetention lca_api.KubeConfigCryptoRetention,
@@ -941,7 +902,7 @@ func (r *ImageClusterInstallReconciler) writeClusterInfo(ctx context.Context, lo
 	existingInfo *lca_api.SeedReconfiguration,
 	bmh *bmh_v1alpha1.BareMetalHost) error {
 
-	nmstate, err := r.nmstateConfig(ctx, ici, bmh)
+	nmstate, err := r.nmstateConfig(ctx, bmh)
 	if err != nil {
 		return err
 	}
