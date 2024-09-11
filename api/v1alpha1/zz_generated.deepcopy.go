@@ -127,11 +127,6 @@ func (in *ImageClusterInstallSpec) DeepCopyInto(out *ImageClusterInstallSpec) {
 		*out = new(v1.LocalObjectReference)
 		**out = **in
 	}
-	if in.NetworkConfigRef != nil {
-		in, out := &in.NetworkConfigRef, &out.NetworkConfigRef
-		*out = new(v1.LocalObjectReference)
-		**out = **in
-	}
 	if in.ExtraManifestsRefs != nil {
 		in, out := &in.ExtraManifestsRefs, &out.ExtraManifestsRefs
 		*out = make([]v1.LocalObjectReference, len(*in))
