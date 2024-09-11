@@ -496,46 +496,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(content).To(Equal(expectedcontent))
 	})
 
-	It("copies the nmstate config from a referenced configmap", func() {
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "netconfig",
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{"network-config": validNMStateConfig},
-		}
-		Expect(c.Create(ctx, cm)).To(Succeed())
-
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: cm.Name,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.RawNMStateConfig).To(Equal(validNMStateConfig))
-	})
-	It("copies the nmstate config bmh preprovisioningNetworkDataName even if configmap exists", func() {
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "netconfig",
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{"network-config": validNMStateConfig},
-		}
-		Expect(c.Create(ctx, cm)).To(Succeed())
-
+	It("copies the nmstate config bmh preprovisioningNetworkDataName", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -552,10 +513,6 @@ var _ = Describe("Reconcile", func() {
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
-		}
-
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: cm.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -574,66 +531,24 @@ var _ = Describe("Reconcile", func() {
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.RawNMStateConfig).To(Equal(validNMStateConfigBMH))
 	})
-	It("use configmap nmstate in case bmh was set but PreprovisioningNetworkDataName not set", func() {
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "netconfig",
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{"network-config": validNMStateConfig},
-		}
-		Expect(c.Create(ctx, cm)).To(Succeed())
-
+	It("fails if nmstate config is bad yaml", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		invalidNmstateString := "some\nnmstate\nstring"
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "netconfig",
-				Namespace: "test-namespace",
+				Namespace: bmh.Namespace,
 			},
-			Data: map[string][]byte{nmstateSecretKey: []byte(validNMStateConfigBMH)},
+			Data: map[string][]byte{nmstateSecretKey: []byte(invalidNmstateString)},
 		}
 		Expect(c.Create(ctx, secret)).To(Succeed())
 
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
-		}
-
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: cm.Name,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.RawNMStateConfig).To(Equal(validNMStateConfig))
-	})
-	It("fails if nmstate config is bad yaml", func() {
-		nmstateString := "some\nnmstate\nstring"
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "netconfig",
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{"network-config": nmstateString},
-		}
-		Expect(c.Create(ctx, cm)).To(Succeed())
-
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: cm.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -650,9 +565,48 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
-	It("fails when a referenced nmstate configmap is missing", func() {
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: "netconfig",
+	It("fails when a referenced nmstate secret is missing", func() {
+		// note that we don't create the netconfig secret.
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+	})
+	It("fails when the referenced nmstate secret is missing the required key", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "netconfig",
+				Namespace: bmh.Namespace,
+			},
+			Data: map[string][]byte{"wrongKey": []byte(validNMStateConfigBMH)},
+		}
+		Expect(c.Create(ctx, secret)).To(Succeed())
+		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -685,35 +639,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Message).To(Equal("clusterDeployment with name 'test-cluster' in namespace 'test-namespace' not found"))
 	})
-	It("failse when the referenced nmstate configmap is missing the required key", func() {
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "netconfig",
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{"wrong-key": validNMStateConfig},
-		}
-		Expect(c.Create(ctx, cm)).To(Succeed())
-
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: cm.Name,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
-
-		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-	})
-
 	It("creates extra manifests", func() {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1885,18 +1810,6 @@ var _ = Describe("Reconcile", func() {
 		clusterInstall.Spec.ExtraManifestsRefs = []corev1.LocalObjectReference{
 			{Name: "manifest1"},
 			{Name: "manifest2"},
-		}
-		configMaps = append(configMaps,
-			&corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "netconfig",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{"network-config": validNMStateConfig},
-			},
-		)
-		clusterInstall.Spec.NetworkConfigRef = &corev1.LocalObjectReference{
-			Name: "netconfig",
 		}
 		configMaps = append(configMaps,
 			&corev1.ConfigMap{
