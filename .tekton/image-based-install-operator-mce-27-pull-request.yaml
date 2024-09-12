@@ -27,7 +27,7 @@ spec:
   - name: image-expires-after
     value: 5d
   - name: dockerfile
-    value: Dockerfile
+    value: Dockerfile.konflux
   - name: path-context
     value: .
   pipelineSpec:
@@ -83,7 +83,7 @@ spec:
         to build image.
       name: path-context
       type: string
-    - default: Dockerfile
+    - default: Dockerfile.konflux
       description: Path to the Dockerfile inside the context specified by parameter
         path-context
       name: dockerfile
