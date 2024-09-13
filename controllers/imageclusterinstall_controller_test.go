@@ -96,6 +96,10 @@ func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHos
 				State: state,
 			},
 			HardwareDetails: &bmh_v1alpha1.HardwareDetails{NIC: []bmh_v1alpha1.NIC{{IP: "1.1.1.1"}}},
+			PoweredOn:       state == bmh_v1alpha1.StateExternallyProvisioned,
+		},
+		Spec: bmh_v1alpha1.BareMetalHostSpec{
+			ExternallyProvisioned: state == bmh_v1alpha1.StateExternallyProvisioned,
 		},
 	}
 }
@@ -752,7 +756,8 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateRegistering)
+		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -777,11 +782,13 @@ var _ = Describe("Reconcile", func() {
 			Name:      bmh.Name,
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
-		Expect(bmh.Spec.Image.DiskFormat).To(HaveValue(Equal("live-iso")))
+		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 
 	It("sets the BMH ref in the cluster install status", func() {
@@ -813,9 +820,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(clusterInstall.Status.BareMetalHostRef).To(HaveValue(Equal(*clusterInstall.Spec.BareMetalHostRef)))
 	})
 
-	It("validate image cleanup on data change", func() {
+	It("validate image is not cleanuped on data change if bmh started installation", func() {
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
-		bmh := bmhInState(bmh_v1alpha1.StateInspecting)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -838,67 +845,10 @@ var _ = Describe("Reconcile", func() {
 
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
-		resourceVersion := bmh.ResourceVersion
-
-		By("Nothing was changed in the clusterInstall, so no bmh change should happen")
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
-		Expect(resourceVersion).To(Equal(bmh.ResourceVersion))
-
-		By("Changing cluster install params should trigger bmh image cleanup")
-		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
-		clusterInstall.Spec.Hostname = "test"
-		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).To(BeNil())
-		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
-		resourceVersion = bmh.ResourceVersion
-
-		By("Next reconcile after image cleanup should set the new image")
-		_, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal(imageURL()))
-		Expect(resourceVersion).ToNot(Equal(bmh.ResourceVersion))
-	})
-
-	It("validate image is not cleanuped on data change if bmh is provisioning or provisioned", func() {
-		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioning)
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: bmh.Namespace,
-			Name:      bmh.Name,
-		}
-		req := ctrl.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: clusterInstallNamespace,
-				Name:      clusterInstallName,
-			},
-		}
-
-		res, err := r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		expectedUrl := imageURL()
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
-		resourceVersion := bmh.ResourceVersion
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 
 		By("Changing cluster install params nothing should change in bmh")
 		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
@@ -908,9 +858,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(resourceVersion).To(Equal(bmh.ResourceVersion))
-		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 
 		By("verify image not cleanuped in case bmh is provisioned")
 		bmh.Status.Provisioning.State = bmh_v1alpha1.StateProvisioned
@@ -926,16 +876,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).NotTo(BeNil())
-		Expect(bmh.Spec.Image.URL).To(Equal(expectedUrl))
-
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 
-	It("sets detached on a referenced BMH after it is provisioned", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
-		bmh.Spec = bmh_v1alpha1.BareMetalHostSpec{
-			Online: true,
-		}
+	It("sets detached on a referenced BMH after it is externally provisioned", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.Online = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -958,15 +906,24 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 
-		// need to reconcile twice to set the image URL
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(HaveOccurred())
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Annotations[detachedAnnotation]).To(Equal(detachedAnnotationValue))
 
-		By("Verify that bmh was not updated on second run")
+		By("Verify that bmh was not updated on third run")
 		resourceVersion := bmh.ResourceVersion
 		res, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
@@ -976,7 +933,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets disables AutomatedCleaningMode", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioning)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1002,14 +959,6 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.AutomatedCleaningMode).To(Equal(bmh_v1alpha1.CleaningModeDisabled))
-
-		By("Verify that bmh was not updated on second run")
-		resourceVersion := bmh.ResourceVersion
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.ObjectMeta.ResourceVersion).To(Equal(resourceVersion))
 	})
 
 	It("doesn't error for a missing imageclusterinstall", func() {
@@ -1059,7 +1008,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets conditions to show cluster installed when the host can be configured and cluster is ready", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -1107,7 +1056,7 @@ var _ = Describe("Reconcile", func() {
 	It("requeues and sets conditions when spoke cluster is not ready yet", func() {
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1156,7 +1105,7 @@ var _ = Describe("Reconcile", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
 
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1194,7 +1143,8 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets conditions to show cluster timeout when the override timeout has passed", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1234,7 +1184,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("verify status not set till host is not provisioned", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateProvisioning)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1334,17 +1284,21 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
 	})
 
-	It("removes the image from a BMH when the reference is removed", func() {
-		liveISO := "live-iso"
+	It("removes the data image when the reference is removed", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		bmh.Spec = bmh_v1alpha1.BareMetalHostSpec{
-			Image: &bmh_v1alpha1.Image{
-				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
-				DiskFormat: &liveISO,
+		bmh.Spec.Online = true
+
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
 			},
-			Online: true,
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
 
 		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
 			BareMetalHostRef: &v1alpha1.BareMetalHostReference{
@@ -1371,19 +1325,27 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).To(BeNil())
+		err = c.Get(ctx, key, &dataImage)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(Equal(fmt.Sprintf("dataimages.metal3.io \"%s\" not found", key.Name)))
+
 	})
 
 	It("removes the reference and configures a new BMH when the reference is changed", func() {
-		liveISO := "live-iso"
 		oldBMH := bmhInState(bmh_v1alpha1.StateAvailable)
-		oldBMH.Spec = bmh_v1alpha1.BareMetalHostSpec{
-			Image: &bmh_v1alpha1.Image{
-				URL:        fmt.Sprintf("http://service.namespace/images/%s/%s.iso", clusterInstallNamespace, clusterInstallName),
-				DiskFormat: &liveISO,
+		oldBMH.Spec.Online = true
+
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
 			},
-			Online: true,
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
 		}
 		Expect(c.Create(ctx, oldBMH)).To(Succeed())
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
 
 		newBMH := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1392,6 +1354,7 @@ var _ = Describe("Reconcile", func() {
 			},
 			Status: bmh_v1alpha1.BareMetalHostStatus{
 				HardwareDetails: &bmh_v1alpha1.HardwareDetails{NIC: []bmh_v1alpha1.NIC{{IP: "1.1.1.1"}}},
+				Provisioning:    bmh_v1alpha1.ProvisionStatus{State: bmh_v1alpha1.StateAvailable},
 			},
 		}
 		Expect(c.Create(ctx, newBMH)).To(Succeed())
@@ -1431,7 +1394,14 @@ var _ = Describe("Reconcile", func() {
 			Name:      newBMH.Name,
 		}
 		Expect(c.Get(ctx, newKey, newBMH)).To(Succeed())
-		Expect(newBMH.Spec.Image).ToNot(BeNil())
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, newKey, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+		Expect(newBMH.ObjectMeta.Annotations[rebootAnnotation]).To(Equal("true"))
+
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, oldKey, &dataImage)).To(HaveOccurred())
+
 	})
 
 	It("updates the cluster install and cluster deployment metadata", func() {
@@ -2131,59 +2101,6 @@ var _ = Describe("handleFinalizer", func() {
 			Namespace: clusterInstallNamespace,
 		}
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
-	})
-
-	It("removes the BMH image url when the config is deleted", func() {
-		bmh := &bmh_v1alpha1.BareMetalHost{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
-			},
-			Spec: bmh_v1alpha1.BareMetalHostSpec{
-				Image: &bmh_v1alpha1.Image{
-					URL: "https://service.example.com/namespace/name.iso",
-				},
-			},
-		}
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall := &v1alpha1.ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       clusterInstallName,
-				Namespace:  clusterInstallNamespace,
-				Finalizers: []string{clusterInstallFinalizerName},
-			},
-			Spec: v1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
-				},
-			},
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-
-		// mark clusterInstall as deleted to call the finalizer handler
-		now := metav1.Now()
-		clusterInstall.ObjectMeta.DeletionTimestamp = &now
-
-		res, stop, err := r.handleFinalizer(ctx, r.Log, clusterInstall)
-		Expect(res).To(Equal(ctrl.Result{}))
-		Expect(stop).To(BeTrue())
-		Expect(err).ToNot(HaveOccurred())
-
-		bmhKey := types.NamespacedName{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Get(ctx, bmhKey, bmh)).To(Succeed())
-		Expect(bmh.Spec.Image).To(BeNil())
-
-		clusterInstallKey := types.NamespacedName{
-			Name:      clusterInstallName,
-			Namespace: clusterInstallNamespace,
-		}
-		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
 	})
 
