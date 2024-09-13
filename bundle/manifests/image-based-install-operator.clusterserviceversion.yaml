@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-09-11T10:52:15Z"
+    createdAt: "2024-09-13T04:31:50Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -127,6 +127,24 @@ spec:
           resources:
           - baremetalhosts
           verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - metal3.io
+          resources:
+          - baremetalhosts/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - metal3.io
+          resources:
+          - dataimages
+          verbs:
+          - create
+          - delete
           - get
           - list
           - patch
