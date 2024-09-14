@@ -182,17 +182,21 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	var bmh *bmh_v1alpha1.BareMetalHost
-	var err error
-	if ici.Spec.BareMetalHostRef != nil {
-		bmh, err = r.getBMH(ctx, ici.Spec.BareMetalHostRef)
-		if err != nil {
-			log.WithError(err).Error("failed to get BareMetalHost")
-			if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
-			return ctrl.Result{}, err
+	if ici.Spec.BareMetalHostRef == nil {
+		log.Infof("No BareMetalHostRef set, nothing to do without provided bmh")
+		if updateErr := r.setHostConfiguredCondition(ctx, ici, fmt.Errorf("No BareMetalHostRef set, nothing to do without provided bmh")); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
+		return ctrl.Result{}, nil
+	}
+
+	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
+	if err != nil {
+		log.WithError(err).Error("failed to get BareMetalHost")
+		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+		return ctrl.Result{}, err
 	}
 
 	res, _, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
@@ -222,24 +226,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// in case there is no bmh we should set requirements met condition to true with image ready message
-	// in case bmh was set we will set this condition after host validations
-	if ici.Spec.BareMetalHostRef == nil {
-		if err := r.setImageReadyCondition(ctx, ici, nil, imageUrl); err != nil {
-			log.WithError(err).Error("failed to update ImageClusterInstall status")
-			return ctrl.Result{}, err
-		}
-	}
-
 	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
 		if err := r.removeBMHDataImage(ctx, bmh, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
 			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", ici.Status.BareMetalHostRef.Namespace, ici.Status.BareMetalHostRef.Name)
 			return ctrl.Result{}, err
 		}
-	}
-
-	if bmh == nil {
-		return ctrl.Result{}, nil
 	}
 
 	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
