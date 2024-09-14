@@ -1,0 +1,16 @@
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  annotations:
+    inspect.metal3.io: "disabled"
+  name: ostest-extraworker
+  namespace: ibi-test
+spec:
+  online: true
+  automatedCleaningMode: "disabled"
+  bootMACAddress: 00:2e:50:56:1e:dd
+  externallyProvisioned: true
+
+  bmc:
+    address: redfish-virtualmedia+http://192.168.126.1:8000/redfish/v1/Systems/b7c05ec0-83bf-4d71-8e36-3112264502b2
+    credentialsName: ostest-extraworker-bmc-secret

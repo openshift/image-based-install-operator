@@ -4,6 +4,9 @@ metadata:
   name: ibi-test
   namespace: ibi-test
 spec:
+  bareMetalHostRef:
+    name: ostest-extraworker
+    namespace: ibi-test
   clusterDeploymentRef:
     name: ibi-test
   hostname: ibitesthost

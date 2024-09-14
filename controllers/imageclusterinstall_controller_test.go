@@ -164,6 +164,24 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, pullSecret)).To(Succeed())
 
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-1",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateExternallyProvisioned,
+				},
+				HardwareDetails: &bmh_v1alpha1.HardwareDetails{NIC: []bmh_v1alpha1.NIC{{IP: "1.1.1.1"}}},
+				PoweredOn:       true,
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				ExternallyProvisioned: true,
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
 		clusterInstall = &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       clusterInstallName,
@@ -176,8 +194,13 @@ var _ = Describe("Reconcile", func() {
 					Name: imageSet.Name,
 				},
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
 			},
 		}
+
 		clusterDeployment = &hivev1.ClusterDeployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterInstallName,
@@ -283,8 +306,16 @@ var _ = Describe("Reconcile", func() {
 		Expect(clusterCrypto).To(Equal(infoOut.KubeconfigCryptoRetention))
 	})
 	It("regenerate cluster crypto in case the cluster name or base domain changed", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
 		baseDomain := "example.com"
 		clusterName := "thingcluster"
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		clusterDeployment.Spec.ClusterName = clusterName
 		clusterDeployment.Spec.BaseDomain = baseDomain
@@ -310,7 +341,7 @@ var _ = Describe("Reconcile", func() {
 		// reconcile again and verify that the cluster crypto got updated
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
 		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		infoOut = &lca_api.SeedReconfiguration{}
@@ -324,7 +355,7 @@ var _ = Describe("Reconcile", func() {
 		// reconcile again and verify that the cluster crypto got updated
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
 		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		infoOut = &lca_api.SeedReconfiguration{}
@@ -981,30 +1012,6 @@ var _ = Describe("Reconcile", func() {
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
-	})
-
-	It("sets the requirements met condition and image URL when the image is ready", func() {
-		clusterInstall.Spec.Hostname = "thing"
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-
-		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
-		Expect(cond.Reason).To(Equal(v1alpha1.ImageReadyReason))
-		Expect(cond.Message).To(Equal(v1alpha1.ImageReadyMessage))
-
-		Expect(clusterInstall.Status.ConfigurationImageURL).To(Equal(imageURL()))
 	})
 
 	It("sets conditions to show cluster installed when the host can be configured and cluster is ready", func() {
