@@ -219,8 +219,13 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func installationStopped(ici *v1alpha1.ImageClusterInstall) bool {
-	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallStopped)
+func installationTimedout(ici *v1alpha1.ImageClusterInstall) bool {
+	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
+	return cond != nil && cond.Status == corev1.ConditionFalse && cond.Reason == v1alpha1.InstallTimedoutReason
+}
+
+func installationCompleted(ici *v1alpha1.ImageClusterInstall) bool {
+	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
 	return cond != nil && cond.Status == corev1.ConditionTrue
 }
 

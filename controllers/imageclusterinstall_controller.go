@@ -145,7 +145,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// Nothing to do if the installation process has already stopped
-	if installationStopped(ici) {
+	if installationCompleted(ici) {
 		log.Infof("Cluster %s/%s finished installation process, nothing to do", ici.Namespace, ici.Name)
 		return ctrl.Result{}, nil
 	}
@@ -301,22 +301,12 @@ func (r *ImageClusterInstallReconciler) monitorInstallationProgress(
 	}
 	if timedout {
 		r.Log.Info("cluster install timed out")
-		return ctrl.Result{}, nil
 	}
 
-	res, err := r.checkClusterStatus(ctx, r.Log, ici, clusterDeployment)
+	res, err := r.checkClusterStatus(ctx, r.Log, ici, bmh, timedout)
 	if err != nil {
 		r.Log.WithError(err).Error("failed to check cluster status")
 		return ctrl.Result{}, err
-	}
-
-	// After installation ended we don't want that ironic will do any changes in the node
-	patch := client.MergeFrom(bmh.DeepCopy())
-	if res.IsZero() && setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
-		r.Log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return ctrl.Result{}, err
-		}
 	}
 
 	return res, nil
@@ -416,6 +406,10 @@ func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
 func (r *ImageClusterInstallReconciler) checkClusterTimeout(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, defaultTimeout time.Duration) (bool, error) {
 	timeout := defaultTimeout
 
+	if installationTimedout(ici) {
+		return true, nil
+	}
+
 	if timeoutOverride, present := ici.Annotations[installTimeoutAnnotation]; present {
 		var err error
 		timeout, err = time.ParseDuration(timeoutOverride)
@@ -436,7 +430,11 @@ func (r *ImageClusterInstallReconciler) checkClusterTimeout(ctx context.Context,
 	return false, nil
 }
 
-func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, clusterDeployment *hivev1.ClusterDeployment) (ctrl.Result, error) {
+func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context,
+	log logrus.FieldLogger,
+	ici *v1alpha1.ImageClusterInstall,
+	bmh *bmh_v1alpha1.BareMetalHost,
+	timedout bool) (ctrl.Result, error) {
 	spokeClient, err := r.spokeClient(ctx, ici)
 	if err != nil {
 		log.WithError(err).Error("failed to create spoke client")
@@ -444,16 +442,30 @@ func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context, 
 	}
 
 	if status := r.GetSpokeClusterInstallStatus(ctx, log, spokeClient); !status.Installed {
-		log.Infof("cluster install in progress: %s", status.String())
+		if timedout {
+			r.Log.Infof("cluster install timed out and status is not installed: %s", status.String())
+			return ctrl.Result{}, nil
+		}
+
+		r.Log.Infof("cluster install in progress: %s", status.String())
 		if err := r.setClusterInstallingConditions(ctx, ici, status.String()); err != nil {
-			log.WithError(err).Error("failed to set installing conditions")
+			r.Log.WithError(err).Error("failed to set installing conditions")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
-	log.Info("cluster is installed")
+	r.Log.Info("cluster is installed")
+
+	// After installation ended we don't want that ironic will do any changes in the node
+	patch := client.MergeFrom(bmh.DeepCopy())
+	if setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
+		r.Log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
-		log.WithError(err).Error("failed to set installed conditions")
+		r.Log.WithError(err).Error("failed to set installed conditions")
 		return ctrl.Result{}, err
 	}
 
