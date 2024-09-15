@@ -61,10 +61,11 @@ func (r *Credentials) EnsureKubeconfigSecret(ctx context.Context, cd *hivev1.Clu
 		return lca_api.KubeConfigCryptoRetention{}, fmt.Errorf("failed to ensure crypto keys: %w", err)
 	}
 	if existsAndValid {
-		r.Log.Infof("Kubeconfig already exists and is valid, taking crypto from secret")
+		r.Log.Debug("Kubeconfig already exists and is valid, taking crypto from secret")
 		return cryptoData.CryptoKeys, nil
 	}
 
+	r.Log.Infof("Generating kubeconfig")
 	kubeconfigBytes, err := generateKubeConfig(url,
 		[]byte(cryptoData.CertAuthData), []byte(cryptoData.ClientCert), []byte(cryptoData.ClientKey))
 	if err != nil {
@@ -92,12 +93,11 @@ func (r *Credentials) ensureCryptoKeys(ctx context.Context, cd *hivev1.ClusterDe
 
 		cryptoData, ok := secret.Data[cryptoKeys]
 		if ok {
-			r.Log.Infof("Crypto keys already exist, taking them from the secret")
+			r.Log.Debug("Crypto keys already exist, taking them from the secret")
 			err := json.Unmarshal(cryptoData, &cryptoSecret)
 			if err != nil {
 				return cryptoSecret, fmt.Errorf("failed to marshal crypto keys, err %w", err)
 			}
-
 			return cryptoSecret, nil
 		}
 	}
@@ -140,7 +140,7 @@ func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context, cd *hivev1.
 		} else {
 			// in case password was not changed, return the existing hash
 			if err := bcrypt.CompareHashAndPassword([]byte(currentHash), password); err == nil {
-				r.Log.Infof("Admin password already exists and is valid")
+				r.Log.Debug("Admin password already exists and is valid")
 				return currentHash, nil
 			}
 			// we will generate a new hash in case password was changed

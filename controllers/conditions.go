@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 )
 
 func findCondition(conditions []hivev1.ClusterInstallCondition, condType hivev1.ClusterInstallConditionType) *hivev1.ClusterInstallCondition {
@@ -118,7 +119,7 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 		return nil
 	}
 	ici.Status.ConfigurationImageURL = imageURL
-	r.Log.Info("Setting image ready condition")
+	r.Log.Info("Setting image ready condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
@@ -140,7 +141,7 @@ func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.C
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	r.Log.Info("Setting host configured condition")
+	r.Log.Info("Setting host configured condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
@@ -156,7 +157,7 @@ func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	r.Log.Info("Setting requirements met condition")
+	r.Log.Info("Setting requirements met condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
@@ -186,6 +187,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstalledConditions(ctx contex
 	}
 
 	r.Log.Info("Setting cluster installed conditions")
+
 	return r.Status().Patch(ctx, ici, patch)
 }
 
