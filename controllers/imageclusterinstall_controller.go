@@ -226,17 +226,10 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if ici.Status.BareMetalHostRef != nil && !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
-		if err := r.removeBMHDataImage(ctx, bmh, ici.Status.BareMetalHostRef); client.IgnoreNotFound(err) != nil {
-			log.WithError(err).Errorf("failed to remove image from BareMetalHost %s/%s", ici.Status.BareMetalHostRef.Namespace, ici.Status.BareMetalHostRef.Name)
-			return ctrl.Result{}, err
-		}
-	}
-
 	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
 	// will format the disk
-	patch := client.MergeFrom(bmh.DeepCopy())
 	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
+		patch := client.MergeFrom(bmh.DeepCopy())
 		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
 		r.Log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
@@ -271,7 +264,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	}
 
-	if !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
+	if ici.Status.BareMetalHostRef == nil {
 		patch := client.MergeFrom(ici.DeepCopy())
 		ici.Status.BareMetalHostRef = ici.Spec.BareMetalHostRef.DeepCopy()
 		if ici.Status.BootTime.IsZero() {
@@ -309,7 +302,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// After installation ended we don't want that ironic will do any changes in the node
-	patch = client.MergeFrom(bmh.DeepCopy())
+	patch := client.MergeFrom(bmh.DeepCopy())
 	if res.IsZero() && setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
 		r.Log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
