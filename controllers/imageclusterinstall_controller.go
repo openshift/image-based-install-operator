@@ -320,7 +320,6 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	// Skip validations in case of the state is Externally Provisioned as it will not be inspected
 	if bmh.Spec.ExternallyProvisioned {
 		msg := fmt.Sprintf("BareMetalHost %s/%s, is externally provisioned, skipping hardware validation", bmh.Namespace, bmh.Name)
-		r.Log.Info(msg)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
 			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
@@ -330,7 +329,6 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	// no need to validate if inspect annotation is disabled
 	if bmh.ObjectMeta.Annotations != nil && !isInspectionEnabled(bmh) {
 		msg := fmt.Sprintf("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
-		r.Log.Info(msg)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
 			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
