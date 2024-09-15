@@ -10,25 +10,18 @@ import (
 )
 
 var _ = Describe("ValidateUpdate", func() {
-	It("succeeds when BMH ref is not set", func() {
-		oldClusterInstall := &ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "config",
-				Namespace: "test-namespace",
-			},
-			Spec: ImageClusterInstallSpec{
-				Hostname:       "test",
-				MachineNetwork: "192.168.126.0/24",
+
+	setClusterInstallCondition := func(conditionType hivev1.ClusterInstallConditionType, status corev1.ConditionStatus, reason string) []hivev1.ClusterInstallCondition {
+		return []hivev1.ClusterInstallCondition{
+			{
+				Type:    conditionType,
+				Status:  status,
+				Reason:  reason,
+				Message: "",
 			},
 		}
-		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.Hostname = "stuff"
-
-		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
-		Expect(warns).To(BeNil())
-		Expect(err).To(BeNil())
-	})
-	It("update succeeds when ssh key is valid and BMH ref is not set", func() {
+	}
+	It("update succeeds when ssh key is valid and image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -36,6 +29,9 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -45,7 +41,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
-	It("update succeeds when hostname is valid and BMH ref is not set", func() {
+	It("update succeeds when hostname is valid and image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -53,6 +49,9 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -61,7 +60,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
-	It("update fail when ssh key is invalid and BMH ref is not set", func() {
+	It("update fail when ssh key is invalid and image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -69,6 +68,9 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -78,7 +80,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
 	})
-	It("update fail when hostname is invalid and BMH ref is not set", func() {
+	It("update fail when hostname is invalid and image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -86,6 +88,9 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -95,7 +100,35 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid hostname"))
 	})
-	It("create succeeds when hostname and ssh key are valid and BMH ref is not set", func() {
+	It("update fail when installation started", func() {
+		bareMetalHostRef := &BareMetalHostReference{
+			Name:      "test-bmh",
+			Namespace: "test-bmh-namespace",
+		}
+
+		oldClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Hostname:         "test",
+				BareMetalHostRef: bareMetalHostRef,
+			},
+			Status: ImageClusterInstallStatus{
+				BareMetalHostRef: bareMetalHostRef,
+			},
+		}
+		newClusterInstall := oldClusterInstall.DeepCopy()
+		newClusterInstall.Spec.Hostname = "other-valid-hostname"
+
+		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
+		Expect(warns).To(BeNil())
+		Expect(err).ToNot(BeNil())
+		Expect(err.Error()).To(ContainSubstring("cannot update ImageClusterInstall when the configImage is ready"))
+	})
+
+	It("create succeeds when hostname and ssh key are valid", func() {
 		newClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -111,7 +144,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
 	})
-	It("create fail when ssh key is invalid and BMH ref is not set", func() {
+	It("create fail when ssh key is invalid", func() {
 		newClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -127,7 +160,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(warns).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("invalid ssh key"))
 	})
-	It("create fail when hostname is invalid and BMH ref is not set", func() {
+	It("create fail when hostname is invalid", func() {
 		newClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -159,7 +192,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid machine network"))
 	})
 
-	It("succeeds when BMH ref is changed from nil to non-nil", func() {
+	It("update succeeds BMH ref update while image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -167,6 +200,9 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -180,18 +216,22 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).To(BeNil())
 	})
 
-	It("succeeds when BMH ref is changed from non-nil to nil", func() {
+	It("update fails BMH ref update when installation started", func() {
+		bareMetalHostRef := &BareMetalHostReference{
+			Name:      "test-bmh",
+			Namespace: "test-bmh-namespace",
+		}
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
-				},
+				Hostname:         "test",
+				BareMetalHostRef: bareMetalHostRef,
+			},
+			Status: ImageClusterInstallStatus{
+				BareMetalHostRef: bareMetalHostRef,
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -199,7 +239,7 @@ var _ = Describe("ValidateUpdate", func() {
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(BeNil())
 	})
 
 	It("succeeds when BMH ref updated", func() {
@@ -227,7 +267,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).To(BeNil())
 	})
 
-	It("fails when BMH ref is set for non BMH updates", func() {
+	It("succeeds status update when image is ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -240,35 +280,16 @@ var _ = Describe("ValidateUpdate", func() {
 					Namespace: "test-bmh-namespace",
 				},
 			},
-		}
-		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.Hostname = "stuff"
-
-		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
-		Expect(warns).To(BeNil())
-		Expect(err).ToNot(BeNil())
-	})
-
-	It("succeeds status update when BMH ref is set", func() {
-		oldClusterInstall := &ImageClusterInstall{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "config",
-				Namespace: "test-namespace",
-			},
-			Spec: ImageClusterInstallSpec{
-				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
-				},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
 		newClusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{{
-			Type:    hivev1.ClusterInstallRequirementsMet,
+			Type:    hivev1.ClusterInstallCompleted,
 			Status:  corev1.ConditionTrue,
-			Reason:  ImageReadyReason,
-			Message: ImageReadyMessage,
+			Reason:  InstallSucceededReason,
+			Message: InstallSucceededMessage,
 		}}
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
@@ -276,7 +297,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).To(BeNil())
 	})
 
-	It("metadata update succeeds when BMH ref is set", func() {
+	It("metadata update succeeds when image is ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -288,6 +309,9 @@ var _ = Describe("ValidateUpdate", func() {
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
 				},
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -298,26 +322,31 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).To(BeNil())
 	})
 
-	It("fail status and spec update when BMH ref is set", func() {
+	It("fail status and spec update when installation started", func() {
+		bareMetalHostRef := &BareMetalHostReference{
+			Name:      "test-bmh",
+			Namespace: "test-bmh-namespace",
+		}
+
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
 				Namespace: "test-namespace",
 			},
 			Spec: ImageClusterInstallSpec{
-				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
-				},
+				Hostname:         "test",
+				BareMetalHostRef: bareMetalHostRef,
+			},
+			Status: ImageClusterInstallStatus{
+				BareMetalHostRef: bareMetalHostRef,
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
 		newClusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{{
-			Type:    hivev1.ClusterInstallRequirementsMet,
+			Type:    hivev1.ClusterInstallCompleted,
 			Status:  corev1.ConditionTrue,
-			Reason:  ImageReadyReason,
-			Message: ImageReadyMessage,
+			Reason:  InstallSucceededReason,
+			Message: InstallSucceededMessage,
 		}}
 		newClusterInstall.Spec.Hostname = "stuff"
 
@@ -326,7 +355,7 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err).NotTo(BeNil())
 	})
 
-	It("allows ClusterMetadata updates when BMH ref is set", func() {
+	It("allows ClusterMetadata updates when image is ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "config",
@@ -338,6 +367,9 @@ var _ = Describe("ValidateUpdate", func() {
 					Name:      "test-bmh",
 					Namespace: "test-bmh-namespace",
 				},
+			},
+			Status: ImageClusterInstallStatus{
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -351,29 +383,5 @@ var _ = Describe("ValidateUpdate", func() {
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
 		Expect(warns).To(BeNil())
 		Expect(err).To(BeNil())
-	})
-})
-
-var _ = Describe("BMHRefsMatch", func() {
-	var ref1, ref2 *BareMetalHostReference
-	BeforeEach(func() {
-		ref1 = &BareMetalHostReference{Name: "bmh", Namespace: "test"}
-		ref2 = &BareMetalHostReference{Name: "other-bmh", Namespace: "test"}
-	})
-
-	It("returns true when both are nil", func() {
-		Expect(BMHRefsMatch(nil, nil)).To(Equal(true))
-	})
-	It("returns true when refs match", func() {
-		Expect(BMHRefsMatch(ref1, ref1.DeepCopy())).To(Equal(true))
-	})
-	It("returns false when refs do not match", func() {
-		Expect(BMHRefsMatch(ref1, ref2)).To(Equal(false))
-	})
-	It("returns false for nil and set refs", func() {
-		Expect(BMHRefsMatch(nil, ref2)).To(Equal(false))
-	})
-	It("returns false for set and nil refs", func() {
-		Expect(BMHRefsMatch(ref1, nil)).To(Equal(false))
 	})
 })
