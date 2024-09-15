@@ -1404,7 +1404,7 @@ var _ = Describe("Reconcile", func() {
 		dataImage = bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, newKey, &dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
-		Expect(newBMH.ObjectMeta.Annotations[rebootAnnotation]).To(Equal("true"))
+		Expect(newBMH.ObjectMeta.Annotations[rebootAnnotation]).To(Equal(""))
 
 		dataImage = bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, oldKey, &dataImage)).To(HaveOccurred())
