@@ -1265,7 +1265,7 @@ var _ = Describe("Reconcile", func() {
 	It("sets conditions to show cluster timeout when the default timeout has passed", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
-
+		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
@@ -1303,7 +1303,68 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
 	})
 
+	It("sets cluster installed in case timeout was set but cluster succeeded after it", func() {
+		// set negative timeout to ensure it triggers and so that no time is wasted in tests
+		r.DefaultInstallTimeout = -time.Minute
+		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
+
+		By("Successful run after cluster was timed out should still set installed")
+		r.GetSpokeClusterInstallStatus = monitor.SuccessMonitor
+
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+	})
+
 	It("sets conditions to show cluster timeout when the override timeout has passed", func() {
+		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -1386,7 +1447,7 @@ var _ = Describe("Reconcile", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
 
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -1395,8 +1456,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
 			Conditions: []hivev1.ClusterInstallCondition{
-				hivev1.ClusterInstallCondition{
-					Type:    hivev1.ClusterInstallStopped,
+				{
+					Type:    hivev1.ClusterInstallCompleted,
 					Status:  corev1.ConditionTrue,
 					Reason:  v1alpha1.InstallSucceededReason,
 					Message: v1alpha1.InstallSucceededMessage,
@@ -1419,7 +1480,9 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
-		Expect(cond).To(BeNil())
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).NotTo(Equal(v1alpha1.InstallTimedoutReason))
 	})
 
 	It("sets the ClusterInstallRequirementsMet condition to true when the host is missing", func() {
