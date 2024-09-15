@@ -19,6 +19,10 @@ package controllers
 import (
 	"bytes"
 	"context"
+	// These are required for image parsing to work correctly with digest-based pull specs
+	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
+	_ "crypto/sha256"
+	_ "crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -29,11 +33,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	// These are required for image parsing to work correctly with digest-based pull specs
-	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
-	_ "crypto/sha256"
-	_ "crypto/sha512"
 
 	"golang.org/x/mod/sumdb/dirhash"
 	"gopkg.in/yaml.v3"
@@ -98,6 +97,7 @@ const (
 	detachedAnnotationValue      = "imageclusterinstall-controller"
 	inspectAnnotation            = "inspect.metal3.io"
 	rebootAnnotation             = "reboot.metal3.io"
+	ibioManagedBMH               = "image-based-install-managed"
 	clusterConfigDir             = "cluster-configuration"
 	extraManifestsDir            = "extra-manifests"
 	manifestsDir                 = "manifests"
@@ -263,6 +263,12 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.WithError(updateErr).Error("failed to update BareMetalHost provisioning state")
 		}
 		return ctrl.Result{}, err
+	}
+	if !annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
+		// TODO: consider replacing this condition with `dataDisk.Status.AttachedImage`
+		r.Log.Info("Nothing to do, waiting for BMH to get %s annotation", ibioManagedBMH)
+		return ctrl.Result{}, nil
+
 	}
 
 	if !v1alpha1.BMHRefsMatch(ici.Spec.BareMetalHostRef, ici.Status.BareMetalHostRef) {
@@ -595,29 +601,45 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	patch := client.MergeFrom(bmh.DeepCopy())
 
 	dirty := false
-	if !bmh.Spec.Online {
-		bmh.Spec.Online = true
-		r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
-		dirty = true
-	}
 
+	if annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
+		return nil
+	}
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
 		if !bmh.Spec.ExternallyProvisioned {
 			r.Log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Name, bmh.Namespace)
 			bmh.Spec.ExternallyProvisioned = true
 			dirty = true
 		}
+		if !bmh.Spec.Online {
+			bmh.Spec.Online = true
+			r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
+			dirty = true
+		}
+		// Reboot host in case node has inspection, all validation passed and is powered on,
+		// so we will be able to reboot into disk.
+		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+			dirty = true
+		}
 	}
-
-	// Reboot host in case node has inspection, all validation passed and is powered on,
-	// so we will be able to reboot into disk.
-	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable && bmh.Status.PoweredOn &&
-		setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateExternallyProvisioned {
 		r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		dirty = true
+		if !bmh.Spec.Online {
+			bmh.Spec.Online = true
+			r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
+			dirty = true
+		}
+		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+			dirty = true
+		}
+
 	}
 
 	if dirty {
+		setAnnotationIfNotExists(&bmh.ObjectMeta, ibioManagedBMH, "")
 		r.Log.Infof("Updating BareMetalHost %s/%s provisioning state", bmh.Namespace, bmh.Name)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
 			return err
@@ -1341,6 +1363,14 @@ func setAnnotationIfNotExists(meta *metav1.ObjectMeta, key string, value string)
 		return true
 	}
 	return false
+}
+
+func annotationExists(meta *metav1.ObjectMeta, key string) bool {
+	if meta.Annotations == nil {
+		return false
+	}
+	_, ok := meta.Annotations[key]
+	return ok
 }
 
 func ipInCidr(ipAddr, cidr string) (bool, error) {
