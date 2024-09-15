@@ -97,6 +97,7 @@ const (
 	detachedAnnotationValue      = "imageclusterinstall-controller"
 	inspectAnnotation            = "inspect.metal3.io"
 	rebootAnnotation             = "reboot.metal3.io"
+	softRebootAnnotationValue    = ""
 	ibioManagedBMH               = "image-based-install-managed"
 	clusterConfigDir             = "cluster-configuration"
 	extraManifestsDir            = "extra-manifests"
@@ -620,7 +621,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 		}
 		// Reboot host in case node has inspection, all validation passed and is powered on,
 		// so we will be able to reboot into disk.
-		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, softRebootAnnotationValue) {
 			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 			dirty = true
 		}
@@ -633,7 +634,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 			r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
 			dirty = true
 		}
-		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, softRebootAnnotationValue) {
 			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 			dirty = true
 		}
@@ -717,7 +718,7 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 
 	if bmh != nil {
 		patch := client.MergeFrom(bmh.DeepCopy())
-		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, softRebootAnnotationValue) {
 			r.Log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 			if err := r.Patch(ctx, bmh, patch); err != nil {
 				return err
