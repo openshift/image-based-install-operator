@@ -612,7 +612,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	// Reboot host in case node has inspection, all validation passed and is powered on,
 	// so we will be able to reboot into disk.
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable && bmh.Status.PoweredOn &&
-		setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "true") {
+		setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
 		r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		dirty = true
 	}
@@ -693,7 +693,7 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 
 	if bmh != nil {
 		patch := client.MergeFrom(bmh.DeepCopy())
-		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "true") {
+		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
 			r.Log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 			if err := r.Patch(ctx, bmh, patch); err != nil {
 				return err
