@@ -786,8 +786,155 @@ var _ = Describe("Reconcile", func() {
 
 	})
 
-	It("configures a referenced BMH", func() {
+	It("configures a referenced BMH with state registering and ExternallyProvisioned true", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateRegistering)
+		bmh.Spec.ExternallyProvisioned = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		// We don't update the power state of a BMH with registering provisioning state
+		Expect(bmh.Spec.Online).To(BeFalse())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+
+	It("configures a referenced BMH with state available, ExternallyProvisioned false and online true", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+	It("configures a referenced BMH with state available, ExternallyProvisioned false and online false", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = false
+		bmh.Spec.ExternallyProvisioned = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+	It("configures a referenced BMH with state externally provisioned and online false", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.ExternallyProvisioned = true
+		bmh.Status.PoweredOn = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+	It("configures a referenced BMH with status externally provisioned and online true", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
