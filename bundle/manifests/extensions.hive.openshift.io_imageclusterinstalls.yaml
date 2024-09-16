@@ -13,6 +13,8 @@ spec:
     kind: ImageClusterInstall
     listKind: ImageClusterInstallList
     plural: imageclusterinstalls
+    shortNames:
+    - ici
     singular: imageclusterinstall
   scope: Namespaced
   versions:

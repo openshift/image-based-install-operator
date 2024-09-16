@@ -129,6 +129,7 @@ type BareMetalHostReference struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:resource:path=imageclusterinstalls,shortName=ici
 // +kubebuilder:printcolumn:name="RequirementsMet",type="string",JSONPath=".status.conditions[?(@.type=='RequirementsMet')].reason"
 // +kubebuilder:printcolumn:name="Completed",type="string",JSONPath=".status.conditions[?(@.type=='Completed')].reason"
 // +kubebuilder:printcolumn:name="ConfigurationImageURL",type="string",JSONPath=".status.configurationImageURL"
