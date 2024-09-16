@@ -854,6 +854,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
 		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
@@ -863,7 +865,7 @@ var _ = Describe("Reconcile", func() {
 	It("configures a referenced BMH with state available, ExternallyProvisioned false and online false", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = false
-		bmh.Spec.ExternallyProvisioned = true
+		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
@@ -891,6 +893,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
 		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
@@ -927,6 +931,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
@@ -962,6 +968,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Spec.Image).To(BeNil())
 		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
