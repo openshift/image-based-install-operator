@@ -602,50 +602,32 @@ func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
 func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
 
-	dirty := false
-
 	if annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
 		return nil
 	}
+
+	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
+		return nil
+	}
+	r.Log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
 		if !bmh.Spec.ExternallyProvisioned {
-			r.Log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Name, bmh.Namespace)
+			r.Log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
 			bmh.Spec.ExternallyProvisioned = true
-			dirty = true
-		}
-		if !bmh.Spec.Online {
-			bmh.Spec.Online = true
-			r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
-			dirty = true
-		}
-		// Reboot host in case node has inspection, all validation passed and is powered on,
-		// so we will be able to reboot into disk.
-		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
-			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-			dirty = true
 		}
 	}
-	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateExternallyProvisioned {
-		r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-		dirty = true
-		if !bmh.Spec.Online {
-			bmh.Spec.Online = true
-			r.Log.Infof("enabling BareMetalHost (%s/%s) Online", bmh.Name, bmh.Namespace)
-			dirty = true
-		}
-		if bmh.Status.PoweredOn && setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
-			r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-			dirty = true
-		}
-
+	if !bmh.Spec.Online {
+		bmh.Spec.Online = true
+		r.Log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
 	}
-
-	if dirty {
-		setAnnotationIfNotExists(&bmh.ObjectMeta, ibioManagedBMH, "")
-		r.Log.Infof("Updating BareMetalHost %s/%s provisioning state", bmh.Namespace, bmh.Name)
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return err
-		}
+	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+		// Reboot host so we will reboot into disk
+		//Note that if the node was powered off the annotation will be removed upon boot (it will not reboot twice).
+		r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Namespace, bmh.Name)
+	}
+	setAnnotationIfNotExists(&bmh.ObjectMeta, ibioManagedBMH, "")
+	if err := r.Patch(ctx, bmh, patch); err != nil {
+		return err
 	}
 
 	return nil
