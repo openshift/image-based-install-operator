@@ -19,6 +19,7 @@ package controllers
 import (
 	"bytes"
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -209,7 +210,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if err := r.setClusterInstallMetadata(ctx, ici, clusterDeployment.Name); err != nil {
+	if err := r.setClusterInstallMetadata(ctx, log, ici, clusterDeployment.Name); err != nil {
 		log.WithError(err).Error("failed to set ImageClusterInstall data")
 		return ctrl.Result{}, err
 	}
@@ -230,18 +231,18 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
 		patch := client.MergeFrom(bmh.DeepCopy())
 		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
-		r.Log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	res, err = r.validateSeedReconfigurationWithBMH(ctx, ici, bmh)
+	res, err = r.validateSeedReconfigurationWithBMH(ctx, log, ici, bmh)
 	if err != nil || !res.IsZero() {
 		return res, err
 	}
 
-	if err := r.createBMHDataImage(ctx, bmh, imageUrl); err != nil {
+	if err := r.createBMHDataImage(ctx, log, bmh, imageUrl); err != nil {
 		log.WithError(err).Error("failed to create BareMetalHost DataImage")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 			log.WithError(updateErr).Error("failed to create DataImage")
@@ -249,7 +250,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateBMHProvisioningState(ctx, bmh); err != nil {
+	if err := r.updateBMHProvisioningState(ctx, log, bmh); err != nil {
 		log.WithError(err).Error("failed to update BareMetalHost provisioning state")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update BareMetalHost provisioning state")
@@ -258,7 +259,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	if !annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
 		// TODO: consider replacing this condition with `dataDisk.Status.AttachedImage`
-		r.Log.Info("Nothing to do, waiting for BMH to get %s annotation", ibioManagedBMH)
+		log.Infof("Nothing to do, waiting for BMH to get %s annotation", ibioManagedBMH)
 		return ctrl.Result{}, nil
 
 	}
@@ -269,7 +270,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		if ici.Status.BootTime.IsZero() {
 			ici.Status.BootTime = metav1.Now()
 		}
-		r.Log.Info("Setting Status.BareMetalHostRef and installation starting condition")
+		log.Info("Setting Status.BareMetalHostRef and installation starting condition")
 		if err := r.Status().Patch(ctx, ici, patch); err != nil {
 			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 			return ctrl.Result{}, err
@@ -279,32 +280,33 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	return r.monitorInstallationProgress(ctx, ici, clusterDeployment, bmh)
+	return r.monitorInstallationProgress(ctx, log, ici, clusterDeployment, bmh)
 }
 
 func (r *ImageClusterInstallReconciler) monitorInstallationProgress(
 	ctx context.Context,
+	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
 	clusterDeployment *hivev1.ClusterDeployment,
 	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
 
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned || !bmh.Status.PoweredOn {
-		r.Log.Infof("BareMetalHost %s/%s has not started yet, requeueing", bmh.Name, bmh.Namespace)
+		log.Infof("BareMetalHost %s/%s has not started yet, requeueing", bmh.Name, bmh.Namespace)
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
-	timedout, err := r.checkClusterTimeout(ctx, r.Log, ici, r.DefaultInstallTimeout)
+	timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
 	if err != nil {
-		r.Log.WithError(err).Error("failed to check for install timeout")
+		log.WithError(err).Error("failed to check for install timeout")
 		return ctrl.Result{}, err
 	}
 	if timedout {
-		r.Log.Info("cluster install timed out")
+		log.Info("cluster install timed out")
 	}
 
-	res, err := r.checkClusterStatus(ctx, r.Log, ici, bmh, timedout)
+	res, err := r.checkClusterStatus(ctx, log, ici, bmh, timedout)
 	if err != nil {
-		r.Log.WithError(err).Error("failed to check cluster status")
+		log.WithError(err).Error("failed to check cluster status")
 		return ctrl.Result{}, err
 	}
 
@@ -313,6 +315,7 @@ func (r *ImageClusterInstallReconciler) monitorInstallationProgress(
 
 func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	ctx context.Context,
+	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
 	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
 
@@ -320,7 +323,7 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	if bmh.Spec.ExternallyProvisioned {
 		msg := fmt.Sprintf("BareMetalHost %s/%s, is externally provisioned, skipping hardware validation", bmh.Namespace, bmh.Name)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
-			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, nil
 	}
@@ -329,27 +332,27 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 	if bmh.ObjectMeta.Annotations != nil && !isInspectionEnabled(bmh) {
 		msg := fmt.Sprintf("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
-			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, nil
 	}
 
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable {
-		r.Log.Infof("BareMetalHost (%s/%s) isn't available", bmh.Namespace, bmh.Name)
+		log.Infof("BareMetalHost (%s/%s) isn't available", bmh.Namespace, bmh.Name)
 		msg := fmt.Sprintf("BareMetalHost (%s/%s) provisioning state is: %s, waiting for %s", bmh.Namespace, bmh.Name, bmh.Status.Provisioning.State, bmh_v1alpha1.StateAvailable)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
-			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		r.Log.Info(msg)
+		log.Info(msg)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	if bmh.Status.HardwareDetails == nil {
 		msg := fmt.Sprintf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
-			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		r.Log.Info(msg)
+		log.Info(msg)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -364,20 +367,20 @@ func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
 		}
 
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, reason, msg); updateErr != nil {
-			r.Log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 	}()
 
 	clusterInfoFilePath, err = r.clusterInfoFilePath(ici)
 	if err != nil {
-		r.Log.WithError(err).Error("failed to read cluster info file")
+		log.WithError(err).Error("failed to read cluster info file")
 		return ctrl.Result{}, err
 	}
-	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+	clusterInfo := r.getClusterInfoFromFile(log, clusterInfoFilePath)
 
 	err = r.validateBMHMachineNetwork(clusterInfo, *bmh.Status.HardwareDetails)
 	if err != nil {
-		r.Log.WithError(err).Error("failed to validate BMH machine network")
+		log.WithError(err).Error("failed to validate BMH machine network")
 		return ctrl.Result{}, err
 	}
 
@@ -440,29 +443,29 @@ func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context,
 
 	if status := r.GetSpokeClusterInstallStatus(ctx, log, spokeClient); !status.Installed {
 		if timedout {
-			r.Log.Infof("cluster install timed out and status is not installed: %s", status.String())
+			log.Infof("cluster install timed out and status is not installed: %s", status.String())
 			return ctrl.Result{}, nil
 		}
 
-		r.Log.Infof("cluster install in progress: %s", status.String())
+		log.Infof("cluster install in progress: %s", status.String())
 		if err := r.setClusterInstallingConditions(ctx, ici, status.String()); err != nil {
-			r.Log.WithError(err).Error("failed to set installing conditions")
+			log.WithError(err).Error("failed to set installing conditions")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
-	r.Log.Info("cluster is installed")
+	log.Info("cluster is installed")
 
 	// After installation ended we don't want that ironic will do any changes in the node
 	patch := client.MergeFrom(bmh.DeepCopy())
 	if setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
-		r.Log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
-		r.Log.WithError(err).Error("failed to set installed conditions")
+		log.WithError(err).Error("failed to set installed conditions")
 		return ctrl.Result{}, err
 	}
 
@@ -608,7 +611,7 @@ func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
 	return false
 }
 
-func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost) error {
+func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
 
 	if annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
@@ -618,21 +621,21 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
 		return nil
 	}
-	r.Log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
+	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
 		if !bmh.Spec.ExternallyProvisioned {
-			r.Log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
+			log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
 			bmh.Spec.ExternallyProvisioned = true
 		}
 	}
 	if !bmh.Spec.Online {
 		bmh.Spec.Online = true
-		r.Log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
+		log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
 	}
 	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
 		// Reboot host so we will reboot into disk
 		//Note that if the node was powered off the annotation will be removed upon boot (it will not reboot twice).
-		r.Log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Namespace, bmh.Name)
+		log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Namespace, bmh.Name)
 	}
 	setAnnotationIfNotExists(&bmh.ObjectMeta, ibioManagedBMH, "")
 	if err := r.Patch(ctx, bmh, patch); err != nil {
@@ -642,11 +645,11 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
+func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
 	dataImage := r.getBmhDataImage(ctx, bmh)
 
 	if dataImage == nil {
-		r.Log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 
 		// Name and namespace must match the ones in BMH
 		dataImage = &bmh_v1alpha1.DataImage{
@@ -685,7 +688,7 @@ func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1al
 	return bmh, nil
 }
 
-func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost, bmhRef *v1alpha1.BareMetalHostReference) error {
+func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, bmhRef *v1alpha1.BareMetalHostReference) error {
 	dataImage := &bmh_v1alpha1.DataImage{}
 
 	key := types.NamespacedName{
@@ -695,13 +698,13 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 
 	if err := r.Get(ctx, key, dataImage); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.Log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", bmhRef.Namespace, bmhRef.Name)
+			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", bmhRef.Namespace, bmhRef.Name)
 			return nil
 		}
 		return err
 	}
 
-	r.Log.Infof("Removing DataImage from BareMetalHost %s/%s", bmhRef.Namespace, bmhRef.Name)
+	log.Infof("Removing DataImage from BareMetalHost %s/%s", bmhRef.Namespace, bmhRef.Name)
 	if err := r.Client.Delete(ctx, dataImage); err != nil {
 		return err
 	}
@@ -709,7 +712,7 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 	if bmh != nil {
 		patch := client.MergeFrom(bmh.DeepCopy())
 		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
-			r.Log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+			log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 			if err := r.Patch(ctx, bmh, patch); err != nil {
 				return err
 			}
@@ -885,7 +888,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		if err != nil {
 			return err
 		}
-		clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+		clusterInfo := r.getClusterInfoFromFile(log, clusterInfoFilePath)
 		if clusterInfo == nil {
 			clusterInfo = &lca_api.SeedReconfiguration{}
 		}
@@ -932,7 +935,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 	return ctrl.Result{}, hashBeforeChanges != hashAfter, nil
 }
 
-func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(clusterInfoFilePath string) *lca_api.SeedReconfiguration {
+func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(log logrus.FieldLogger, clusterInfoFilePath string) *lca_api.SeedReconfiguration {
 	data, err := os.ReadFile(clusterInfoFilePath)
 	if err != nil {
 		// In case it's the first time the ICI gets reconciled the file doesn't exist
@@ -941,7 +944,7 @@ func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(clusterInfoFilePa
 	clusterInfo := lca_api.SeedReconfiguration{}
 	err = json.Unmarshal(data, &clusterInfo)
 	if err != nil {
-		r.Log.Warnf("failed to marshal cluster info: %w", err)
+		log.Warnf("failed to marshal cluster info: %w", err)
 		return nil
 	}
 	return &clusterInfo
@@ -1122,12 +1125,12 @@ func (r *ImageClusterInstallReconciler) writeImageDigestSourceToFile(imageDigest
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, ici *v1alpha1.ImageClusterInstall, clusterDeploymentName string) error {
+func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, clusterDeploymentName string) error {
 	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
 	if err != nil {
 		return err
 	}
-	clusterInfo := r.getClusterInfoFromFile(clusterInfoFilePath)
+	clusterInfo := r.getClusterInfoFromFile(log, clusterInfoFilePath)
 	if clusterInfo == nil {
 		return fmt.Errorf("No cluster info found for ImageClusterInstall %s/%s", ici.Namespace, ici.Name)
 	}
