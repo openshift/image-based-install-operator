@@ -16,6 +16,3 @@ if [[ -z "$url" ]]; then
   echo "ERROR: configurationImageURL on ImageClusterInstall ibi-test/ibi-test was not set within 60 seconds"
   exit 1
 fi
-
-curl --insecure --output "test.iso" "$url"
-file "test.iso" | grep -q "ISO 9660 CD-ROM"

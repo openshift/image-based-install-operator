@@ -68,11 +68,11 @@ import (
 )
 
 type ImageClusterInstallReconcilerOptions struct {
-	RouteName      string `envconfig:"ROUTE_NAME"`
-	RouteNamespace string `envconfig:"ROUTE_NAMESPACE"`
-	RoutePort      string `envconfig:"ROUTE_PORT"`
-	RouteScheme    string `envconfig:"ROUTE_SCHEME"`
-	DataDir        string `envconfig:"DATA_DIR" default:"/data"`
+	ServiceName      string `envconfig:"SERVICE_NAME"`
+	ServiceNamespace string `envconfig:"SERVICE_NAMESPACE"`
+	ServicePort      string `envconfig:"SERVICE_PORT"`
+	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
+	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
 }
 
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
@@ -115,7 +115,6 @@ const (
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
-//+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/finalizers,verbs=update
