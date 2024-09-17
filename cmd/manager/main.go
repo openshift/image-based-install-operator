@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"net/url"
@@ -32,7 +31,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -40,7 +38,6 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	routev1 "github.com/openshift/api/route/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/controllers"
@@ -61,7 +58,6 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
-	utilruntime.Must(routev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -126,12 +122,7 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}
 
-	c, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
-	if err != nil {
-		setupLog.Error(err, "failed to create uncached client")
-		os.Exit(1)
-	}
-	baseURL, err := routeURL(controllerOptions, c)
+	baseURL, err := serviceURL(controllerOptions)
 	if err != nil {
 		setupLog.Error(err, "failed to determine route base URL")
 		os.Exit(1)
@@ -173,23 +164,15 @@ func main() {
 	}
 }
 
-func routeURL(opts *controllers.ImageClusterInstallReconcilerOptions, c client.Client) (string, error) {
-	if opts.RouteName == "" || opts.RouteNamespace == "" || opts.RouteScheme == "" {
-		return "", fmt.Errorf("ROUTE_NAME, ROUTE_NAMESPACE, and ROUTE_SCHEME must be set")
-	}
-	route := &routev1.Route{}
-	key := client.ObjectKey{Name: opts.RouteName, Namespace: opts.RouteNamespace}
-	if err := c.Get(context.Background(), key, route); err != nil {
-		return "", err
+func serviceURL(opts *controllers.ImageClusterInstallReconcilerOptions) (string, error) {
+	if opts.ServiceName == "" || opts.ServiceNamespace == "" || opts.ServiceScheme == "" {
+		return "", fmt.Errorf("SERVICE_NAME, SERVICE_NAMESPACE, and SERVICE_SCHEME must be set")
 	}
 
-	host := route.Spec.Host
-	if host == "" {
-		return "", fmt.Errorf("route %s host is unset", key)
-	}
-	if opts.RoutePort != "" {
-		host = fmt.Sprintf("%s:%s", host, opts.RoutePort)
+	host := fmt.Sprintf("%s.%s.svc", opts.ServiceName, opts.ServiceNamespace)
+	if opts.ServicePort != "" {
+		host = fmt.Sprintf("%s:%s", host, opts.ServicePort)
 	}
 
-	return (&url.URL{Scheme: opts.RouteScheme, Host: host}).String(), nil
+	return (&url.URL{Scheme: opts.ServiceScheme, Host: host}).String(), nil
 }
