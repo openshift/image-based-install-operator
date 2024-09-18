@@ -1292,7 +1292,7 @@ var _ = Describe("Reconcile", func() {
 
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
@@ -1333,7 +1333,7 @@ var _ = Describe("Reconcile", func() {
 
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
@@ -1394,7 +1394,7 @@ var _ = Describe("Reconcile", func() {
 
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))

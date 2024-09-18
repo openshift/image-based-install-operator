@@ -202,7 +202,7 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 	})
 	stoppedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallStopped,
-		Status:  corev1.ConditionTrue,
+		Status:  corev1.ConditionFalse,
 		Reason:  v1alpha1.InstallTimedoutReason,
 		Message: v1alpha1.InstallTimedoutMessage,
 	})
