@@ -586,9 +586,9 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) getBmhDataImage(ctx context.Context, bmh *bmh_v1alpha1.BareMetalHost) *bmh_v1alpha1.DataImage {
+func (r *ImageClusterInstallReconciler) getBmhDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) (*bmh_v1alpha1.DataImage, error) {
 	if bmh == nil {
-		return nil
+		return nil, nil
 	}
 	dataImage := bmh_v1alpha1.DataImage{}
 	key := client.ObjectKey{
@@ -596,11 +596,15 @@ func (r *ImageClusterInstallReconciler) getBmhDataImage(ctx context.Context, bmh
 		Namespace: bmh.Namespace,
 	}
 	err := r.Get(ctx, key, &dataImage)
-	if apierrors.IsNotFound(err) {
-		return nil
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Warnf("Can't find DataImage %s/%s", bmh.Namespace, bmh.Name)
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	return &dataImage
+	return &dataImage, nil
 }
 
 func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
@@ -646,7 +650,10 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 }
 
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	dataImage := r.getBmhDataImage(ctx, bmh)
+	dataImage, err := r.getBmhDataImage(ctx, log, bmh)
+	if err != nil {
+		return err
+	}
 
 	if dataImage == nil {
 		log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
@@ -661,7 +668,7 @@ func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, 
 				URL: url,
 			},
 		}
-		err := controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
+		err = controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
 		if err != nil {
 			return fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 		}
@@ -708,14 +715,26 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 	if err := r.Client.Delete(ctx, dataImage); err != nil {
 		return err
 	}
+	if bmh == nil {
+		return nil
+	}
 
-	if bmh != nil {
-		patch := client.MergeFrom(bmh.DeepCopy())
-		if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
-			log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
-			if err := r.Patch(ctx, bmh, patch); err != nil {
-				return err
-			}
+	patch := client.MergeFrom(bmh.DeepCopy())
+	dirty := false
+
+	if annotationExists(&bmh.ObjectMeta, detachedAnnotation) {
+		log.Infof("Removing Detached annotation if exists on BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		delete(bmh.ObjectMeta.Annotations, detachedAnnotation)
+		dirty = true
+	}
+
+	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, "") {
+		log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		dirty = true
+	}
+	if dirty {
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return err
 		}
 	}
 
@@ -1292,12 +1311,14 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 			log.Warnf("Referenced BareMetalHost %s does not exist", key)
 			return ctrl.Result{}, true, removeFinalizer()
 		}
-		patch := client.MergeFrom(bmh.DeepCopy())
-		if bmh.Spec.Image != nil {
-			log.Infof("removing image from BareMetalHost %s", key)
-			bmh.Spec.Image = nil
-			if err := r.Patch(ctx, bmh, patch); err != nil {
-				return ctrl.Result{}, true, fmt.Errorf("failed to patch BareMetalHost %s: %w", key, err)
+
+		dataImage, err := r.getBmhDataImage(ctx, log, bmh)
+		if err != nil {
+			return ctrl.Result{}, true, fmt.Errorf("failed to get DataImage: %w", err)
+		}
+		if dataImage != nil {
+			if err = r.removeBMHDataImage(ctx, log, bmh, bmhRef); err != nil {
+				return ctrl.Result{}, true, fmt.Errorf("failed to delete DataImage %s/%s: %w", bmhRef.Namespace, bmhRef.Name, err)
 			}
 		}
 	}

@@ -2240,6 +2240,67 @@ var _ = Describe("handleFinalizer", func() {
 		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
 	})
+
+	It("removes dataimage on ici delete", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.Online = true
+		setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue)
+
+		clusterInstall := &v1alpha1.ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       clusterInstallName,
+				Namespace:  clusterInstallNamespace,
+				Finalizers: []string{clusterInstallFinalizerName},
+			},
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID),
+			},
+		}
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
+
+		// mark clusterInstall as deleted to call the finalizer handler
+		now := metav1.Now()
+		clusterInstall.ObjectMeta.DeletionTimestamp = &now
+
+		res, stop, err := r.handleFinalizer(ctx, r.Log, clusterInstall)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		clusterInstallKey := types.NamespacedName{
+			Name:      clusterInstallName,
+			Namespace: clusterInstallNamespace,
+		}
+		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(HaveOccurred())
+
+		bmh = &bmh_v1alpha1.BareMetalHost{}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+	})
 })
 
 var _ = Describe("proxy", func() {
