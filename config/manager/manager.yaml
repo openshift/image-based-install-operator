@@ -111,7 +111,7 @@ spec:
       - name: webhook-certs
         secret:
           secretName: webhook-certs
-      serviceAccountName: controller-manager
+      serviceAccountName: image-based-install-operator
       terminationGracePeriodSeconds: 10
 ---
 apiVersion: v1

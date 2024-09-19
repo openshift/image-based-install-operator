@@ -8,5 +8,5 @@ roleRef:
   name: image-cluster-install-manager
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
+  name: image-based-install-operator
   namespace: image-based-install-operator
