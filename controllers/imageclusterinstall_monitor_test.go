@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -146,7 +147,12 @@ var _ = Describe("Monitor", func() {
 					Name: "ps",
 				},
 			}}
-		_, err = cm.EnsureKubeconfigSecret(ctx, clusterDeployment)
+
+		kubeconfigDir := filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), FilesDir, ClusterConfigDir, authDir)
+		Expect(os.MkdirAll(kubeconfigDir, 0700)).To(Succeed())
+
+		Expect(os.WriteFile(filepath.Join(kubeconfigDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
+		err = cm.EnsureKubeconfigSecret(ctx, logrus.New(), clusterDeployment, filepath.Join(kubeconfigDir, credentials.Kubeconfig))
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -157,17 +163,6 @@ var _ = Describe("Monitor", func() {
 
 	It("sets conditions to cluster installed when the BMH is managed and cluster is ready", func() {
 		r.GetSpokeClusterInstallStatus = monitor.SuccessMonitor
-
-		//clusterInstall.Status.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-		//	Name:      bmh.Name,
-		//	Namespace: bmh.Namespace,
-		//}
-		//clusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
-		//	AdminKubeconfigSecretRef: corev1.LocalObjectReference{
-		//		Name: credentials.KubeconfigSecretName(clusterDeployment.Name),
-		//	},
-		//}
-		//clusterInstall.Status.BootTime = metav1.Now()
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 

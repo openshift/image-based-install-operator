@@ -4,12 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.uber.org/mock/gomock"
 	"os"
 	"path/filepath"
+	"sigs.k8s.io/yaml"
 	"time"
 
-	"k8s.io/client-go/tools/clientcmd"
-
+	"github.com/google/uuid"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	apicfgv1 "github.com/openshift/api/config/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	installertypes "github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/imagebased"
+	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -18,18 +25,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/google/uuid"
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	lca_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
-	apicfgv1 "github.com/openshift/api/config/v1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	"github.com/openshift/image-based-install-operator/api/v1alpha1"
-	"github.com/openshift/image-based-install-operator/internal/certs"
-	"github.com/openshift/image-based-install-operator/internal/credentials"
-	"github.com/sirupsen/logrus"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
+	"github.com/openshift/image-based-install-operator/internal/installer"
 )
 
 const validNMStateConfigBMH = `
@@ -58,6 +58,28 @@ dns-resolver:
       - 192.168.136.1
 `
 
+const kubeconfig = `
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURoVENDQW0yZ0F3SUJBZ0lJSERHdXlSaFJTSnd3RFFZSktvWklodmNOQVFFTEJRQXdKakVrTUNJR0ExVUUKQXd3YmFXNW5jbVZ6Y3kxdmNHVnlZWFJ2Y2tBeE56QXpORE0wTmpFMU1CNFhEVEl6TVRJeU5ERTJNVFkxTlZvWApEVEkxTVRJeU16RTJNVFkxTmxvd01qRXdNQzRHQTFVRUF3d25LaTVoY0hCekxuTnVieTEzYjNKclpYSXRNREl1ClpUSmxMbUp2Y3k1eVpXUm9ZWFF1WTI5dE1JSUJJakFOQmdrcWhraUc5dzBCQVFFRkFBT0NBUThBTUlJQkNnS0MKQVFFQXIyeXRhVTRCcS9GQzlMWGhYamIyV3BSMDUwRFgvZ3lMb0hlV1NERGp4bVJ4ZGFSaklzd0xFemVQYmk3dQo0R1A4cWNwL1RwNmlkaWRWOU8wRk40Q0htaWc5N1ZZcERycUVERDJZbmtBblBweHNEaWptRnFPNWJlVWVHMnZSCnVCbHFqVEp4VHowZ0JSbXQ4REMzNW5ib2ZsbURVemJkeHJtb2Ryd0RvMWl3U00yV1g2bnhxc2RZRDhwQkdNN1QKYnJIR3BKb2hub25WTVh3U2FzbTd6UExjQWloV2swWFpVcll5R25Xby91L2I1bmxUcGlGQkVHT1pPYTRiRUMxRwpUR0ljRHdVZ054WGUrUmpLWjNNU09ENDBHeHhHUlRua3llTldPYk9kbGlvOGxob2syMHc3OTZnb0FXZ3MreUFHCi9HbDNrRjFkdE9VdmpzTkJnQ0RCWWVDSVpRSURBUUFCbzRHcU1JR25NQTRHQTFVZER3RUIvd1FFQXdJRm9EQVQKQmdOVkhTVUVEREFLQmdnckJnRUZCUWNEQVRBTUJnTlZIUk1CQWY4RUFqQUFNQjBHQTFVZERnUVdCQlE5Z3FqQQpGOHExcEsrYVRrbVJkTGZGZTR5NmxUQWZCZ05WSFNNRUdEQVdnQlNpc2tXZGk4NFY1aHJxV0UzamE5MmR0dHpwCmJ6QXlCZ05WSFJFRUt6QXBnaWNxTG1Gd2NITXVjMjV2TFhkdmNtdGxjaTB3TWk1bE1tVXVZbTl6TG5KbFpHaGgKZEM1amIyMHdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBTHQrNnVER21VVm8wL2JnazJOeEw1ams3a2RLZWpicwovS3dlZmJUUTNRNXd2TzIvN0ZvZktZK2pwZWlUZ2g3ZkdoNXhCTzY5dW9PcjUvTXp0OGRaNU9JNlpnaHpOSzhOCmhWZ2R6VU9MUTN0YWhRcDdrUnpCOUhXdHM4TXVkeHJRU3JOWktGSVQwQnVhUlZER1JkdU1LMWNxOGNjVERub2EKQ0l5K0NiUjVGejJOd2I1TkNwVGxQN2RiOUhZUDdqNm1paG1aTm4zQkNHQjVkMEl3Qzh0VkVsbm1Yb0VLVlRjTgpSQks5cnkxdzkyKy9sWWNYcHdqQ2g1bEFRWURHSXhmSS9UYkc2WElrQ3EwK3YvZGdJdGpCelExdDlFNmRIOStlCkpaU2Q4enVUSFp6YzZod1VtcFlOMEIwb09hb3VlbXRheXV3eldhek5yVzRjTUsvcHpmdFNhMTQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURERENDQWZTZ0F3SUJBZ0lCQVRBTkJna3Foa2lHOXcwQkFRc0ZBREFtTVNRd0lnWURWUVFEREJ0cGJtZHkKWlhOekxXOXdaWEpoZEc5eVFERTNNRE0wTXpRMk1UVXdIaGNOTWpNeE1qSTBNVFl4TmpVMVdoY05NalV4TWpJegpNVFl4TmpVMldqQW1NU1F3SWdZRFZRUUREQnRwYm1keVpYTnpMVzl3WlhKaGRHOXlRREUzTURNME16UTJNVFV3CmdnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURNVHdrSnZJR2Y0MTZWeHRKdHFEc1MKWExjanIvWGdrNHVwbmNvSVVZeDBPWlE2ZmgxTkhuQWVBelVacUZIdzRxcXVVZThQOG05bFE2eWxyVDNYUFpKTgpoM0QrZnM1RXYrdGM1V29qY2trMlRxbVZDR3ZRb3lWUTg4eDUrK3lHNU1KRkNCazJ0U3VSVGxDMmUyZDMraHVaCmdlUXN6NGpsWHpzQ3pjMENNVC9QUFhiSm1Jd3FGc2JPL1NFdk5XeEd5Nk9zVXgybkRvTjlPNGt0cmdjT1lPTHgKMzdob2pMZzVpam1OYWltS3FzRldGdVBUVklsbkFVVnVpTmJqVFVtQVlzZXJtaGt6UlBBLzFnQVJ1bmU2MkVEMgpid094VSt2QndQSlZkcDF2SXhhdnNLNENSM3lsWTZ5dFl5SWZoTVBzcmREZHViQUdTYURmZ293dEtpWXBnS2k1CkFnTUJBQUdqUlRCRE1BNEdBMVVkRHdFQi93UUVBd0lDcERBU0JnTlZIUk1CQWY4RUNEQUdBUUgvQWdFQU1CMEcKQTFVZERnUVdCQlNpc2tXZGk4NFY1aHJxV0UzamE5MmR0dHpwYnpBTkJna3Foa2lHOXcwQkFRc0ZBQU9DQVFFQQpDc0tYR0dsZnJlSDIwNFByZFVIb1p3WVBMemdEZXpXR0h3QVJhSHprS0RjdXJXRnlaNmROYnJ3cUdzalljVXA1Cjk3TG83ZWZQRjZHa0pIamg1cUdyRThQR1pmeEhmc3MvVGE1VmJmamJzSTcxTCtiRDduNC8rL2N2Y1RnczFsR3UKUFN5VktOako3a1dVdjJ5Tk9kSG9KNWJTRXBxSWpzOTBRMW5wQVRkRklYVkthd25xNWxVUVBjYmZ4SmxlTm5ILwp2RU10QzFkb1c3MWdONTFBampOYzV5T3VvZ3RwNTZ0MXkzWGlLa3NJek9hSXFwbzBkdlpvS1Mwa2ZjK01rWk1JCnhmVnY3OVBjeW42N1IvTC8yajRpU1labkhvVU11L1dTN2tieFBoem53dTRnZnRLbjVzazJtVnJhRzBKWlNRcXQKakVJandNYVdUL3V1azZmNEl0OXVCQT09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lJUkkzWWNvazJ0cGN3RFFZSktvWklodmNOQVFFTEJRQXdQakVTTUJBR0ExVUUKQ3hNSmIzQmxibk5vYVdaME1TZ3dKZ1lEVlFRREV4OXJkV0psTFdGd2FYTmxjblpsY2kxc2IyTmhiR2h2YzNRdApjMmxuYm1WeU1CNFhEVEl6TVRJeU5ERTFOVGt4TVZvWERUTXpNVEl5TVRFMU5Ua3hNVm93UGpFU01CQUdBMVVFCkN4TUpiM0JsYm5Ob2FXWjBNU2d3SmdZRFZRUURFeDlyZFdKbExXRndhWE5sY25abGNpMXNiMk5oYkdodmMzUXQKYzJsbmJtVnlNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXVaUWorcE9DOFIyawpCZ3VVMWhNdTlYektMSEJqQVlDY1BOTDhaRGhxWFlUbkZhc0FZSzdaOWVvN09uQ24xUWlZeTY3U0oybGVIVDNOCnY5U0RpWVdSN2tIZzAvMlVPUzVzd055bHFjQ01iWVBaT2xsTGUyamdkTnA1MWNmSkZkZTFmTWY0VjRZOExwcE8KMmZSZDZETERCUDRlUjBwNkJlMHdWcnV6SW1yYVg5K291aHdXQWkzdU1BcC9WcEIvanBEYnUzVnFTZ3dkN1g2VQpmZ281aXhNS1h3dWQ0UGN0d3FEa01vVXQyL2NMT1dZYUZYdWFZWXJrMWM4UVhMMkg3RVhucHp6TVJiMnlMRlpECnhWWm9URDJISXJJNjQvNzFjT3daYmNYNGhoUFZUQnRuNlR2KzBpc1FTNldHZWlNRC9jcHhUdG0vYm9KL0JjNXUKSHRGNkVoMGx6UUlEQVFBQm8wSXdRREFPQmdOVkhROEJBZjhFQkFNQ0FxUXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVSzUvMDFlSUhnWTZHa3Z0Uy8rVWdEWlpQdURZd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBSzBHZC9qZFhIY3NLdGdUQUJEK1FVVkw3T1hoZEcxQXRjRlExTEdyczhTMzFXYjZKWVV2eW1tTEQxdnMKaHhmSzdDWFdBK1dCbU1FdVl5Y0llNlRBTjljelU3am8yU2Y5amY1VkdqTXUrc2RFQ2RrNnBicHhoTnRvcmY3cAp5YjRTYUptM3prZFZjNnpSeEs3ZkFqZGFDT1Y2M05VVkRnYXRmZDY0aXJoZnVuSGw3OHY5T2tqUUlwSnlZMWJKCnBYdVM3d0plczBsTUdlM3BpODZBaFFDV0FRV0FPSmRFQ293bUtCaXJ6NWJIT0gvb3BtMWlJS251SXBrQi9PTzIKdk1GWDN6VWw0cHpmZmlUVzhxTEZMc1VkRXRUSmlQQnpTZmVOaGYxSmowcXVnZ2dIMDFCM2xQQldNRHAyaUQ5MAp1R0dCdkhnYXBOSHlPWXlJdkJhRFpOcEpuTzA9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURURENDQWpTZ0F3SUJBZ0lJZlRMK2g1dmhFaU13RFFZSktvWklodmNOQVFFTEJRQXdSREVTTUJBR0ExVUUKQ3hNSmIzQmxibk5vYVdaME1TNHdMQVlEVlFRREV5VnJkV0psTFdGd2FYTmxjblpsY2kxelpYSjJhV05sTFc1bApkSGR2Y21zdGMybG5ibVZ5TUI0WERUSXpNVEl5TkRFMU5Ua3hNVm9YRFRNek1USXlNVEUxTlRreE1Wb3dSREVTCk1CQUdBMVVFQ3hNSmIzQmxibk5vYVdaME1TNHdMQVlEVlFRREV5VnJkV0psTFdGd2FYTmxjblpsY2kxelpYSjIKYVdObExXNWxkSGR2Y21zdGMybG5ibVZ5TUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQwpBUUVBdHZHTkZOSGJzUy9JUThZbDZJK1QvMVFnZFpBVlQ0dFdnY2VUWkNvQ09kM3dmTWJtdWx4a3dReHV2c0g4CmxYNUZJWDFtTHh2aStoeGNQQ1pCb0Rrdk85MEhmVlVJdXRCSHNCa1NCbytRRmZ0OG1MUS9wWjlvd3dyZGQ5RHgKSTV4V2EvcXV6c3I1eFNGV2tlVyt4cXY3cXJlUXJyYytzcEhvWnNXYjN0c1RBbm1jRU1HSTY4NEUzeXp6VlJwRgoyUlZrdHR0OXBIL1VDOGgvMGZIdnA0SjNBOWhPMmhVdXh6Zk5Id3ZoeEQwcFIrMkovdU05ODdRQ29BWUhiZTJECmJCMHBCb3F4MVBhNERnQnRJeUh2RnREQW9VcHhsTW0wemFrMUYzWjBYalUvUmE5Rkhta0IzK2lNWjFNK051cTkKTjFOcURQbXBBWXhqeFJuLzA1VUUwcW9BalFJREFRQUJvMEl3UURBT0JnTlZIUThCQWY4RUJBTUNBcVF3RHdZRApWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVVovR1cvaXlabXJLcmpEZGhwK29ZWDFqdFdac3dEUVlKCktvWklodmNOQVFFTEJRQURnZ0VCQUlMeXRTQXBJL21HU1FkY2xqQkVlVVdramVCSC9IbEIwNGpOWDFObk50RlkKdmxsNHdyZEFVb0NibTdiSDgvZ0x0NjdGQ0g2djhvZnlKRUZacEZkaHRyZUg5Y1NFRjNYbnh1c0V2WkhzMFp5SQpVOTZiL3lLSkJKUTVLMlY0VUR5L0JXai9FQmtBbG95c3NlYXQ1cnBaK2x0dEFRQmIyc05SSDVTd2lxcXZNQmx0ClBZV2Q2dnJ4dytxbTBLVjc3RDZ3OVpKL2hZQWhuY0dZVDhHUXEvTVBVN2VhdzFLYk5obXltSmRZSlc3YS9uYWYKUno4Y3phcmtnV3Bkdks4WjJsMWlaNzFlbjRwaUpkb0NXbjdsTndGa1RxdXJOMjNZemhDbE8walBuNFBEaG90RQpkUUNmUUJ2RWVITlRKcUJzZjk3Yy9kblF1ci9oZC9TRWxUZnIvTGJ0UjI0PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLQpNSUlETWpDQ0FocWdBd0lCQWdJSUp5Y1BnZ3BzZ2F3d0RRWUpLb1pJaHZjTkFRRUxCUUF3TnpFU01CQUdBMVVFCkN4TUpiM0JsYm5Ob2FXWjBNU0V3SHdZRFZRUURFeGhyZFdKbExXRndhWE5sY25abGNpMXNZaTF6YVdkdVpYSXcKSGhjTk1qTXhNakkwTVRVMU9URXhXaGNOTXpNeE1qSXhNVFUxT1RFeFdqQTNNUkl3RUFZRFZRUUxFd2x2Y0dWdQpjMmhwWm5ReElUQWZCZ05WQkFNVEdHdDFZbVV0WVhCcGMyVnlkbVZ5TFd4aUxYTnBaMjVsY2pDQ0FTSXdEUVlKCktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0NnZ0VCQUtnYm0rTVVZQ3JyODRhamJxaUVRM0x4WUs3VGd6cnIKUklLYzFKSXhlRlJiOTF4NmVxYTZ2cHFHTS94cXFESjVoMjc5c2lyMmdWSm9FYXZRYTV3N0RFZkE3UGFhSEFPMgpNMUIzTnF0VjVuRDJTSWZKdDRtYmhsNjd5K1NOelRiSjRTZ2dmdW9IUkRpL2VaOTlDVU1qdi9mNkh1V3dZWDAwCm1HYWlhZGZqQjJmWHRuSGdrbFEwQ0NRVXVXWHhoS1dsN3NpMVBUWU55Tll5RGR3ZXlmeEZ5bkJzaUVtNkwzZGYKd3RQYVRHQkI1V0xqK2ZLckEvZjFFQkFobEFIdUFXNDh6Rmk1L1ZGcnB1ais3eWVLMnhYTHBhS1VSTnpZektmSwppd1U2R3hmNjEyN0hycU16dVRzYXlPWG5FWExIenhDMGFQcEV2dU4xU04vMDBlcE1WRDNoL2k4Q0F3RUFBYU5DCk1FQXdEZ1lEVlIwUEFRSC9CQVFEQWdLa01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZOWFkKOGF0aCt0MFZDeXlOcTNOVlZVbnRRUDAvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCOGQzZDZIOXNaZkdLLwpGbDMwVk93V0tJQ2c1YUZCSlQwSFRvVzZsVllVSDNjblNsYlhtM1p6Y3JVWkFWOWFRYWNDc0JkUkFuR2hwa2hBClVva2lHZUMxWkpZWVV4Y0t0YlF6Zi85S05HT2V3MGVJb0tPYzZxaWoyVm94aGN2YUtaVVplVEsvZjd0bURaVDIKQTc3Sm8wRUVFMTFIZUVudW1SdmFab0JTc2g4Yy9DMlFnejBuSVYreGttS2o3MW9iLzQzaWt6aGxMYzRaSjBONwpzSHROTTdSSUIwSUY5aU1mNGZLMklSRFg5WlBoQkFLUFdRTHFhQzBVRDZZVFZHQnNzR081S2pzSUJKbExhT3cyCldJYTFHd2wxbVN4WGlrTEpLdEd0bmVFRmhRaVVnenl5WWg4RjA0a252SVhISFBNd01EUHB2SVdCNGRGVERCRVMKVXlsY2ZRN3QKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+    server: https://api.sno-worker-02.e2e.bos.redhat.com:6443
+  name: sno-worker-02
+contexts:
+- context:
+    cluster: sno-worker-02
+    user: admin
+  name: admin
+current-context: admin
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURaekNDQWsrZ0F3SUJBZ0lJUll4dDdScGdkdm93RFFZSktvWklodmNOQVFFTEJRQXdOakVTTUJBR0ExVUUKQ3hNSmIzQmxibk5vYVdaME1TQXdIZ1lEVlFRREV4ZGhaRzFwYmkxcmRXSmxZMjl1Wm1sbkxYTnBaMjVsY2pBZQpGdzB5TXpFeU1qUXhOVFU1TVRCYUZ3MHpNekV5TWpFeE5UVTVNVEJhTURBeEZ6QVZCZ05WQkFvVERuTjVjM1JsCmJUcHRZWE4wWlhKek1SVXdFd1lEVlFRREV3eHplWE4wWlcwNllXUnRhVzR3Z2dFaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUUQzSnUwR3FPcVhJR1piMzl0MVlqa2xCVXBGL3cvZzlrUHNpazNxb242ZQpnNDZrcWFkd09xQm1lc25NSjRrQVNpTWltY1RnaHJhZmY5cVdsdVp4NWdYMEcvbDY4YlBPUmdJM2I1T2Z4dG1YCitHUmhHOEFLMFVjNXRESU01WXVyb2gwUVJoZmtIcGZXb1IvNDJnQmtpNkYwNDFnYzJ4a2dDNjNPNTdzODZPVDkKWHRieXMxWXdEMVA5MkNxNXBPSkZyNUYrTUIydDJPMGs2N2xMaTlLQkZleU83TmE4eHdKci8waTkwTEdvSE42YQpKWGMvSSt0Zmo0VEtJM3J5aTlMbktjQmY1Wk0yWC94cmlmWWdOR0d4YVlxTWY0Z2FhaTN3Z2hPWm5KWC9INlpYCktaZUk2aCszMmhBT3JwYTE5OVRDWlFtcEF6YlV3eSsrSThxS2FocHd0UWVqQWdNQkFBR2pmekI5TUE0R0ExVWQKRHdFQi93UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEQVlEVlIwVApBUUgvQkFJd0FEQWRCZ05WSFE0RUZnUVUyeEw2am9ibzl2MldETjMzV0dhUXJRU01zVzh3SHdZRFZSMGpCQmd3CkZvQVVlTXdFWEIycGVONUN0NmZvdndHVmJTeklhOUV3RFFZSktvWklodmNOQVFFTEJRQURnZ0VCQUN5Sy9uUzMKNWo1eWw3eU02Q2t6NE4wUnJpRlJ1enRqOXVMdHYwWFZnelRCdXV3ZFNrMFI5UXc2Y0lqdm91TlFwRm1lR3ZCWQp6M1FOTkhTWldSSFVHZTFDRU1rNFI4bDNKVWxBV3N6Umc2V2ZpSmNGTHUxMSs0cUx0cUtRQVo0WU9aZ3dSTExSClFoc2VjOG9Ha3doT0FiTWRCWkgvS0R2ZUFuMitkd3JGM0E4OVRlTy9WN2hCUi9FMWdUazRidmxWbEJtN1ZWVFQKQmFnV3gzLzQxem1sMHRXNzUrSnc0d0lGZFMrZ05za29JOUFhWEZ6QnRLK1BoMi9lbWllSUo3NDM1TGJCa0ZQdQp4cnZ3TUxPUFFGbG5tR2U4TzBKSmh4emxUbzNROEJUdUhzVjFPK0hBbDdETFNtY1VhMFVOSStDaWxpUVllODdGCjdkQlZ5OU9zTHpRY3RwWT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBOXlidEJxanFseUJtVzkvYmRXSTVKUVZLUmY4UDRQWkQ3SXBONnFKK25vT09wS21uCmNEcWdabnJKekNlSkFFb2pJcG5FNElhMm4zL2FscGJtY2VZRjlCdjVldkd6emtZQ04yK1RuOGJabC9oa1lSdkEKQ3RGSE9iUXlET1dMcTZJZEVFWVg1QjZYMXFFZitOb0FaSXVoZE9OWUhOc1pJQXV0enVlN1BPamsvVjdXOHJOVwpNQTlUL2RncXVhVGlSYStSZmpBZHJkanRKT3U1UzR2U2dSWHNqdXpXdk1jQ2EvOUl2ZEN4cUJ6ZW1pVjNQeVByClg0K0V5aU42OG92UzV5bkFYK1dUTmwvOGE0bjJJRFJoc1dtS2pIK0lHbW90OElJVG1aeVYveCttVnltWGlPb2YKdDlvUURxNld0ZmZVd21VSnFRTTIxTU12dmlQS2ltb2FjTFVIb3dJREFRQUJBb0lCQUVyQ2k1QW9LRTN1andmYgpmeGJTejFaVGMxUVpBMFNaT1pLamcwNG1PUWJaNUp3S2RZdU5NRmZQYkp0RW1qeHNNSlNXenViYjJRSUdPcWl5Cm5LSjNZZldsUUtIZjJ2UGFXWEZMWHV4Rnlpd2VCcjhaRmM0djM4dWtwajhnY0U5S2ltQVIwOGc5T05ERGpGaEsKR1RSUXlGWURMdlFMa2w0UEtsUWI1SmRZRzJ4SVc2ME40bHZudHNnRi9FeEdtdkRFem5kOXcxWUQvMEkrdUNOSAorU3R2eWcxbGJPN3lzcUJOMWtRaGZxck93eGowTnAwQndKbmtlOE80LzE4cGJBZkVIVjVQUVhzMFg3UWw5YmdpCjJrMWUxVzFJMm1wZ1NqOTIrMGljVmJpSys5Ukh3NVRYbzVwUWljK2pXWHlYV3VMcStRdEtYOUsvYmdmVms2MkgKdGZtV1FBRUNnWUVBK0lnUHZQRm44dkt1VWJYU0VLRHBXR0lOODRlZVlGMVJJR1laZVphV1NCZXVEL0xhdnVUcwphcnNuQThneW92SXNwTlRCNlRPUDE4OUVBdHhCNW40SmFaQ0doRW5MUjMweDdnMmx5S0dtL0VzbEd4QjNtWXowCmxvZDlidTdxRmNoSlVETEVtMVBlekVXT2VaWURvcFhnejJrWWtsZEdlbWY1cWwrNnNSV0JaYU1DZ1lFQS9wUkEKb3RSU2JKNGNYSm4vV3ZNVi9OTSs4NDJtVmliaGlqTlhIcHNLb0NuRkpzOU11L0tDV3pJVnRGUGNhcXBiWW1tbgpxM0xObWQxNHZXZktGc0NHSXJZQU9TVlRSa2U4aHZYdTJicnRzK2p4WFV0T3EvSlBYVUhBaXdEcER6bC9FUW9zCk9mdVY5L1JZWnhoTVUwNklhWHYva3ZiOUFoclJpMXlLTE16ajlnRUNnWUVBc1lpSUxZRUlyeng2RjNaWlEzV2UKbW5zWTJqQ3ppc1MrTWZXZEZ3VGgvMGVqR0ZOenZNOU1yb1ZZUGxSaEQ1TU5Id1c0S3Z5aE1Sa216U0JIbHYzTApmWFEzRXdLZnlrWjlSejdLZ1VJd1JhTHNNNlFVdTBROFo5Y0xYQllnYzBUcVVmYWlDUTdsWldmK2VZNFd0S3A1CnQ4K3NOTVZSWEJrditHdC9zZ1hadEI4Q2dZQVg5cXFTNlR1TS8rRVprbUZvRlVPM2xjYnlOQjQ1TTlXOUpaSUkKem4xVWtEbi9xam5GNDFFRDlwWDJjSUpxQS9rd0xWUGNIcVZkMjJ3WElDTDB1MUNsQ2M3QmtsTGhaYlZJV3ZRTgp5THZCV0tjSHFpUVFxWEZ4RE5Sc0FUenU4dkdVRUFvVHR5dnB1RFZ1RnVwd1dROGNKdERxNjViclVNenl1bFpEClcxSUdBUUtCZ1FEUlhPOFJVNzJVVU5JTDk4ZWZST3VmV2M3VG1BR0VwTlpMbEdRSjdtdEx5dFZPOUluRzlYeFQKOWRpQXZ5ZGZzMHBLRTlwVVRKbGJ1N1pBV1JmZUZiMWxyMHFCVkVzeWVmWkdSUWVwTUZ3RnprUVhZbEIrRXhBbQpITmxkQ2dLaU1Vby9OUmZyU0JRZ1BhTzl0YWFZY2xzWFRzTnUrOGdxS1lHQnJpMlpSTVdGUmc9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+`
+
 func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
 	return &bmh_v1alpha1.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -80,6 +102,7 @@ func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHos
 var _ = Describe("Reconcile", func() {
 	var (
 		c                       client.Client
+		mockCtrl                *gomock.Controller
 		dataDir                 string
 		r                       *ImageClusterInstallReconciler
 		ctx                     = context.Background()
@@ -88,10 +111,12 @@ var _ = Describe("Reconcile", func() {
 		clusterInstall          *v1alpha1.ImageClusterInstall
 		clusterDeployment       *hivev1.ClusterDeployment
 		pullSecret              *corev1.Secret
+		installerMock           *installer.MockInstaller
 		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
 	)
 
 	BeforeEach(func() {
+		mockCtrl = gomock.NewController(GinkgoT())
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
@@ -104,6 +129,8 @@ var _ = Describe("Reconcile", func() {
 			Log:    logrus.New(),
 			Scheme: scheme.Scheme,
 		}
+
+		installerMock = installer.NewMockInstaller(mockCtrl)
 		r = &ImageClusterInstallReconciler{
 			Client:      c,
 			Credentials: cm,
@@ -113,8 +140,8 @@ var _ = Describe("Reconcile", func() {
 			Options: &ImageClusterInstallReconcilerOptions{
 				DataDir: dataDir,
 			},
-			CertManager:     certs.KubeConfigCertManager{},
 			NoncachedClient: c,
+			Installer:       installerMock,
 		}
 
 		imageSet := &hivev1.ClusterImageSet{
@@ -192,6 +219,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	AfterEach(func() {
+		mockCtrl.Finish()
 		Expect(os.RemoveAll(dataDir)).To(Succeed())
 	})
 
@@ -204,8 +232,18 @@ var _ = Describe("Reconcile", func() {
 		return filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), "files", last)
 	}
 
+	installerSuccess := func() {
+		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).Times(1).Do(func(any, any, any) {
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, IsoName), []byte("test"), 0644)).To(Succeed())
+			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, authDir), 0700)).To(Succeed())
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, kubeAdminFile), []byte("test"), 0644)).To(Succeed())
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
+		})
+	}
+
 	validateExtraManifestContent := func(file string, data string) {
-		content, err := os.ReadFile(outputFilePath(extraManifestsDir, file))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, extraManifestsDir, file))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(content)).To(Equal(data))
 	}
@@ -224,59 +262,52 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
-		Expect(infoOut.APIVersion).To(Equal(lca_api.SeedReconfigurationVersion))
 		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
-		Expect(infoOut.ClusterName).To(Equal(clusterDeployment.Spec.ClusterName))
-		Expect(infoOut.ClusterID).ToNot(Equal(""))
-		Expect(infoOut.NodeIP).To(Equal(clusterInstall.Spec.NodeIP))
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
-		Expect(infoOut.ReleaseRegistry).To(Equal("registry.example.com"))
-		Expect(infoOut.Hostname).To(Equal(clusterInstall.Spec.Hostname))
+		Expect(infoOut.ObjectMeta.Name).To(Equal(clusterDeployment.Spec.ClusterName))
+
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 		Expect(infoOut.SSHKey).To(Equal(clusterInstall.Spec.SSHKey))
 		Expect(infoOut.PullSecret).To(Equal(testPullSecretVal))
+
+		content, err = os.ReadFile(outputFilePath(ClusterConfigDir, imageBasedConfigFilename))
+		Expect(err).NotTo(HaveOccurred())
+		config := &imagebased.Config{}
+		Expect(json.Unmarshal(content, config)).To(Succeed())
+		Expect(config.ClusterID).ToNot(Equal(""))
+		Expect(config.InfraID).ToNot(Equal(""))
+		Expect(config.ReleaseRegistry).To(Equal("registry.example.com"))
+		Expect(config.Hostname).To(Equal(clusterInstall.Spec.Hostname))
 	})
 
-	It("keep cluster crypto if name and base domain didn't change", func() {
-		baseDomain := "example.com"
-		clusterName := "thingcluster"
+	It("installer command fails", func() {
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
+		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		clusterDeployment.Spec.ClusterName = clusterName
-		clusterDeployment.Spec.BaseDomain = baseDomain
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		// save the current KubeconfigCryptoRetention
-		clusterCrypto := infoOut.KubeconfigCryptoRetention
-		// reconcile again and verify that the cluster crypto stay the same
-		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut = &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(clusterCrypto).To(Equal(infoOut.KubeconfigCryptoRetention))
+		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("failed")).Times(1)
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
 	})
+
 	It("pullSecret not set", func() {
 		clusterDeployment.Spec.PullSecretRef = nil
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -291,6 +322,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err.Error()).To(ContainSubstring("missing reference to pull secret"))
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
+
 	It("missing pullSecret", func() {
 		clusterDeployment.Spec.PullSecretRef.Name = "nonExistingPS"
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -305,6 +337,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err.Error()).To(ContainSubstring("failed to find secret"))
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
+
 	It("pullSecret missing dockerconfigjson key", func() {
 		pullSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -326,6 +359,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err.Error()).To(ContainSubstring("secret ps did not contain key .dockerconfigjson"))
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
+
 	It("malformed pullSecret", func() {
 		pullSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -347,6 +381,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid pull secret data in secret pull secret must be a well-formed JSON"))
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
+
 	It("creates the ca bundle", func() {
 		caData := map[string]string{caBundleFileName: "mycabundle"}
 		cm := &corev1.ConfigMap{
@@ -368,17 +403,19 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect("mycabundle").To(Equal(infoOut.AdditionalTrustBundle.UserCaBundle))
+		Expect(infoOut.AdditionalTrustBundle).To(Equal("mycabundle"))
 
 	})
+
 	It("creates the invoker CM", func() {
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -387,17 +424,19 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", invokerCMFileName))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, extraManifestsDir, invokerCMFileName))
 		Expect(err).NotTo(HaveOccurred())
 		cm := corev1.ConfigMap{}
 		err = json.Unmarshal(content, &cm)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cm.Data["invoker"]).To(Equal(imageBasedInstallInvoker))
 	})
+
 	It("creates the imageDigestMirrorSet", func() {
 		imageDigestMirrors := []apicfgv1.ImageDigestMirrors{
 			{
@@ -421,29 +460,20 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", imageDigestMirrorSetFileName))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		expectedImageDigestMirrorSet := &apicfgv1.ImageDigestMirrorSet{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: apicfgv1.SchemeGroupVersion.String(),
-				Kind:       "ImageDigestMirrorSet",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "image-digest-mirror",
-				// not namespaced
-			},
-			Spec: apicfgv1.ImageDigestMirrorSetSpec{
-				ImageDigestMirrors: imageDigestMirrors,
-			},
-		}
+		infoOut := &installertypes.InstallConfig{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
-		expectedcontent, err := json.Marshal(expectedImageDigestMirrorSet)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(content).To(Equal(expectedcontent))
+		Expect(len(infoOut.ImageDigestSources)).To(Equal(2))
+		Expect(infoOut.ImageDigestSources).To(Equal(convertIDMToIDS(imageDigestMirrors)))
+		Expect(len(infoOut.ImageDigestSources[0].Mirrors)).To(Equal(1))
+
 	})
 
 	It("copies the nmstate config bmh preprovisioningNetworkDataName", func() {
@@ -471,16 +501,23 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, imageBasedConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.RawNMStateConfig).To(Equal(validNMStateConfigBMH))
+		config := &imagebased.Config{}
+		Expect(json.Unmarshal(content, config)).To(Succeed())
+		var jsonMap map[string]interface{}
+		Expect(yaml.Unmarshal([]byte(validNMStateConfigBMH), &jsonMap)).To(Succeed())
+
+		var networkConfigMap map[string]interface{}
+		Expect(yaml.Unmarshal(config.NetworkConfig.Raw, &networkConfigMap)).To(Succeed())
+		Expect(networkConfigMap).To(Equal(jsonMap))
 	})
+
 	It("fails if nmstate config is bad yaml", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		invalidNmstateString := "some\nnmstate\nstring"
@@ -515,6 +552,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
+
 	It("fails when a referenced nmstate secret is missing", func() {
 		// note that we don't create the netconfig secret.
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
@@ -541,6 +579,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
+
 	It("fails when the referenced nmstate secret is missing the required key", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		secret := &corev1.Secret{
@@ -573,6 +612,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 	})
+
 	It("when a referenced clusterdeployment is missing", func() {
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
@@ -589,6 +629,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Message).To(Equal("clusterDeployment with name 'test-cluster' in namespace 'test-namespace' not found"))
 	})
+
 	It("creates extra manifests", func() {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -612,6 +653,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -656,6 +698,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -664,15 +707,8 @@ var _ = Describe("Reconcile", func() {
 		kubeconfigSecret := &corev1.Secret{}
 		err = r.Client.Get(ctx, client.ObjectKey{Namespace: clusterInstallNamespace, Name: clusterDeployment.Name + "-admin-kubeconfig"}, kubeconfigSecret)
 		Expect(err).NotTo(HaveOccurred())
-		kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
+		_, exists := kubeconfigSecret.Data["kubeconfig"]
 		Expect(exists).To(BeTrue())
-		kubeconfig, err := clientcmd.Load(kubeconfigSecretData)
-		Expect(err).NotTo(HaveOccurred())
-		// verify the cluster URL
-		Expect(kubeconfig.Clusters["cluster"].Server).To(Equal(fmt.Sprintf("https://api.%s.%s:6443", clusterDeployment.Spec.ClusterName, clusterDeployment.Spec.BaseDomain)))
-
-		// verify all signer keys exists
-		// verify the admin client CA cert exists
 	})
 
 	It("creates kubeadmin password", func() {
@@ -685,6 +721,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -719,6 +756,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -757,6 +795,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -777,6 +816,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
+
 	It("configures a referenced BMH with state available, ExternallyProvisioned false and online false", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = false
@@ -796,6 +836,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -816,6 +857,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
+
 	It("configures a referenced BMH with state externally provisioned and online false", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		bmh.Spec.ExternallyProvisioned = true
@@ -835,6 +877,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -854,6 +897,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
+
 	It("configures a referenced BMH with status externally provisioned and online true", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		bmh.Spec.ExternallyProvisioned = true
@@ -872,6 +916,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -909,6 +954,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -937,6 +983,7 @@ var _ = Describe("Reconcile", func() {
 				Name:      clusterInstallName,
 			},
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -1024,6 +1071,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
 		Expect(cond.Message).To(Equal("baremetalhosts.metal3.io \"doesntExist\" not found"))
 	})
+
 	It("updates the cluster install and cluster deployment metadata", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -1043,106 +1091,25 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, imageBasedConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+		config := &imagebased.Config{}
+		Expect(json.Unmarshal(content, config)).To(Succeed())
 
 		updatedICI := v1alpha1.ImageClusterInstall{}
 		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
 		meta := updatedICI.Spec.ClusterMetadata
 		Expect(meta).ToNot(BeNil())
-		Expect(meta.ClusterID).To(Equal(infoOut.ClusterID))
+		Expect(meta.ClusterID).To(Equal(config.ClusterID))
 		Expect(meta.InfraID).To(HavePrefix("thingcluster"))
-		Expect(meta.InfraID).To(Equal(infoOut.InfraID))
+		Expect(meta.InfraID).To(Equal(config.InfraID))
 		Expect(meta.AdminKubeconfigSecretRef.Name).To(Equal("test-cluster-admin-kubeconfig"))
 		Expect(meta.AdminPasswordSecretRef.Name).To(Equal("test-cluster-admin-password"))
-	})
-
-	It("sets the clusterID to the manifest.json value if it exists", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		existingInfo := lca_api.SeedReconfiguration{
-			ClusterID: "5eaf4f02-2410-4fff-8e94-74aa6b5dc2cd",
-		}
-		content, err := json.Marshal(existingInfo)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.MkdirAll(outputFilePath(clusterConfigDir), 0700)).To(Succeed())
-		Expect(os.WriteFile(outputFilePath(clusterConfigDir, "manifest.json"), content, 0644)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-
-		updatedICI := v1alpha1.ImageClusterInstall{}
-		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
-
-		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
-		Expect(updatedICI.Spec.ClusterMetadata.ClusterID).To(Equal(existingInfo.ClusterID))
-		Expect(infoOut.ClusterID).To(Equal(existingInfo.ClusterID))
-	})
-
-	It("sets the infraID to the manifest.json value if it exists", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-
-		clusterDeployment.Spec.ClusterName = "thingcluster"
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		existingInfo := lca_api.SeedReconfiguration{
-			InfraID: "thingcluster-nvvbf",
-		}
-		content, err := json.Marshal(existingInfo)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.MkdirAll(outputFilePath(clusterConfigDir), 0700)).To(Succeed())
-		Expect(os.WriteFile(outputFilePath(clusterConfigDir, "manifest.json"), content, 0644)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{}))
-
-		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-
-		updatedICI := v1alpha1.ImageClusterInstall{}
-		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
-
-		Expect(updatedICI.Spec.ClusterMetadata).ToNot(BeNil())
-		Expect(updatedICI.Spec.ClusterMetadata.InfraID).To(Equal(existingInfo.InfraID))
-		Expect(infoOut.InfraID).To(Equal(existingInfo.InfraID))
 	})
 
 	It("succeeds in case bmh has ip in provided machine network", func() {
@@ -1164,14 +1131,18 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
+		Expect(infoOut.ObjectMeta.Name).To(Equal(clusterDeployment.Spec.ClusterName))
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
 	It("succeeds in case bmh has disabled inspection and no hw details", func() {
@@ -1197,17 +1168,41 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
 		Expect(err).NotTo(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
+		Expect(infoOut.ObjectMeta.Name).To(Equal(clusterDeployment.Spec.ClusterName))
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
-	It("requeue in case bmh has no hw details but after adding them it succeeds", func() {
+	It("in case there is no actual bmh under the reference we should not return error", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails = nil
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -1248,14 +1243,18 @@ var _ = Describe("Reconcile", func() {
 			{IP: "192.168.1.30"}}}
 
 		Expect(c.Update(ctx, bmh)).To(Succeed())
+		installerSuccess()
 		_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).ToNot(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
+		Expect(infoOut.ObjectMeta.Name).To(Equal(clusterDeployment.Spec.ClusterName))
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -1299,14 +1298,18 @@ var _ = Describe("Reconcile", func() {
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
 
+		installerSuccess()
 		_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).ToNot(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &installertypes.InstallConfig{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
+
+		Expect(infoOut.BaseDomain).To(Equal(clusterDeployment.Spec.BaseDomain))
+		Expect(infoOut.ObjectMeta.Name).To(Equal(clusterDeployment.Spec.ClusterName))
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -1329,6 +1332,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
@@ -1394,6 +1398,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerSuccess()
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
