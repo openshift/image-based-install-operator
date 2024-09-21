@@ -2,7 +2,6 @@ package imageserver
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,10 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diskfs/go-diskfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
+
+	"github.com/openshift/image-based-install-operator/controllers"
 )
 
 func TestImageServer(t *testing.T) {
@@ -54,10 +54,10 @@ var _ = Describe("ServeHttp", func() {
 		client = server.Client()
 
 		// create test data
-		filesDir := filepath.Join(configsDir, namespace, name, "files")
+		filesDir := filepath.Join(configsDir, namespace, name, controllers.FilesDir, controllers.ClusterConfigDir)
 		Expect(os.MkdirAll(filepath.Join(filesDir, "testDir"), 0700)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(filesDir, "file1"), []byte("content1"), 0600)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(filesDir, "testDir", "file2"), []byte("content2"), 0600)).To(Succeed())
+
+		Expect(os.WriteFile(filepath.Join(filesDir, controllers.IsoName), []byte("content1"), 0600)).To(Succeed())
 	})
 
 	AfterEach(func() {
@@ -82,36 +82,11 @@ var _ = Describe("ServeHttp", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
 	})
 
-	It("contains the correct content for existing configs", func() {
+	It("found image", func() {
 		url, err := url.JoinPath(server.URL, fmt.Sprintf("images/%s/%s.iso", namespace, name))
 		Expect(err).NotTo(HaveOccurred())
 		resp, err := client.Get(url)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		f, err := os.CreateTemp("", "imageserver_test_iso")
-		isoPath := f.Name()
-		Expect(err).NotTo(HaveOccurred())
-		defer os.Remove(isoPath)
-		_, err = io.Copy(f, resp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(f.Close()).To(Succeed())
-
-		d, err := diskfs.Open(isoPath, diskfs.WithOpenMode(diskfs.ReadOnly))
-		Expect(err).NotTo(HaveOccurred())
-		fs, err := d.GetFilesystem(0)
-		Expect(err).NotTo(HaveOccurred())
-
-		isoFile, err := fs.OpenFile("/file1", os.O_RDONLY)
-		Expect(err).NotTo(HaveOccurred())
-		content, err := io.ReadAll(isoFile)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(content).To(Equal([]byte("content1")))
-
-		isoFile, err = fs.OpenFile("/testDir/file2", os.O_RDONLY)
-		Expect(err).NotTo(HaveOccurred())
-		content, err = io.ReadAll(isoFile)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(content).To(Equal([]byte("content2")))
 	})
 })

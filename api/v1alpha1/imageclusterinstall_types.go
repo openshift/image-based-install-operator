@@ -100,6 +100,11 @@ type ImageClusterInstallSpec struct {
 	// Proxy defines the proxy settings to be applied in relocated cluster
 	// +optional
 	Proxy *Proxy `json:"proxy,omitempty"`
+
+	// AdditionalNTPSources is a list of NTP sources (hostname or IP) to be added to all cluster
+	// hosts. They are added to any NTP sources that were configured through other means.
+	// +optional
+	AdditionalNTPSources []string `json:"additionalNTPSources,omitempty"`
 }
 
 // ImageClusterInstallStatus defines the observed state of ImageClusterInstall

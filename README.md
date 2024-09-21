@@ -62,6 +62,15 @@ If you are editing the API definitions, generate the manifests such as CRs or CR
 make manifests
 ```
 
+### Vendor dependencies
+This project import openshift installer and it is huge package that causes issues with go modules. In case you will see vendor issue please set 
+
+```sh
+export GOSUMDB=off
+make vendor
+```
+
+
 **NOTE:** Run `make --help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
