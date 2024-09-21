@@ -42,7 +42,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ImageClusterInstallReconciler reconciles a ImageClusterInstall object
+// ImageClusterInstallMonitor reconciles a ImageClusterInstall object
 type ImageClusterInstallMonitor struct {
 	client.Client
 	Log                          logrus.FieldLogger
@@ -235,6 +235,7 @@ func (r *ImageClusterInstallMonitor) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("ImageClusterInstallMonitor").
 		For(&v1alpha1.ImageClusterInstall{}).
 		WithEventFilter(bootTimeInitialized).
 		Complete(r)

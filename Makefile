@@ -60,6 +60,8 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+PROJECT_DIR := $(shell dirname $(abspath $(firstword $(MAKEFILE_LIST))))
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -92,8 +94,9 @@ manifests: controller-gen ## Generate ClusterRole and CustomResourceDefinition o
 	$(CONTROLLER_GEN) rbac:roleName=image-cluster-install-manager crd paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: vendor controller-gen mock-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	PATH="${PROJECT_DIR}/bin:${PATH}" go generate $(shell go list ./...)
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -175,6 +178,7 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
+MOCK_GEN = $(LOCALBIN)/bin/mockgen
 ## Tool Binaries
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
@@ -198,6 +202,12 @@ controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessar
 $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) GOFLAGS="" go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+
+.PHONY: mock-gen
+mock-gen: ## Download mockgen locally if necessary.
+	test -s $(MOCK_GEN) || \
+    GOBIN=$(LOCALBIN) GOFLAGS="" go install go.uber.org/mock/mockgen@v0.4.0
+
 
 .PHONY: operator-sdk
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
@@ -271,3 +281,8 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) push IMG=$(CATALOG_IMG)
+
+.PHONY: vendor
+vendor: ## Update go modules and vendor dependencies, set GOPROXY=direct to avoid using the GOPROXY environment variable in order to bring installer
+	GOPROXY=direct go mod tidy
+	GOPROXY=direct go mod vendor
