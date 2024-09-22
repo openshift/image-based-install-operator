@@ -591,19 +591,16 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) getBmhDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) (*bmh_v1alpha1.DataImage, error) {
-	if bmh == nil {
-		return nil, nil
-	}
+func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, log logrus.FieldLogger, namespace, name string) (*bmh_v1alpha1.DataImage, error) {
 	dataImage := bmh_v1alpha1.DataImage{}
 	key := client.ObjectKey{
-		Name:      bmh.Name,
-		Namespace: bmh.Namespace,
+		Name:      name,
+		Namespace: namespace,
 	}
 	err := r.Get(ctx, key, &dataImage)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Warnf("Can't find DataImage %s/%s", bmh.Namespace, bmh.Name)
+			log.Warnf("Can't find DataImage %s/%s", namespace, name)
 			return nil, nil
 		}
 		return nil, err
@@ -655,7 +652,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 }
 
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	dataImage, err := r.getBmhDataImage(ctx, log, bmh)
+	dataImage, err := r.getDataImage(ctx, log, bmh.Namespace, bmh.Name)
 	if err != nil {
 		return err
 	}
@@ -1317,7 +1314,7 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 			return ctrl.Result{}, true, removeFinalizer()
 		}
 
-		dataImage, err := r.getBmhDataImage(ctx, log, bmh)
+		dataImage, err := r.getDataImage(ctx, log, bmh.Namespace, bmh.Name)
 		if err != nil {
 			return ctrl.Result{}, true, fmt.Errorf("failed to get DataImage: %w", err)
 		}
