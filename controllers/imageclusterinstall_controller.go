@@ -155,7 +155,12 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
-		log.Error("ClusterDeploymentRef is unset, not reconciling")
+		errorMessagge := fmt.Errorf("clusterDeploymentRef is unset")
+		log.Error(errorMessagge)
+		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge, ""); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+			return ctrl.Result{}, updateErr
+		}
 		return ctrl.Result{}, nil
 	}
 

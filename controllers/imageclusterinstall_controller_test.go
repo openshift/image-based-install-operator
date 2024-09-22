@@ -1166,6 +1166,12 @@ var _ = Describe("Reconcile", func() {
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal("clusterDeploymentRef is unset"))
+
 	})
 
 	It("sets conditions to show cluster installed when the host can be configured and cluster is ready", func() {
