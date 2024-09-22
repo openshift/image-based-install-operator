@@ -19,7 +19,6 @@ package controllers
 import (
 	"bytes"
 	"context"
-
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -150,6 +149,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
+	if err := r.initializeConditions(ctx, ici); err != nil {
+		log.Errorf("Failed to initialize conditions: %s", err)
+		return ctrl.Result{}, err
+	}
+
 	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
 		log.Error("ClusterDeploymentRef is unset, not reconciling")
 		return ctrl.Result{}, nil
@@ -175,11 +179,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, updateErr
 		}
 		return ctrl.Result{Requeue: true}, nil
-	}
-
-	if err := r.initializeConditions(ctx, ici); err != nil {
-		log.Errorf("Failed to initialize conditions: %s", err)
-		return ctrl.Result{}, err
 	}
 
 	if ici.Spec.BareMetalHostRef == nil {
