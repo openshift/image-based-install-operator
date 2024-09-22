@@ -158,7 +158,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
 		errorMessagge := fmt.Errorf("clusterDeploymentRef is unset")
 		log.Error(errorMessagge)
-		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge, ""); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 			return ctrl.Result{}, updateErr
 		}
@@ -180,7 +180,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		errorMessagge := fmt.Errorf("clusterDeployment with name '%s' in namespace '%s' not found",
 			cdKey.Name, cdKey.Namespace)
 		log.WithError(err).Error(errorMessagge)
-		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge, ""); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 			return ctrl.Result{}, updateErr
 		}
@@ -218,7 +218,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	res, _, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
 	if !res.IsZero() || err != nil {
 		if err != nil {
-			if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
+			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
 				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 			}
 			log.Error(err)
@@ -236,7 +236,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", ici.ObjectMeta.UID))
 	if err != nil {
 		log.WithError(err).Error("failed to create image url")
-		if updateErr := r.setImageReadyCondition(ctx, ici, err, ""); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, err
@@ -942,7 +942,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 	}
 	if !locked {
 		log.Info("requeueing due to lock contention")
-		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data"), ""); updateErr != nil {
+		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data")); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, false, nil
