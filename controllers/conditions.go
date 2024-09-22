@@ -100,7 +100,7 @@ func (r *ImageClusterInstallReconciler) initializeConditions(ctx context.Context
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error, imageURL string) error {
+func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
 	cond := hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallRequirementsMet,
 		Status:  corev1.ConditionTrue,
@@ -118,7 +118,6 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	ici.Status.ConfigurationImageURL = imageURL
 	r.Log.Info("Setting image ready condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
