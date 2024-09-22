@@ -204,6 +204,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
+	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
+	// will format the disk
+	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
+		patch := client.MergeFrom(bmh.DeepCopy())
+		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
+		log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	res, _, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
 	if !res.IsZero() || err != nil {
 		if err != nil {
@@ -229,17 +240,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, err
-	}
-
-	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
-	// will format the disk
-	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
-		patch := client.MergeFrom(bmh.DeepCopy())
-		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
-		log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return ctrl.Result{}, err
-		}
 	}
 
 	res, err = r.validateSeedReconfigurationWithBMH(ctx, log, ici, bmh)
