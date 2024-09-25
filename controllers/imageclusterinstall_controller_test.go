@@ -2230,6 +2230,17 @@ var _ = Describe("handleFinalizer", func() {
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID),
+			},
+		}
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
+
 		// mark clusterInstall as deleted to call the finalizer handler
 		now := metav1.Now()
 		clusterInstall.ObjectMeta.DeletionTimestamp = &now
@@ -2245,6 +2256,13 @@ var _ = Describe("handleFinalizer", func() {
 		}
 		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
+		key := types.NamespacedName{
+			Namespace: dataImage.Namespace,
+			Name:      dataImage.Name,
+		}
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(HaveOccurred())
+
 	})
 
 	It("removes dataimage on ici delete", func() {
@@ -2279,12 +2297,13 @@ var _ = Describe("handleFinalizer", func() {
 		}
 		Expect(c.Create(ctx, &dataImage)).To(Succeed())
 
-		// mark clusterInstall as deleted to call the finalizer handler
+		// Mark clusterInstall as deleted to call the finalizer handler
 		now := metav1.Now()
 		clusterInstall.ObjectMeta.DeletionTimestamp = &now
 
+		// First round will delete the dataImage (mark for deletion) and ask the bmh to reboot
 		res, stop, err := r.handleFinalizer(ctx, r.Log, clusterInstall)
-		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
 		Expect(stop).To(BeTrue())
 		Expect(err).ToNot(HaveOccurred())
 
@@ -2292,20 +2311,35 @@ var _ = Describe("handleFinalizer", func() {
 			Name:      clusterInstallName,
 			Namespace: clusterInstallNamespace,
 		}
+		// Validate the finalizer wasn't removed yet
 		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
-		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
+		Expect(clusterInstall.GetFinalizers()).To(ContainElement(clusterInstallFinalizerName))
 
 		key := types.NamespacedName{
 			Namespace: bmh.Namespace,
 			Name:      bmh.Name,
 		}
 
-		dataImage = bmh_v1alpha1.DataImage{}
-		Expect(c.Get(ctx, key, &dataImage)).To(HaveOccurred())
-
+		// Validate the bmh is now attached and got the reboot annotation
 		bmh = &bmh_v1alpha1.BareMetalHost{}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
 		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+
+		dataImage = bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(HaveOccurred())
+		// Once the dataImage is deleted the finalizer should be removed
+
+		// Mark clusterInstall as deleted to call the finalizer handler
+		clusterInstall.ObjectMeta.DeletionTimestamp = &now
+		res, stop, err = r.handleFinalizer(ctx, r.Log, clusterInstall)
+		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(stop).To(BeTrue())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Validate the finalizer get removed after the data image is deleted
+		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
 	})
 })
 
