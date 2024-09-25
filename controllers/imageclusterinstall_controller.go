@@ -697,33 +697,27 @@ func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1al
 	return bmh, nil
 }
 
-func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, bmhRef *v1alpha1.BareMetalHostReference) error {
-	dataImage := &bmh_v1alpha1.DataImage{}
-
-	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
+func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmhRef types.NamespacedName) (*bmh_v1alpha1.DataImage, error) {
+	dataImage, err := r.deleteDataImage(ctx, log, bmhRef)
+	if err != nil || dataImage == nil {
+		return dataImage, err
 	}
 
-	if err := r.Get(ctx, key, dataImage); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", bmhRef.Namespace, bmhRef.Name)
-			return nil
+	bmh := &bmh_v1alpha1.BareMetalHost{}
+	if err := r.Get(ctx, bmhRef, bmh); err != nil {
+		if errors.IsNotFound(err) {
+			log.Warnf("Referenced BareMetalHost %s/%s does not exist, not waiting for dataImage deletion", bmhRef.Namespace, bmhRef.Name)
+			return nil, nil
+		} else {
+			return dataImage, fmt.Errorf("failed to get BareMetalHost %s/%s: %w", bmhRef.Namespace, bmhRef.Name, err)
 		}
-		return err
 	}
+	return dataImage, r.attachAndRebootBMH(ctx, log, bmh)
+}
 
-	log.Infof("Removing DataImage from BareMetalHost %s/%s", bmhRef.Namespace, bmhRef.Name)
-	if err := r.Client.Delete(ctx, dataImage); err != nil {
-		return err
-	}
-	if bmh == nil {
-		return nil
-	}
-
+func (r *ImageClusterInstallReconciler) attachAndRebootBMH(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
 	dirty := false
-
 	if annotationExists(&bmh.ObjectMeta, detachedAnnotation) {
 		log.Infof("Removing Detached annotation if exists on BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 		delete(bmh.ObjectMeta.Annotations, detachedAnnotation)
@@ -735,12 +729,28 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 		dirty = true
 	}
 	if dirty {
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return err
+		return r.Patch(ctx, bmh, patch)
+
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) deleteDataImage(ctx context.Context, log logrus.FieldLogger, dataImageRef types.NamespacedName) (*bmh_v1alpha1.DataImage, error) {
+	dataImage := &bmh_v1alpha1.DataImage{}
+
+	if err := r.Get(ctx, dataImageRef, dataImage); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", dataImageRef.Namespace, dataImageRef.Name)
+			return nil, nil
 		}
+		return nil, fmt.Errorf("failed to get DataImage %s/%s: %w", dataImageRef.Namespace, dataImageRef.Name, err)
 	}
 
-	return nil
+	log.Infof("Deleting DataImage %s/%s, deletion may take some time since a BMH restart is required", dataImageRef.Namespace, dataImageRef.Name)
+	if err := r.Client.Delete(ctx, dataImage); err != nil {
+		return dataImage, err
+	}
+	return dataImage, nil
 }
 
 func setBackupLabel(obj client.Object) bool {
@@ -1300,31 +1310,21 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 		return ctrl.Result{}, true, fmt.Errorf("failed to stat config directory %s: %w", lockDir, err)
 	}
 
-	if bmhRef := ici.Spec.BareMetalHostRef; bmhRef != nil {
-		bmh := &bmh_v1alpha1.BareMetalHost{}
+	if ici.Spec.BareMetalHostRef != nil {
 		key := types.NamespacedName{
-			Name:      bmhRef.Name,
-			Namespace: bmhRef.Namespace,
-		}
-		if err := r.Get(ctx, key, bmh); err != nil {
-			if !errors.IsNotFound(err) {
-				return ctrl.Result{}, true, fmt.Errorf("failed to get BareMetalHost %s: %w", key, err)
-			}
-			log.Warnf("Referenced BareMetalHost %s does not exist", key)
-			return ctrl.Result{}, true, removeFinalizer()
+			Name:      ici.Spec.BareMetalHostRef.Name,
+			Namespace: ici.Spec.BareMetalHostRef.Namespace,
 		}
 
-		dataImage, err := r.getDataImage(ctx, log, bmh.Namespace, bmh.Name)
+		dataImage, err := r.removeBMHDataImage(ctx, log, key)
 		if err != nil {
-			return ctrl.Result{}, true, fmt.Errorf("failed to get DataImage: %w", err)
+			return ctrl.Result{}, true, fmt.Errorf("failed to delete DataImage %s/%s: %w", key.Namespace, key.Name, err)
 		}
 		if dataImage != nil {
-			if err = r.removeBMHDataImage(ctx, log, bmh, bmhRef); err != nil {
-				return ctrl.Result{}, true, fmt.Errorf("failed to delete DataImage %s/%s: %w", bmhRef.Namespace, bmhRef.Name, err)
-			}
+			log.Infof("Waiting for DataImage %s/%s to get deleted", key.Namespace, key.Name)
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, true, nil
 		}
 	}
-
 	return ctrl.Result{}, true, removeFinalizer()
 }
 
