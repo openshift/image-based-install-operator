@@ -133,7 +133,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	ici := &v1alpha1.ImageClusterInstall{}
 	if err := r.Get(ctx, req.NamespacedName, ici); err != nil {
-		log.WithError(err).Error("failed to get ImageClusterInstall")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -296,8 +295,8 @@ func (r *ImageClusterInstallReconciler) monitorInstallationProgress(
 	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
 
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned || !bmh.Status.PoweredOn {
-		log.Infof("BareMetalHost %s/%s has not started yet, requeueing", bmh.Name, bmh.Namespace)
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		log.Infof("BareMetalHost %s/%s has not started yet", bmh.Name, bmh.Namespace)
+		return ctrl.Result{}, nil
 	}
 
 	timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
@@ -531,8 +530,13 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 	if err := r.Get(ctx, types.NamespacedName{Name: bmhName, Namespace: bmhNamespace}, bmh); err != nil {
 		return []reconcile.Request{}
 	}
+	listOptions := []client.ListOption{
+		client.MatchingFields{
+			".spec.bareMetalHostRef.name":      bmhName,
+			".spec.bareMetalHostRef.namespace": bmhNamespace},
+	}
 	iciList := &v1alpha1.ImageClusterInstallList{}
-	if err := r.List(ctx, iciList); err != nil {
+	if err := r.List(ctx, iciList, listOptions...); err != nil {
 		return []reconcile.Request{}
 	}
 	if len(iciList.Items) == 0 {
@@ -541,18 +545,13 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 
 	var requests []reconcile.Request
 	for _, ici := range iciList.Items {
-		if ici.Spec.BareMetalHostRef == nil {
-			continue
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: ici.Namespace,
+				Name:      ici.Name,
+			},
 		}
-		if ici.Spec.BareMetalHostRef.Name == bmhName && ici.Spec.BareMetalHostRef.Namespace == bmhNamespace {
-			req := reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: ici.Namespace,
-					Name:      ici.Name,
-				},
-			}
-			requests = append(requests, req)
-		}
+		requests = append(requests, req)
 	}
 	if len(requests) > 1 {
 		r.Log.Warnf("found multiple ImageClusterInstalls referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
@@ -584,6 +583,9 @@ func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj clie
 }
 
 func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := r.addIndexforBaremetalHostRef(mgr); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ImageClusterInstall{}).
 		WatchesRawSource(source.Kind(mgr.GetCache(), &bmh_v1alpha1.BareMetalHost{}), handler.EnqueueRequestsFromMapFunc(r.mapBMHToICI)).
@@ -591,22 +593,36 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Complete(r)
 }
 
-func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, log logrus.FieldLogger, namespace, name string) (*bmh_v1alpha1.DataImage, error) {
+func (r *ImageClusterInstallReconciler) addIndexforBaremetalHostRef(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.name", func(rawObj client.Object) []string {
+		ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
+		if !ok || ici.Spec.BareMetalHostRef == nil {
+			return nil
+		}
+		return []string{ici.Spec.BareMetalHostRef.Name}
+	}); err != nil {
+		return err
+	}
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.namespace", func(rawObj client.Object) []string {
+		ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
+		if !ok || ici.Spec.BareMetalHostRef == nil {
+			return nil
+		}
+		return []string{ici.Spec.BareMetalHostRef.Namespace}
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, namespace, name string) (*bmh_v1alpha1.DataImage, error) {
 	dataImage := bmh_v1alpha1.DataImage{}
 	key := client.ObjectKey{
 		Name:      name,
 		Namespace: namespace,
 	}
 	err := r.Get(ctx, key, &dataImage)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Warnf("Can't find DataImage %s/%s", namespace, name)
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return &dataImage, nil
+	return &dataImage, err
 }
 
 func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
@@ -652,35 +668,35 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 }
 
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	dataImage, err := r.getDataImage(ctx, log, bmh.Namespace, bmh.Name)
-	if err != nil {
+	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	if err == nil {
+		log.Infof("dataImage for BareMetalHost (%s/%s) already exist", bmh.Name, bmh.Namespace)
+		return nil
+	}
+
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
-
-	if dataImage == nil {
-		log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-
-		// Name and namespace must match the ones in BMH
-		dataImage = &bmh_v1alpha1.DataImage{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bmh.Name,
-				Namespace: bmh.Namespace,
-			},
-			Spec: bmh_v1alpha1.DataImageSpec{
-				URL: url,
-			},
-		}
-		err = controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
-		if err != nil {
-			return fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
-		}
-
-		err = r.Create(ctx, dataImage)
-		if err != nil {
-			return fmt.Errorf("failed to create dataImage due to %w", err)
-		}
+	log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+	// Name and namespace must match the ones in BMH
+	dataImage = &bmh_v1alpha1.DataImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		},
+		Spec: bmh_v1alpha1.DataImageSpec{
+			URL: url,
+		},
+	}
+	err = controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
+	if err != nil {
+		return fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
 
+	err = r.Create(ctx, dataImage)
+	if err != nil {
+		return fmt.Errorf("failed to create dataImage due to %w", err)
+	}
 	return nil
 }
 

@@ -341,7 +341,7 @@ var _ = Describe("Reconcile", func() {
 		// reconcile again and verify that the cluster crypto got updated
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
+		Expect(res).To(Equal(ctrl.Result{}))
 		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		infoOut = &lca_api.SeedReconfiguration{}
@@ -355,7 +355,7 @@ var _ = Describe("Reconcile", func() {
 		// reconcile again and verify that the cluster crypto got updated
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
+		Expect(res).To(Equal(ctrl.Result{}))
 		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		infoOut = &lca_api.SeedReconfiguration{}
@@ -1434,7 +1434,7 @@ var _ = Describe("Reconcile", func() {
 
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
+		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 
@@ -1944,8 +1944,22 @@ var _ = Describe("mapBMHToICI", func() {
 		c = fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
+			// this update the client to add index for .spec.bareMetalHostRef.name and namespace as we do in the SetupWithManager
+			WithIndex(&v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.name", func(rawObj client.Object) []string {
+				ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
+				if !ok || ici.Spec.BareMetalHostRef == nil {
+					return nil
+				}
+				return []string{ici.Spec.BareMetalHostRef.Name}
+			}).
+			WithIndex(&v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.namespace", func(rawObj client.Object) []string {
+				ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
+				if !ok || ici.Spec.BareMetalHostRef == nil {
+					return nil
+				}
+				return []string{ici.Spec.BareMetalHostRef.Namespace}
+			}).
 			Build()
-
 		r = &ImageClusterInstallReconciler{
 			Client: c,
 			Scheme: scheme.Scheme,

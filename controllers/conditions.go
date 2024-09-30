@@ -156,7 +156,7 @@ func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	r.Log.Info("Setting requirements met condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
+	r.Log.Infof("Setting requirements met condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
