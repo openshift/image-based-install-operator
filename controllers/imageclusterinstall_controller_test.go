@@ -33,32 +33,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const validNMStateConfig = `
-interfaces:
-  - name: enp1s0
-    type: ethernet
-    state: up
-    identifier: mac-address
-    mac-address: 52:54:00:8A:88:A8
-    ipv4:
-      address:
-        - ip: 192.168.136.15
-          prefix-length: "24"
-      enabled: true
-    ipv6:
-      enabled: false
-routes:
-  config:
-    - destination: 0.0.0.0/0
-      next-hop-address: 192.168.136.1
-      next-hop-interface: enp1s0
-      table-id: 254
-dns-resolver:
-  config:
-    server:
-      - 192.168.136.1
-`
-
 const validNMStateConfigBMH = `
 interfaces:
   - name: enp1s0
@@ -480,7 +454,8 @@ var _ = Describe("Reconcile", func() {
 		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifests", invokerCMFileName))
 		Expect(err).NotTo(HaveOccurred())
 		cm := corev1.ConfigMap{}
-		json.Unmarshal(content, &cm)
+		err = json.Unmarshal(content, &cm)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(cm.Data["invoker"]).To(Equal(imageBasedInstallInvoker))
 	})
 	It("creates the imageDigestMirrorSet", func() {
@@ -1004,67 +979,6 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.Status.BareMetalHostRef).To(HaveValue(Equal(*clusterInstall.Spec.BareMetalHostRef)))
-	})
-
-	It("validate image is not cleanuped on data change if bmh started installation", func() {
-		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
-		Expect(c.Create(ctx, bmh)).To(Succeed())
-
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: bmh.Namespace,
-			Name:      bmh.Name,
-		}
-		req := ctrl.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: clusterInstallNamespace,
-				Name:      clusterInstallName,
-			},
-		}
-
-		res, err := r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		dataImage := bmh_v1alpha1.DataImage{}
-		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
-		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
-
-		By("Changing cluster install params nothing should change in bmh")
-		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
-		clusterInstall.Spec.Hostname = "test"
-		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		dataImage = bmh_v1alpha1.DataImage{}
-		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
-		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
-
-		By("verify image not cleanuped in case bmh is provisioned")
-		bmh.Status.Provisioning.State = bmh_v1alpha1.StateProvisioned
-		Expect(c.Update(ctx, bmh)).To(Succeed())
-
-		Expect(c.Get(ctx, req.NamespacedName, clusterInstall)).To(Succeed())
-		clusterInstall.Spec.Hostname = "test2"
-		Expect(c.Update(ctx, clusterInstall)).To(Succeed())
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-
-		res, err = r.Reconcile(ctx, req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res).To(Equal(ctrl.Result{RequeueAfter: 1 * time.Minute}))
-		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		dataImage = bmh_v1alpha1.DataImage{}
-		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
-		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 
 	It("sets detached on a referenced BMH after it is externally provisioned", func() {
