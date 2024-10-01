@@ -103,6 +103,11 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: golangci-lint
+golangci-lint: ## Run golangci-lint against code.
+	@echo "Running golangci-lint"
+	hack/golangci-lint.sh
+
 .PHONY: test
 test: manifests generate fmt vet ## Run tests.
 	go test ./... -coverprofile cover.out
