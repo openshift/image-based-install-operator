@@ -129,19 +129,29 @@ func main() {
 	}
 
 	if err = (&controllers.ImageClusterInstallReconciler{
-		Client:                       mgr.GetClient(),
-		Credentials:                  credentialsManager,
-		Log:                          logger,
-		Scheme:                       mgr.GetScheme(),
-		Options:                      controllerOptions,
-		BaseURL:                      baseURL,
-		CertManager:                  certs.KubeConfigCertManager{},
-		DefaultInstallTimeout:        time.Hour,
-		GetSpokeClusterInstallStatus: monitor.GetClusterInstallStatus,
+		Client:      mgr.GetClient(),
+		Credentials: credentialsManager,
+		Log:         logger,
+		Scheme:      mgr.GetScheme(),
+		Options:     controllerOptions,
+		BaseURL:     baseURL,
+		CertManager: certs.KubeConfigCertManager{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)
 	}
+
+	if err = (&controllers.ImageClusterInstallMonitor{
+		Client:                       mgr.GetClient(),
+		Log:                          logger,
+		Scheme:                       mgr.GetScheme(),
+		DefaultInstallTimeout:        time.Hour,
+		GetSpokeClusterInstallStatus: monitor.GetClusterInstallStatus,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create monitor", "controller", "ImageClusterInstall")
+		os.Exit(1)
+	}
+
 	if err = (&v1alpha1.ImageClusterInstall{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "ImageClusterInstall")
 		os.Exit(1)

@@ -160,37 +160,45 @@ func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setClusterInstalledConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
+func installationTimedout(ici *v1alpha1.ImageClusterInstall) bool {
+	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallFailed)
+	return cond != nil && cond.Status == corev1.ConditionTrue && cond.Reason == v1alpha1.InstallTimedoutReason
+}
+
+func installationCompleted(ici *v1alpha1.ImageClusterInstall) bool {
+	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
+	return cond != nil && cond.Status == corev1.ConditionTrue
+}
+
+func (r *ImageClusterInstallMonitor) setClusterInstallingConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, message string) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	completedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallCompleted,
-		Status:  corev1.ConditionTrue,
-		Reason:  v1alpha1.InstallSucceededReason,
-		Message: v1alpha1.InstallSucceededMessage,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallInProgressReason,
+		Message: v1alpha1.InstallInProgressMessage,
 	})
 	stoppedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallStopped,
-		Status:  corev1.ConditionTrue,
-		Reason:  v1alpha1.InstallSucceededReason,
-		Message: v1alpha1.InstallSucceededMessage,
+		Status:  corev1.ConditionFalse,
+		Reason:  v1alpha1.InstallInProgressReason,
+		Message: message,
 	})
 	failedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallFailed,
 		Status:  corev1.ConditionFalse,
-		Reason:  v1alpha1.InstallSucceededReason,
-		Message: v1alpha1.InstallSucceededMessage,
+		Reason:  v1alpha1.InstallInProgressReason,
+		Message: v1alpha1.InstallInProgressMessage,
 	})
-
 	if !completedUpdated && !stoppedUpdated && !failedUpdated {
 		return nil
 	}
 
-	r.Log.Info("Setting cluster installed conditions")
-
+	r.Log.Info("Setting cluster install conditions")
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, timeout string) error {
+func (r *ImageClusterInstallMonitor) setClusterTimeoutConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, timeout string) error {
 	message := fmt.Sprintf("Cluster failed to install within the timeout (%s)", timeout)
 	patch := client.MergeFrom(ici.DeepCopy())
 	completedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
@@ -220,40 +228,32 @@ func (r *ImageClusterInstallReconciler) setClusterTimeoutConditions(ctx context.
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func installationTimedout(ici *v1alpha1.ImageClusterInstall) bool {
-	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
-	return cond != nil && cond.Status == corev1.ConditionFalse && cond.Reason == v1alpha1.InstallTimedoutReason
-}
-
-func installationCompleted(ici *v1alpha1.ImageClusterInstall) bool {
-	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
-	return cond != nil && cond.Status == corev1.ConditionTrue
-}
-
-func (r *ImageClusterInstallReconciler) setClusterInstallingConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall, message string) error {
+func (r *ImageClusterInstallMonitor) setClusterInstalledConditions(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	completedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallCompleted,
-		Status:  corev1.ConditionFalse,
-		Reason:  v1alpha1.InstallInProgressReason,
-		Message: v1alpha1.InstallInProgressMessage,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
 	stoppedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallStopped,
-		Status:  corev1.ConditionFalse,
-		Reason:  v1alpha1.InstallInProgressReason,
-		Message: message,
+		Status:  corev1.ConditionTrue,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
 	failedUpdated := setClusterInstallCondition(&ici.Status.Conditions, hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallFailed,
 		Status:  corev1.ConditionFalse,
-		Reason:  v1alpha1.InstallInProgressReason,
-		Message: v1alpha1.InstallInProgressMessage,
+		Reason:  v1alpha1.InstallSucceededReason,
+		Message: v1alpha1.InstallSucceededMessage,
 	})
+
 	if !completedUpdated && !stoppedUpdated && !failedUpdated {
 		return nil
 	}
 
-	r.Log.Info("Setting cluster install conditions")
+	r.Log.Info("Setting cluster installed conditions")
+
 	return r.Status().Patch(ctx, ici, patch)
 }
