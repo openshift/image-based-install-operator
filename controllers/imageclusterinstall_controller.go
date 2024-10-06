@@ -44,8 +44,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8serrors "k8s.io/apimachinery/pkg/util/errors"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -79,13 +77,11 @@ type ImageClusterInstallReconcilerOptions struct {
 type ImageClusterInstallReconciler struct {
 	client.Client
 	credentials.Credentials
-	Log                          logrus.FieldLogger
-	Scheme                       *runtime.Scheme
-	Options                      *ImageClusterInstallReconcilerOptions
-	BaseURL                      string
-	CertManager                  certs.KubeConfigCertManager
-	DefaultInstallTimeout        time.Duration
-	GetSpokeClusterInstallStatus monitor.GetInstallStatusFunc
+	Log         logrus.FieldLogger
+	Scheme      *runtime.Scheme
+	Options     *ImageClusterInstallReconcilerOptions
+	BaseURL     string
+	CertManager certs.KubeConfigCertManager
 }
 
 type imagePullSecret struct {
@@ -143,9 +139,8 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	// Nothing to do if the installation process has already stopped
-	if installationCompleted(ici) {
-		log.Infof("Cluster %s/%s finished installation process, nothing to do", ici.Namespace, ici.Name)
+	// Nothing to do if the installation process started
+	if !ici.Status.BootTime.IsZero() {
 		return ctrl.Result{}, nil
 	}
 
@@ -279,42 +274,8 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
 			return ctrl.Result{}, err
 		}
-		// as we are updating ici here we should return without RequeueAfter
-		// as reconcilation will run on update
-		return ctrl.Result{}, nil
 	}
-
-	return r.monitorInstallationProgress(ctx, log, ici, clusterDeployment, bmh)
-}
-
-func (r *ImageClusterInstallReconciler) monitorInstallationProgress(
-	ctx context.Context,
-	log logrus.FieldLogger,
-	ici *v1alpha1.ImageClusterInstall,
-	clusterDeployment *hivev1.ClusterDeployment,
-	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
-
-	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned || !bmh.Status.PoweredOn {
-		log.Infof("BareMetalHost %s/%s has not started yet", bmh.Name, bmh.Namespace)
-		return ctrl.Result{}, nil
-	}
-
-	timedout, err := r.checkClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
-	if err != nil {
-		log.WithError(err).Error("failed to check for install timeout")
-		return ctrl.Result{}, err
-	}
-	if timedout {
-		log.Info("cluster install timed out")
-	}
-
-	res, err := r.checkClusterStatus(ctx, log, ici, bmh, timedout)
-	if err != nil {
-		log.WithError(err).Error("failed to check cluster status")
-		return ctrl.Result{}, err
-	}
-
-	return res, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ImageClusterInstallReconciler) validateSeedReconfigurationWithBMH(
@@ -407,121 +368,6 @@ func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
 	return fmt.Errorf("bmh host doesn't have any nic with ip in provided machineNetwork %s", clusterInfo.MachineNetwork)
 }
 
-func (r *ImageClusterInstallReconciler) checkClusterTimeout(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, defaultTimeout time.Duration) (bool, error) {
-	timeout := defaultTimeout
-
-	if installationTimedout(ici) {
-		return true, nil
-	}
-
-	if timeoutOverride, present := ici.Annotations[installTimeoutAnnotation]; present {
-		var err error
-		timeout, err = time.ParseDuration(timeoutOverride)
-		if err != nil {
-			return false, fmt.Errorf("failed to parse install timeout annotation value %s: %w", timeoutOverride, err)
-		}
-	}
-
-	if ici.Status.BootTime.Add(timeout).Before(time.Now()) {
-		log.Error("timed out waiting for cluster to finish installation")
-		err := r.setClusterTimeoutConditions(ctx, ici, timeout.String())
-		if err != nil {
-			log.WithError(err).Error("failed to set cluster timeout conditions")
-		}
-		return true, err
-	}
-
-	return false, nil
-}
-
-func (r *ImageClusterInstallReconciler) checkClusterStatus(ctx context.Context,
-	log logrus.FieldLogger,
-	ici *v1alpha1.ImageClusterInstall,
-	bmh *bmh_v1alpha1.BareMetalHost,
-	timedout bool) (ctrl.Result, error) {
-	spokeClient, err := r.spokeClient(ctx, ici)
-	if err != nil {
-		log.WithError(err).Error("failed to create spoke client")
-		return ctrl.Result{}, err
-	}
-
-	if status := r.GetSpokeClusterInstallStatus(ctx, log, spokeClient); !status.Installed {
-		if timedout {
-			log.Infof("cluster install timed out and status is not installed: %s", status.String())
-			return ctrl.Result{}, nil
-		}
-
-		log.Infof("cluster install in progress: %s", status.String())
-		if err := r.setClusterInstallingConditions(ctx, ici, status.String()); err != nil {
-			log.WithError(err).Error("failed to set installing conditions")
-		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-	log.Info("cluster is installed")
-
-	// After installation ended we don't want that ironic will do any changes in the node
-	patch := client.MergeFrom(bmh.DeepCopy())
-	if setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
-		log.Infof("Adding detached annotations to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
-		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
-		log.WithError(err).Error("failed to set installed conditions")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
-}
-
-func (r *ImageClusterInstallReconciler) spokeClient(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (client.Client, error) {
-	if ici.Spec.ClusterMetadata == nil || ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name == "" {
-		return nil, fmt.Errorf("kubeconfig secret must be set to get spoke client")
-	}
-	key := types.NamespacedName{
-		Namespace: ici.Namespace,
-		Name:      ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name,
-	}
-
-	secret := corev1.Secret{}
-	if err := r.Get(ctx, key, &secret); err != nil {
-		return nil, fmt.Errorf("failed to get admin kubeconfig secret %s: %w", key, err)
-	}
-
-	if secret.Data == nil {
-		return nil, fmt.Errorf("Secret %s/%s does not contain any data", secret.Namespace, secret.Name)
-	}
-
-	kubeconfig, ok := secret.Data["kubeconfig"]
-	if !ok || len(kubeconfig) == 0 {
-		return nil, fmt.Errorf("Secret data for %s/%s does not contain kubeconfig", secret.Namespace, secret.Name)
-	}
-
-	clientConfig, err := clientcmd.NewClientConfigFromBytes(kubeconfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get clientconfig from kubeconfig data: %w", err)
-	}
-
-	restConfig, err := clientConfig.ClientConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get restconfig for kube client: %w", err)
-	}
-	restConfig.Timeout = 10 * time.Second
-
-	var schemes = runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(schemes))
-	utilruntime.Must(apicfgv1.AddToScheme(schemes))
-
-	spokeClient, err := client.New(restConfig, client.Options{Scheme: schemes})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize spoke client: %s", err)
-	}
-
-	return spokeClient, nil
-}
-
 func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj client.Object) []reconcile.Request {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	bmhName := obj.GetName()
@@ -545,16 +391,22 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 
 	var requests []reconcile.Request
 	for _, ici := range iciList.Items {
-		req := reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: ici.Namespace,
-				Name:      ici.Name,
-			},
+		// Create a request only if the installation hasn't started
+		if ici.Status.BootTime.IsZero() {
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: ici.Namespace,
+					Name:      ici.Name,
+				},
+			}
+			requests = append(requests, req)
 		}
-		requests = append(requests, req)
 	}
 	if len(requests) > 1 {
-		r.Log.Warnf("found multiple ImageClusterInstalls referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
+		r.Log.Errorf("found multiple ImageClusterInstalls referencing BaremetalHost %s/%s", bmhNamespace, bmhName)
+	}
+	if len(requests) > 0 {
+		r.Log.Debugf("reconcile ImageClusterInstall triggered by BaremetalHost %s/%s", bmhNamespace, bmhName)
 	}
 	return requests
 }
@@ -571,6 +423,7 @@ func (r *ImageClusterInstallReconciler) mapCDToICI(ctx context.Context, obj clie
 	if cd.Spec.ClusterInstallRef != nil &&
 		cd.Spec.ClusterInstallRef.Group == v1alpha1.Group &&
 		cd.Spec.ClusterInstallRef.Kind == "ImageClusterInstall" {
+		r.Log.Debugf("reconcile ImageClusterInstall triggered by ClusterDeployment %s/%s", cdNamespace, cdName)
 		return []reconcile.Request{{
 			NamespacedName: types.NamespacedName{
 				Namespace: cdNamespace,
@@ -668,7 +521,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 }
 
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	_, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
 		log.Infof("dataImage for BareMetalHost (%s/%s) already exist", bmh.Name, bmh.Namespace)
 		return nil
@@ -679,7 +532,7 @@ func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, 
 	}
 	log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 	// Name and namespace must match the ones in BMH
-	dataImage = &bmh_v1alpha1.DataImage{
+	dataImage := &bmh_v1alpha1.DataImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
