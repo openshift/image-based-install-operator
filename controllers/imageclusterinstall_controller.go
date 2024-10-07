@@ -76,11 +76,12 @@ type ImageClusterInstallReconcilerOptions struct {
 type ImageClusterInstallReconciler struct {
 	client.Client
 	credentials.Credentials
-	Log         logrus.FieldLogger
-	Scheme      *runtime.Scheme
-	Options     *ImageClusterInstallReconcilerOptions
-	BaseURL     string
-	CertManager certs.KubeConfigCertManager
+	Log             logrus.FieldLogger
+	Scheme          *runtime.Scheme
+	Options         *ImageClusterInstallReconcilerOptions
+	BaseURL         string
+	CertManager     certs.KubeConfigCertManager
+	NoncachedClient client.Reader
 }
 
 type imagePullSecret struct {
@@ -640,7 +641,7 @@ func (r *ImageClusterInstallReconciler) labelConfigMapForBackup(ctx context.Cont
 
 func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context, key types.NamespacedName) error {
 	secret := &corev1.Secret{}
-	if err := r.Get(ctx, key, secret); err != nil {
+	if err := r.NoncachedClient.Get(ctx, key, secret); err != nil {
 		return err
 	}
 
@@ -869,7 +870,7 @@ func (r *ImageClusterInstallReconciler) nmstateConfig(
 
 	nmstateConfigSecret := &corev1.Secret{}
 	key := types.NamespacedName{Name: bmh.Spec.PreprovisioningNetworkDataName, Namespace: bmh.Namespace}
-	if err := r.Get(ctx, key, nmstateConfigSecret); err != nil {
+	if err := r.NoncachedClient.Get(ctx, key, nmstateConfigSecret); err != nil {
 		return "", fmt.Errorf("failed to get network config secret %s: %w", key, err)
 	}
 
@@ -1077,7 +1078,7 @@ func (r *ImageClusterInstallReconciler) getValidPullSecret(ctx context.Context, 
 	}
 	key := types.NamespacedName{Name: psRef.Name, Namespace: namespace}
 	s := &corev1.Secret{}
-	if err := r.Get(ctx, key, s); err != nil {
+	if err := r.NoncachedClient.Get(ctx, key, s); err != nil {
 		return "", fmt.Errorf("failed to find secret %s: %v", key.Name, err)
 	}
 	psData, ok := s.Data[corev1.DockerConfigJsonKey]
