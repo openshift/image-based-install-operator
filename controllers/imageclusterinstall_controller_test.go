@@ -1206,7 +1206,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
-	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
+	It("requeue in case bmh has no hw details but after adding them it succeeds", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails = nil
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -1236,12 +1236,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).ToNot(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
-
 		// good one
 		Expect(c.Get(ctx, types.NamespacedName{
 			Namespace: bmh.Namespace,
@@ -1256,8 +1250,9 @@ var _ = Describe("Reconcile", func() {
 		_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).ToNot(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 
@@ -1292,12 +1287,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("bmh host doesn't have any nic with ip in provided"))
 
-		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).ToNot(HaveOccurred())
-		infoOut := &lca_api.SeedReconfiguration{}
-		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
-		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
-
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
@@ -1312,8 +1301,9 @@ var _ = Describe("Reconcile", func() {
 		_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).ToNot(HaveOccurred())
 
-		content, err = os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
-		Expect(err).NotTo(HaveOccurred())
+		content, err := os.ReadFile(outputFilePath(clusterConfigDir, "manifest.json"))
+		Expect(err).ToNot(HaveOccurred())
+		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
 
