@@ -38,7 +38,6 @@ import (
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -182,8 +181,9 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	if ici.Spec.BareMetalHostRef == nil {
-		log.Infof("No BareMetalHostRef set, nothing to do without provided bmh")
-		if updateErr := r.setHostConfiguredCondition(ctx, ici, fmt.Errorf("No BareMetalHostRef set, nothing to do without provided bmh")); updateErr != nil {
+		msg := "No BareMetalHostRef set, nothing to do without provided bmh"
+		log.Infof(msg)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
 		return ctrl.Result{}, nil
@@ -191,11 +191,11 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
 	if err != nil {
-		log.WithError(err).Error("failed to get BareMetalHost")
-		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
+		log.WithError(err).Infof("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 
 	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
@@ -523,11 +523,10 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
 	_, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
-		log.Infof("dataImage for BareMetalHost (%s/%s) already exist", bmh.Name, bmh.Namespace)
 		return nil
 	}
 
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 	log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
@@ -608,7 +607,7 @@ func (r *ImageClusterInstallReconciler) deleteDataImage(ctx context.Context, log
 	dataImage := &bmh_v1alpha1.DataImage{}
 
 	if err := r.Get(ctx, dataImageRef, dataImage); err != nil {
-		if apierrors.IsNotFound(err) {
+		if errors.IsNotFound(err) {
 			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", dataImageRef.Namespace, dataImageRef.Name)
 			return nil, nil
 		}
