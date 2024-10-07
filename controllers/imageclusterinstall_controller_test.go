@@ -113,7 +113,8 @@ var _ = Describe("Reconcile", func() {
 			Options: &ImageClusterInstallReconcilerOptions{
 				DataDir: dataDir,
 			},
-			CertManager: certs.KubeConfigCertManager{},
+			CertManager:     certs.KubeConfigCertManager{},
+			NoncachedClient: c,
 		}
 
 		imageSet := &hivev1.ClusterImageSet{
