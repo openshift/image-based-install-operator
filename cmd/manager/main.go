@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
@@ -69,12 +70,15 @@ func init() {
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
+	var runWithPPROF bool
 	var probeAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&runWithPPROF, "start-pprof", false,
+		"Enable pprof for debugging.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -82,6 +86,12 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	logger := logrus.New()
+	logger.SetReportCaller(true)
+
+	if runWithPPROF {
+		go startPPROF(logger)
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -122,9 +132,6 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
-	logger := logrus.New()
-	logger.SetReportCaller(true)
 
 	controllerOptions := &controllers.ImageClusterInstallReconcilerOptions{}
 	if err := envconfig.Process("image-based-install-operator", controllerOptions); err != nil {
@@ -202,4 +209,17 @@ func serviceURL(opts *controllers.ImageClusterInstallReconcilerOptions) (string,
 	}
 
 	return (&url.URL{Scheme: opts.ServiceScheme, Host: host}).String(), nil
+}
+
+func startPPROF(log *logrus.Logger) {
+	log.Printf("Starting pprof... log level: %s\n", log.Level)
+	srv := http.Server{
+		Addr:         "localhost:6060",
+		WriteTimeout: 600 * time.Second,
+		ReadTimeout:  5 * time.Second,
+	}
+	err := srv.ListenAndServe()
+	if err != nil {
+		log.Errorf("Failed to start pprof: %s", err)
+	}
 }
