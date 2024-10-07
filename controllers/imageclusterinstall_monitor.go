@@ -164,12 +164,10 @@ func (r *ImageClusterInstallMonitor) checkClusterStatus(ctx context.Context,
 			return ctrl.Result{}, err
 		}
 	}
-
 	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
 		log.WithError(err).Error("failed to set installed conditions")
 		return ctrl.Result{}, err
 	}
-
 	return ctrl.Result{}, nil
 }
 

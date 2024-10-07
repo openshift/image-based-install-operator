@@ -976,11 +976,8 @@ var _ = Describe("Reconcile", func() {
 
 	})
 
-	It("sets the ClusterInstallRequirementsMet condition to true when the host is missing", func() {
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
-		}
+	It("sets the ClusterInstallRequirementsMet condition to false when the bmhRef is missing", func() {
+		clusterInstall.Spec.BareMetalHostRef = nil
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
@@ -989,16 +986,43 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostConfiguraionFailedReason))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
+		Expect(cond.Message).To(Equal("No BareMetalHostRef set, nothing to do without provided bmh"))
 	})
 
+	It("Set ClusterInstallRequirementsMet to false in case there is not actual bmh under the reference", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      "doesntExist",
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
+		Expect(cond.Message).To(Equal("baremetalhosts.metal3.io \"doesntExist\" not found"))
+	})
 	It("updates the cluster install and cluster deployment metadata", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -1180,27 +1204,6 @@ var _ = Describe("Reconcile", func() {
 		infoOut := &lca_api.SeedReconfiguration{}
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 		Expect(infoOut.MachineNetwork).To(Equal(clusterInstall.Spec.MachineNetwork))
-	})
-
-	It("fails in case there is not actual bmh under the reference", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
-		}
-		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
-		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-
-		clusterDeployment.Spec.ClusterName = "thingcluster"
-		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
-
-		key := types.NamespacedName{
-			Namespace: clusterInstallNamespace,
-			Name:      clusterInstallName,
-		}
-		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("baremetalhosts.metal3.io \"test-bmh\" not found"))
 	})
 
 	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
