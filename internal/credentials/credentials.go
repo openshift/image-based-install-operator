@@ -28,10 +28,12 @@ import (
 )
 
 const (
-	DefaultUser    = "kubeadmin"
-	kubeconfig     = "kubeconfig"
-	kubeadmincreds = "kubeadmincreds"
-	cryptoKeys     = "crypto-keys"
+	SecretResourceLabel = "image-based-installed.openshift.io/created"
+	SecretResourceValue = "true"
+	DefaultUser         = "kubeadmin"
+	kubeconfig          = "kubeconfig"
+	kubeadmincreds      = "kubeadmincreds"
+	cryptoKeys          = "crypto-keys"
 )
 
 type CryptoSecret struct {
@@ -190,6 +192,7 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 
 	secret.Labels = addLabel(secret.Labels, "hive.openshift.io/cluster-deployment-name", cd.Name)
 	secret.Labels = addLabel(secret.Labels, "hive.openshift.io/secret-type", secretType)
+	secret.Labels = addLabel(secret.Labels, SecretResourceLabel, SecretResourceValue)
 
 	deploymentGVK, err := apiutil.GVKForObject(cd, r.Scheme)
 	if err != nil {
