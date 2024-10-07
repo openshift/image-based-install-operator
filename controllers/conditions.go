@@ -118,7 +118,7 @@ func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Conte
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	r.Log.Info("Setting image ready condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
+	r.Log.Infof("Setting image ready condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
@@ -140,7 +140,7 @@ func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.C
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
 		return nil
 	}
-	r.Log.Info("Setting host configured condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
+	r.Log.Infof("Setting host configured condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
 	return r.Status().Patch(ctx, ici, patch)
 }
 
