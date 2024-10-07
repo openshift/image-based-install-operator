@@ -16,7 +16,7 @@ require (
 	github.com/openshift/api v0.0.0-20241001152557-e415140e5d5f
 	github.com/openshift/assisted-service/api v0.0.0
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
-	github.com/openshift/installer v0.9.0-master.0.20240912103450-dcf8320c8c4e
+	github.com/openshift/installer v1.4.18-0.20241008040601-75346524d52e
 	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/mock v0.4.0
 	golang.org/x/crypto v0.27.0
@@ -243,7 +243,6 @@ replace github.com/metal3-io/baremetal-operator/apis => github.com/openshift/bar
 replace (
 	github.com/openshift/assisted-service/api => github.com/openshift/assisted-service/api v0.0.0-20241001055825-63e8b0d3ad63
 	github.com/openshift/assisted-service/models => github.com/openshift/assisted-service/models v0.0.0-20241001055825-63e8b0d3ad63
-	github.com/openshift/installer => github.com/tsorya/installer v0.9.0-master.0.20241007072857-8b760aedef2a
 	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20200929152424-eab2e087f366 // Indirect dependency through MAO from cluster API providers
 
 )
