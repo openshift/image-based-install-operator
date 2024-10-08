@@ -117,6 +117,7 @@ var _ = Describe("Reconcile", func() {
 			CertManager:                  certs.KubeConfigCertManager{},
 			DefaultInstallTimeout:        time.Hour,
 			GetSpokeClusterInstallStatus: monitor.SuccessMonitor,
+			NoncachedClient:              c,
 		}
 
 		imageSet := &hivev1.ClusterImageSet{
