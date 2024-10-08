@@ -27,6 +27,10 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/kelseyhightower/envconfig"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -36,15 +40,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/kelseyhightower/envconfig"
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/controllers"
-	"github.com/openshift/image-based-install-operator/internal/certs"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
+	"github.com/openshift/image-based-install-operator/internal/installer"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/sirupsen/logrus"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -117,7 +117,6 @@ func main() {
 	}
 	credentialsManager := credentials.Credentials{
 		Client: mgr.GetClient(),
-		Certs:  certs.KubeConfigCertManager{},
 		Log:    logger,
 		Scheme: mgr.GetScheme(),
 	}
@@ -135,9 +134,9 @@ func main() {
 		Scheme:                       mgr.GetScheme(),
 		Options:                      controllerOptions,
 		BaseURL:                      baseURL,
-		CertManager:                  certs.KubeConfigCertManager{},
 		DefaultInstallTimeout:        time.Hour,
 		GetSpokeClusterInstallStatus: monitor.GetClusterInstallStatus,
+		Installer:                    installer.NewInstaller(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ImageClusterInstall")
 		os.Exit(1)
