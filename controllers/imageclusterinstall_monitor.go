@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -49,6 +51,7 @@ type ImageClusterInstallMonitor struct {
 	Scheme                       *runtime.Scheme
 	DefaultInstallTimeout        time.Duration
 	GetSpokeClusterInstallStatus monitor.GetInstallStatusFunc
+	Options                      *ImageClusterInstallReconcilerOptions
 }
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;
@@ -234,8 +237,11 @@ func (r *ImageClusterInstallMonitor) SetupWithManager(mgr ctrl.Manager) error {
 			return false // Ignore generic events
 		},
 	}
+	r.Log.Infof("Setting up controller ImageClusterInstallMonitor with %d concurrent reconciles", r.Options.MaxConcurrentReconciles)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("ImageClusterInstallMonitor").
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.Options.MaxConcurrentReconciles}).
 		For(&v1alpha1.ImageClusterInstall{}).
 		WithEventFilter(bootTimeInitialized).
 		Complete(r)
