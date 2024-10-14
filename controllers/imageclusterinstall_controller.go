@@ -23,6 +23,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/openshift/image-based-install-operator/internal/installer"
 	"github.com/openshift/installer/pkg/ipnet"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -68,11 +70,12 @@ import (
 )
 
 type ImageClusterInstallReconcilerOptions struct {
-	ServiceName      string `envconfig:"SERVICE_NAME"`
-	ServiceNamespace string `envconfig:"SERVICE_NAMESPACE"`
-	ServicePort      string `envconfig:"SERVICE_PORT"`
-	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
-	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
+	ServiceName             string `envconfig:"SERVICE_NAME"`
+	ServiceNamespace        string `envconfig:"SERVICE_NAMESPACE"`
+	ServicePort             string `envconfig:"SERVICE_PORT"`
+	ServiceScheme           string `envconfig:"SERVICE_SCHEME"`
+	DataDir                 string `envconfig:"DATA_DIR" default:"/data"`
+	MaxConcurrentReconciles int    `envconfig:"MAX_CONCURRENT_RECONCILES" default:"1"`
 }
 
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
@@ -436,8 +439,10 @@ func (r *ImageClusterInstallReconciler) SetupWithManager(mgr ctrl.Manager) error
 	if err := r.addIndexforBaremetalHostRef(mgr); err != nil {
 		return err
 	}
+	r.Log.Infof("Setting up controller ImageClusterInstallReconciler with %d concurrent reconciles", r.Options.MaxConcurrentReconciles)
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("ImageClusterInstallReconciler").
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.Options.MaxConcurrentReconciles}).
 		For(&v1alpha1.ImageClusterInstall{}).
 		Watches(&bmh_v1alpha1.BareMetalHost{}, handler.EnqueueRequestsFromMapFunc(r.mapBMHToICI)).
 		Watches(&hivev1.ClusterDeployment{}, handler.EnqueueRequestsFromMapFunc(r.mapCDToICI)).
@@ -725,6 +730,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			// in case image exists we should ensure credentials in case something failed before it
 			return r.ensureCreds(ctx, log, cd, clusterConfigPath)
 		}
+		log.Info("writing input data for image cluster install")
 
 		os.RemoveAll(clusterConfigPath)
 		if err := os.MkdirAll(clusterConfigPath, 0700); err != nil {
@@ -773,6 +779,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			}
 		}
 
+		log.Info("writing install config")
 		if err := r.writeInstallConfig(ici, cd, psData, caBundle, filepath.Join(clusterConfigPath, installConfigFilename)); err != nil {
 			return fmt.Errorf("failed to write install config: %w", err)
 		}

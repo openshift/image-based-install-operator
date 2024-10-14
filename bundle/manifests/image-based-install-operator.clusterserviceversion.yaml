@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-10-07T08:57:01Z"
+    createdAt: "2024-10-13T16:12:17Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -184,6 +184,8 @@ spec:
                   value: "8000"
                 - name: SERVICE_SCHEME
                   value: https
+                - name: MAX_CONCURRENT_RECONCILES
+                  value: "1"
                 image: controller:latest
                 livenessProbe:
                   httpGet:
