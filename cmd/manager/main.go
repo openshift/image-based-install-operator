@@ -170,6 +170,7 @@ func main() {
 		Scheme:                       mgr.GetScheme(),
 		DefaultInstallTimeout:        time.Hour,
 		GetSpokeClusterInstallStatus: monitor.GetClusterInstallStatus,
+		Options:                      controllerOptions,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create monitor", "controller", "ImageClusterInstallMonitor")
 		os.Exit(1)
