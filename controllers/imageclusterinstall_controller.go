@@ -249,7 +249,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		return ctrl.Result{}, err
 	}
-
 	if err := r.updateBMHProvisioningState(ctx, log, bmh); err != nil {
 		log.WithError(err).Error("failed to update BareMetalHost provisioning state")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
@@ -459,13 +458,18 @@ func (r *ImageClusterInstallReconciler) addIndexforBaremetalHostRef(mgr ctrl.Man
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, namespace, name string) (*bmh_v1alpha1.DataImage, error) {
+func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, namespace, name string, useCachedClient bool) (*bmh_v1alpha1.DataImage, error) {
 	dataImage := bmh_v1alpha1.DataImage{}
+	var err error
 	key := client.ObjectKey{
 		Name:      name,
 		Namespace: namespace,
 	}
-	err := r.Get(ctx, key, &dataImage)
+	if useCachedClient {
+		err = r.Get(ctx, key, &dataImage)
+	} else {
+		err = r.NoncachedClient.Get(ctx, key, &dataImage)
+	}
 	return &dataImage, err
 }
 
@@ -512,7 +516,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 }
 
 func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	_, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	_, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name, true)
 	if err == nil {
 		return nil
 	}
@@ -540,7 +544,10 @@ func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to create dataImage due to %w", err)
 	}
-	return nil
+	// There's a race between the DataImage creation and the reboot annotation added in updateBMHProvisioningState
+	// hence we get the dataImage with nonCachedClient before this method returns
+	_, err = r.getDataImage(ctx, bmh.Namespace, bmh.Name, false)
+	return err
 }
 
 func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
