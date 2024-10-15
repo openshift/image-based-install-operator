@@ -65,11 +65,12 @@ import (
 )
 
 type ImageClusterInstallReconcilerOptions struct {
-	ServiceName      string `envconfig:"SERVICE_NAME"`
-	ServiceNamespace string `envconfig:"SERVICE_NAMESPACE"`
-	ServicePort      string `envconfig:"SERVICE_PORT"`
-	ServiceScheme    string `envconfig:"SERVICE_SCHEME"`
-	DataDir          string `envconfig:"DATA_DIR" default:"/data"`
+	ServiceName             string        `envconfig:"SERVICE_NAME"`
+	ServiceNamespace        string        `envconfig:"SERVICE_NAMESPACE"`
+	ServicePort             string        `envconfig:"SERVICE_PORT"`
+	ServiceScheme           string        `envconfig:"SERVICE_SCHEME"`
+	DataDir                 string        `envconfig:"DATA_DIR" default:"/data"`
+	DataImageCoolDownPeriod time.Duration `envconfig:"DATA_IMAGE_COOLDOWN_PERIOD" default:"1s"`
 }
 
 // ImageClusterInstallReconciler reconciles a ImageClusterInstall object
@@ -242,14 +243,19 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if err := r.createBMHDataImage(ctx, log, bmh, imageUrl); err != nil {
+	dataImage, err := r.ensureBMHDataImage(ctx, log, bmh, imageUrl)
+	if err != nil {
 		log.WithError(err).Error("failed to create BareMetalHost DataImage")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 			log.WithError(updateErr).Error("failed to create DataImage")
 		}
 		return ctrl.Result{}, err
 	}
-
+	if dataImage.ObjectMeta.CreationTimestamp.Time.Add(r.Options.DataImageCoolDownPeriod).After(time.Now()) {
+		// in case the dataImage was created less than a second ago requeuee to allow BMO some time to get
+		// notified about the newly created DataImage before adding the reboot annotation in updateBMHProvisioningState
+		return ctrl.Result{RequeueAfter: r.Options.DataImageCoolDownPeriod}, err
+	}
 	if err := r.updateBMHProvisioningState(ctx, log, bmh); err != nil {
 		log.WithError(err).Error("failed to update BareMetalHost provisioning state")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
@@ -511,18 +517,18 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) error {
-	_, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+func (r *ImageClusterInstallReconciler) ensureBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) (*bmh_v1alpha1.DataImage, error) {
+	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
-		return nil
+		return dataImage, nil
 	}
 
 	if err != nil && !errors.IsNotFound(err) {
-		return err
+		return dataImage, err
 	}
 	log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 	// Name and namespace must match the ones in BMH
-	dataImage := &bmh_v1alpha1.DataImage{
+	dataImage = &bmh_v1alpha1.DataImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bmh.Name,
 			Namespace: bmh.Namespace,
@@ -533,14 +539,14 @@ func (r *ImageClusterInstallReconciler) createBMHDataImage(ctx context.Context, 
 	}
 	err = controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
 	if err != nil {
-		return fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
+		return dataImage, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
 
 	err = r.Create(ctx, dataImage)
 	if err != nil {
-		return fmt.Errorf("failed to create dataImage due to %w", err)
+		return dataImage, fmt.Errorf("failed to create dataImage due to %w", err)
 	}
-	return nil
+	return r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 }
 
 func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
