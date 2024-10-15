@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/mock/gomock"
 	"os"
 	"path/filepath"
 	"sigs.k8s.io/yaml"
@@ -17,6 +16,7 @@ import (
 	installertypes "github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/imagebased"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -471,7 +471,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
 
 		Expect(len(infoOut.ImageDigestSources)).To(Equal(2))
-		Expect(infoOut.ImageDigestSources).To(Equal(convertIDMToIDS(imageDigestMirrors)))
+		Expect(infoOut.ImageDigestSources).To(Equal(installer.ConvertIDMToIDS(imageDigestMirrors)))
 		Expect(len(infoOut.ImageDigestSources[0].Mirrors)).To(Equal(1))
 
 	})
@@ -1838,35 +1838,5 @@ var _ = Describe("handleFinalizer", func() {
 		// Validate the finalizer get removed after the data image is deleted
 		Expect(c.Get(ctx, clusterInstallKey, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.GetFinalizers()).ToNot(ContainElement(clusterInstallFinalizerName))
-	})
-})
-
-var _ = Describe("proxy", func() {
-	var (
-		r *ImageClusterInstallReconciler
-	)
-
-	BeforeEach(func() {
-
-		r = &ImageClusterInstallReconciler{
-			Client: nil,
-			Scheme: scheme.Scheme,
-			Log:    logrus.New(),
-		}
-	})
-
-	It("Proxy is nil, nothing to change", func() {
-		Expect(r.proxy(nil)).To(BeNil())
-	})
-
-	It("If https and http proxy were not set, nothing to set", func() {
-		Expect(r.proxy(&v1alpha1.Proxy{})).To(BeNil())
-	})
-
-	It("Verify no proxy was set", func() {
-		iciProxy := &v1alpha1.Proxy{HTTPSProxy: "aaa", NoProxy: "test"}
-		proxy := r.proxy(iciProxy)
-		Expect(proxy.HTTPSProxy).To(Equal(iciProxy.HTTPSProxy))
-		Expect(proxy.NoProxy).To(Equal(iciProxy.NoProxy))
 	})
 })
