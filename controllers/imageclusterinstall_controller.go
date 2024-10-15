@@ -19,12 +19,6 @@ package controllers
 import (
 	"bytes"
 	"context"
-	"github.com/go-openapi/swag"
-	"github.com/google/uuid"
-	"github.com/openshift/image-based-install-operator/internal/installer"
-	"github.com/openshift/installer/pkg/ipnet"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -40,14 +34,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/containers/image/v5/docker/reference"
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	apicfgv1 "github.com/openshift/api/config/v1"
-	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	installertypes "github.com/openshift/installer/pkg/types"
-	"github.com/openshift/installer/pkg/types/imagebased"
-	"github.com/openshift/installer/pkg/types/none"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -59,6 +50,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -66,6 +58,7 @@ import (
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/filelock"
+	"github.com/openshift/image-based-install-operator/internal/installer"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
 )
 
@@ -710,7 +703,8 @@ func (r *ImageClusterInstallReconciler) configDirs(ici *v1alpha1.ImageClusterIns
 	return lockDir, filesDir, nil
 }
 
-// writeInputData writes the required info based on the ImageClusterInstall to the config cache dir
+// writeInputData writes files required by openshift installer to create image-based configuration iso
+// and then runs installer to create it.
 func (r *ImageClusterInstallReconciler) writeInputData(
 	ctx context.Context, log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
@@ -726,7 +720,6 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 
 		clusterConfigPath := filepath.Join(filesDir, ClusterConfigDir)
 		if verifyIsoAndAuthExists(clusterConfigPath) {
-			log.Infof("config iso already exists, skipping")
 			// in case image exists we should ensure credentials in case something failed before it
 			return r.ensureCreds(ctx, log, cd, clusterConfigPath)
 		}
@@ -747,40 +740,12 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return fmt.Errorf("failed to get ca bundle: %w", err)
 		}
 
-		extraManifestsPath := filepath.Join(clusterConfigPath, extraManifestsDir)
-		if err := os.MkdirAll(extraManifestsPath, 0700); err != nil {
-			return err
-		}
-
-		if err := r.writeInvokerCM(filepath.Join(extraManifestsPath, invokerCMFileName)); err != nil {
-			return fmt.Errorf("failed to write invoker config map: %w", err)
-		}
-		if err := r.writeIBIOStartTimeCM(filepath.Join(extraManifestsPath, monitor.IBIOStartTimeCM+".yaml")); err != nil {
-			return fmt.Errorf("failed to write %s config map: %w", monitor.IBIOStartTimeCM, err)
-		}
-
-		if ici.Spec.ExtraManifestsRefs != nil {
-			for _, cmRef := range ici.Spec.ExtraManifestsRefs {
-				cm := &corev1.ConfigMap{}
-				key := types.NamespacedName{Name: cmRef.Name, Namespace: ici.Namespace}
-				if err := r.Get(ctx, key, cm); err != nil {
-					return fmt.Errorf("failed to get extraManifests config map %w", err)
-				}
-
-				for name, content := range cm.Data {
-					var y interface{}
-					if err := yaml.Unmarshal([]byte(content), &y); err != nil {
-						return fmt.Errorf("failed to validate manifest file %s: %w", name, err)
-					}
-					if err := os.WriteFile(filepath.Join(extraManifestsPath, name), []byte(content), 0644); err != nil {
-						return fmt.Errorf("failed to write extra manifest file: %w", err)
-					}
-				}
-			}
+		if err := r.generateExtraManifests(clusterConfigPath, ici, ctx); err != nil {
+			return fmt.Errorf("failed to generate extra manifests: %w", err)
 		}
 
 		log.Info("writing install config")
-		if err := r.writeInstallConfig(ici, cd, psData, caBundle, filepath.Join(clusterConfigPath, installConfigFilename)); err != nil {
+		if err := installer.WriteInstallConfig(ici, cd, psData, caBundle, filepath.Join(clusterConfigPath, installConfigFilename)); err != nil {
 			return fmt.Errorf("failed to write install config: %w", err)
 		}
 
@@ -812,15 +777,43 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) getReleaseImage(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
-	cis := hivev1.ClusterImageSet{}
-	key := types.NamespacedName{Name: ici.Spec.ImageSetRef.Name, Namespace: ici.Namespace}
-	if err := r.Get(ctx, key, &cis); err != nil {
-		return "", err
+func (r *ImageClusterInstallReconciler) generateExtraManifests(
+	clusterConfigPath string,
+	ici *v1alpha1.ImageClusterInstall,
+	ctx context.Context) error {
+
+	extraManifestsPath := filepath.Join(clusterConfigPath, extraManifestsDir)
+	if err := os.MkdirAll(extraManifestsPath, 0700); err != nil {
+		return err
 	}
 
-	return cis.Spec.ReleaseImage, nil
+	if err := r.writeInvokerCM(filepath.Join(extraManifestsPath, invokerCMFileName)); err != nil {
+		return fmt.Errorf("failed to write invoker config map: %w", err)
+	}
+	if err := r.writeIBIOStartTimeCM(filepath.Join(extraManifestsPath, monitor.IBIOStartTimeCM+".yaml")); err != nil {
+		return fmt.Errorf("failed to write %s config map: %w", monitor.IBIOStartTimeCM, err)
+	}
 
+	if ici.Spec.ExtraManifestsRefs != nil {
+		for _, cmRef := range ici.Spec.ExtraManifestsRefs {
+			cm := &corev1.ConfigMap{}
+			key := types.NamespacedName{Name: cmRef.Name, Namespace: ici.Namespace}
+			if err := r.Get(ctx, key, cm); err != nil {
+				return fmt.Errorf("failed to get extraManifests config map %w", err)
+			}
+
+			for name, content := range cm.Data {
+				var y interface{}
+				if err := yaml.Unmarshal([]byte(content), &y); err != nil {
+					return fmt.Errorf("failed to validate manifest file %s: %w", name, err)
+				}
+				if err := os.WriteFile(filepath.Join(extraManifestsPath, name), []byte(content), 0644); err != nil {
+					return fmt.Errorf("failed to write extra manifest file: %w", err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (r *ImageClusterInstallReconciler) ensureCreds(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment, workDir string) error {
@@ -835,10 +828,12 @@ func (r *ImageClusterInstallReconciler) ensureCreds(ctx context.Context, log log
 }
 
 func (r *ImageClusterInstallReconciler) imageSetRegistry(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (string, error) {
-	releaseImage, err := r.getReleaseImage(ctx, ici)
-	if err != nil {
-		return "", err
+	cis := hivev1.ClusterImageSet{}
+	key := types.NamespacedName{Name: ici.Spec.ImageSetRef.Name, Namespace: ici.Namespace}
+	if err := r.Get(ctx, key, &cis); err != nil {
+		return "", fmt.Errorf("failed to get ClusterImageSet %s: %w", key, err)
 	}
+	releaseImage := cis.Spec.ReleaseImage
 
 	ref, err := reference.Parse(releaseImage)
 	if err != nil {
@@ -889,96 +884,8 @@ func (r *ImageClusterInstallReconciler) writeImageBaseConfig(ctx context.Context
 		return err
 	}
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
-	if err != nil {
-		return err
-	}
-	if ici.Spec.ClusterMetadata == nil || ici.Spec.ClusterMetadata.ClusterID == "" || ici.Spec.ClusterMetadata.InfraID == "" {
-		return fmt.Errorf("clusterID and infraID are missing from cluster metadata")
-	}
 
-	config := &imagebased.Config{
-		TypeMeta:             metav1.TypeMeta{APIVersion: imagebased.ImageBasedConfigVersion},
-		Hostname:             ici.Spec.Hostname,
-		ReleaseRegistry:      releaseRegistry,
-		AdditionalNTPSources: ici.Spec.AdditionalNTPSources,
-		NetworkConfig:        &aiv1beta1.NetConfig{Raw: []byte(nmstate)},
-		ClusterID:            ici.Spec.ClusterMetadata.ClusterID,
-		InfraID:              ici.Spec.ClusterMetadata.InfraID,
-	}
-
-	data, err := json.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal cluster info: %w", err)
-	}
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cluster info: %w", err)
-	}
-
-	return nil
-}
-
-func (r *ImageClusterInstallReconciler) writeInstallConfig(
-	ici *v1alpha1.ImageClusterInstall,
-	cd *hivev1.ClusterDeployment,
-	psData, caBundle, file string) error {
-
-	installConfig := installertypes.InstallConfig{
-		TypeMeta:   metav1.TypeMeta{APIVersion: installertypes.InstallConfigVersion},
-		BaseDomain: cd.Spec.BaseDomain,
-		ObjectMeta: metav1.ObjectMeta{Name: cd.Spec.ClusterName},
-		Networking: &installertypes.Networking{NetworkType: "OVNKubernetes"},
-		SSHKey:     ici.Spec.SSHKey,
-		ControlPlane: &installertypes.MachinePool{
-			Replicas: swag.Int64(1),
-			Name:     "master",
-		},
-		Compute: []installertypes.MachinePool{{
-			Replicas: swag.Int64(0),
-			Name:     "worker",
-		}},
-		PullSecret:            psData,
-		Proxy:                 r.proxy(ici.Spec.Proxy),
-		AdditionalTrustBundle: caBundle,
-		Platform:              installertypes.Platform{None: &none.Platform{}},
-	}
-	if caBundle != "" {
-		installConfig.AdditionalTrustBundle = caBundle
-	}
-
-	if ici.Spec.MachineNetwork != "" {
-		cidr, err := ipnet.ParseCIDR(ici.Spec.MachineNetwork)
-		if err != nil {
-			return fmt.Errorf("failed to parse machine network CIDR: %w", err)
-		}
-		installConfig.Networking.MachineNetwork = []installertypes.MachineNetworkEntry{{CIDR: *cidr}}
-	}
-
-	if ici.Spec.ImageDigestSources != nil {
-		installConfig.ImageDigestSources = convertIDMToIDS(ici.Spec.ImageDigestSources)
-	}
-
-	data, err := json.Marshal(installConfig)
-	if err != nil {
-		return fmt.Errorf("failed to marshal cluster info: %w", err)
-	}
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cluster info: %w", err)
-	}
-
-	return nil
-
-}
-
-// all the logic of creating right noProxy is part of LCA, here we just pass it as is
-func (r *ImageClusterInstallReconciler) proxy(iciProxy *v1alpha1.Proxy) *installertypes.Proxy {
-	if iciProxy == nil || (iciProxy.HTTPSProxy == "" && iciProxy.HTTPProxy == "") {
-		return nil
-	}
-	return &installertypes.Proxy{
-		HTTPProxy:  iciProxy.HTTPProxy,
-		HTTPSProxy: iciProxy.HTTPSProxy,
-		NoProxy:    iciProxy.NoProxy,
-	}
+	return installer.WriteImageBaseConfig(ctx, ici, releaseRegistry, nmstate, file)
 }
 
 func (r *ImageClusterInstallReconciler) getCABundle(ctx context.Context, ref *corev1.LocalObjectReference, ns string) (string, error) {
@@ -1000,9 +907,12 @@ func (r *ImageClusterInstallReconciler) getCABundle(ctx context.Context, ref *co
 	return data, nil
 }
 
-func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) error {
+func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	ici *v1alpha1.ImageClusterInstall,
+	cd *hivev1.ClusterDeployment) error {
 
-	// TODO: get cluster id from the cluster
 	kubeconfigSecret := credentials.KubeconfigSecretName(cd.Name)
 	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(cd.Name)
 	if ici.Spec.ClusterMetadata != nil &&
@@ -1256,19 +1166,6 @@ func ipInCidr(ipAddr, cidr string) (bool, error) {
 		return false, fmt.Errorf("ip is nil")
 	}
 	return ipNet.Contains(ip), nil
-}
-
-func convertIDMToIDS(imageDigestMirrors []apicfgv1.ImageDigestMirrors) []installertypes.ImageDigestSource {
-	imageDigestSources := make([]installertypes.ImageDigestSource, len(imageDigestMirrors))
-	for i, idm := range imageDigestMirrors {
-		imageDigestSources[i] = installertypes.ImageDigestSource{
-			Source: idm.Source,
-		}
-		for _, mirror := range idm.Mirrors {
-			imageDigestSources[i].Mirrors = append(imageDigestSources[i].Mirrors, string(mirror))
-		}
-	}
-	return imageDigestSources
 }
 
 func fileExists(path string) bool {
