@@ -8,12 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"k8s.io/client-go/tools/clientcmd"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -77,6 +76,24 @@ func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHos
 	}
 }
 
+type FakeClientWithTimestamp struct {
+	client.Client
+}
+
+func (c FakeClientWithTimestamp) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	// Check if the object is of type DataImage
+	if dataImage, ok := obj.(*bmh_v1alpha1.DataImage); ok {
+		// Log the creation of a DataImage object
+		fmt.Printf("Creating DataImage object: %+v\n", dataImage)
+		// If the CreationTimestamp is not set, set it to now
+		if dataImage.GetCreationTimestamp().Time.IsZero() {
+			fmt.Println("Setting CreationTimestamp for DataImage.")
+			dataImage.SetCreationTimestamp(metav1.Now())
+		}
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
 var _ = Describe("Reconcile", func() {
 	var (
 		c                       client.Client
@@ -92,10 +109,11 @@ var _ = Describe("Reconcile", func() {
 	)
 
 	BeforeEach(func() {
-		c = fakeclient.NewClientBuilder().
+		fc := fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
+		c = FakeClientWithTimestamp{Client: fc}
 		var err error
 		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
 		Expect(err).NotTo(HaveOccurred())
@@ -111,7 +129,8 @@ var _ = Describe("Reconcile", func() {
 			Log:         logrus.New(),
 			BaseURL:     "https://images-namespace.cluster.example.com",
 			Options: &ImageClusterInstallReconcilerOptions{
-				DataDir: dataDir,
+				DataDir:                 dataDir,
+				DataImageCoolDownPeriod: time.Duration(0),
 			},
 			CertManager:     certs.KubeConfigCertManager{},
 			NoncachedClient: c,
@@ -1410,6 +1429,228 @@ var _ = Describe("Reconcile", func() {
 	})
 })
 
+var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func() {
+	var (
+		c                       client.Client
+		dataDir                 string
+		r                       *ImageClusterInstallReconciler
+		ctx                     = context.Background()
+		clusterInstallName      = "test-cluster"
+		clusterInstallNamespace = "test-namespace"
+		clusterInstall          *v1alpha1.ImageClusterInstall
+		clusterDeployment       *hivev1.ClusterDeployment
+		pullSecret              *corev1.Secret
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+	)
+
+	BeforeEach(func() {
+		fc := fakeclient.NewClientBuilder().
+			WithScheme(scheme.Scheme).
+			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
+			Build()
+		c = FakeClientWithTimestamp{Client: fc}
+		var err error
+		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
+		Expect(err).NotTo(HaveOccurred())
+		cm := credentials.Credentials{
+			Client: c,
+			Log:    logrus.New(),
+			Scheme: scheme.Scheme,
+		}
+		r = &ImageClusterInstallReconciler{
+			Client:      c,
+			Credentials: cm,
+			Scheme:      scheme.Scheme,
+			Log:         logrus.New(),
+			BaseURL:     "https://images-namespace.cluster.example.com",
+			Options: &ImageClusterInstallReconcilerOptions{
+				DataDir:                 dataDir,
+				DataImageCoolDownPeriod: time.Second,
+			},
+			CertManager:     certs.KubeConfigCertManager{},
+			NoncachedClient: c,
+		}
+
+		imageSet := &hivev1.ClusterImageSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "imageset",
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterImageSetSpec{
+				ReleaseImage: "registry.example.com/releases/ocp@sha256:0ec9d715c717b2a592d07dd83860013613529fae69bc9eecb4b2d4ace679f6f3",
+			},
+		}
+		Expect(c.Create(ctx, imageSet)).To(Succeed())
+		pullSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte(testPullSecretVal)},
+		}
+		Expect(c.Create(ctx, pullSecret)).To(Succeed())
+
+		bmh := &bmh_v1alpha1.BareMetalHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-1",
+				Namespace: "test-bmh-namespace",
+			},
+			Status: bmh_v1alpha1.BareMetalHostStatus{
+				Provisioning: bmh_v1alpha1.ProvisionStatus{
+					State: bmh_v1alpha1.StateExternallyProvisioned,
+				},
+				HardwareDetails: &bmh_v1alpha1.HardwareDetails{NIC: []bmh_v1alpha1.NIC{{IP: "1.1.1.1"}}},
+				PoweredOn:       true,
+			},
+			Spec: bmh_v1alpha1.BareMetalHostSpec{
+				ExternallyProvisioned: true,
+			},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall = &v1alpha1.ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       clusterInstallName,
+				Namespace:  clusterInstallNamespace,
+				Finalizers: []string{clusterInstallFinalizerName},
+				UID:        types.UID(uuid.New().String()),
+			},
+			Spec: v1alpha1.ImageClusterInstallSpec{
+				ImageSetRef: hivev1.ClusterImageSetReference{
+					Name: imageSet.Name,
+				},
+				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
+				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
+					Name:      bmh.Name,
+					Namespace: bmh.Namespace,
+				},
+			},
+		}
+
+		clusterDeployment = &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      clusterInstallName,
+				Namespace: clusterInstallNamespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
+					Group:   clusterInstall.GroupVersionKind().Group,
+					Version: clusterInstall.GroupVersionKind().Version,
+					Kind:    clusterInstall.GroupVersionKind().Kind,
+					Name:    clusterInstall.Name,
+				},
+				PullSecretRef: &corev1.LocalObjectReference{
+					Name: "ps",
+				},
+			}}
+	})
+
+	AfterEach(func() {
+		Expect(os.RemoveAll(dataDir)).To(Succeed())
+	})
+
+	imageURL := func() string {
+		return fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID)
+	}
+
+	It("configures a referenced BMH", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: time.Second}))
+		time.Sleep(time.Second)
+		res, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		dataImage := bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+	It("configures a referenced BMH when dataImage already exists", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bmh",
+				Namespace: "test-bmh-namespace",
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID),
+			},
+		}
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
+		// wait a second between creating the dataImage and the reconcile
+		time.Sleep(time.Second)
+		// This should work in one go without RequeueAfter
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.ExternallyProvisioned).To(BeTrue())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+	})
+})
+
 var _ = Describe("mapBMHToICI", func() {
 	var (
 		c                       client.Client
@@ -1420,7 +1661,7 @@ var _ = Describe("mapBMHToICI", func() {
 	)
 
 	BeforeEach(func() {
-		c = fakeclient.NewClientBuilder().
+		fc := fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			// this update the client to add index for .spec.bareMetalHostRef.name and namespace as we do in the SetupWithManager
@@ -1439,6 +1680,8 @@ var _ = Describe("mapBMHToICI", func() {
 				return []string{ici.Spec.BareMetalHostRef.Namespace}
 			}).
 			Build()
+		c = FakeClientWithTimestamp{Client: fc}
+
 		r = &ImageClusterInstallReconciler{
 			Client: c,
 			Scheme: scheme.Scheme,
@@ -1530,11 +1773,11 @@ var _ = Describe("mapCDToICI", func() {
 	)
 
 	BeforeEach(func() {
-		c = fakeclient.NewClientBuilder().
+		fc := fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
-
+		c = FakeClientWithTimestamp{Client: fc}
 		r = &ImageClusterInstallReconciler{
 			Client: c,
 			Scheme: scheme.Scheme,
@@ -1614,10 +1857,11 @@ var _ = Describe("handleFinalizer", func() {
 	)
 
 	BeforeEach(func() {
-		c = fakeclient.NewClientBuilder().
+		fc := fakeclient.NewClientBuilder().
 			WithScheme(scheme.Scheme).
 			WithStatusSubresource(&v1alpha1.ImageClusterInstall{}).
 			Build()
+		c = FakeClientWithTimestamp{Client: fc}
 		var err error
 		dataDir, err = os.MkdirTemp("", "imageclusterinstall_controller_test_data")
 		Expect(err).NotTo(HaveOccurred())
@@ -1627,7 +1871,8 @@ var _ = Describe("handleFinalizer", func() {
 			Scheme: scheme.Scheme,
 			Log:    logrus.New(),
 			Options: &ImageClusterInstallReconcilerOptions{
-				DataDir: dataDir,
+				DataDir:                 dataDir,
+				DataImageCoolDownPeriod: time.Duration(0),
 			},
 		}
 	})
