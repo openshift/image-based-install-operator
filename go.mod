@@ -13,10 +13,10 @@ require (
 	github.com/metal3-io/baremetal-operator/apis v0.6.1
 	github.com/onsi/ginkgo/v2 v2.20.0
 	github.com/onsi/gomega v1.34.1
-	github.com/openshift/api v0.0.0-20241001152557-e415140e5d5f
+	github.com/openshift/api v0.0.0-20241007111039-82e082220d91
 	github.com/openshift/assisted-service/api v0.0.0
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
-	github.com/openshift/installer v1.4.18-0.20241008040601-75346524d52e
+	github.com/openshift/installer v1.4.18-0.20241023203902-694d083d3332
 	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/mock v0.4.0
 	golang.org/x/crypto v0.27.0
@@ -51,6 +51,7 @@ require (
 	github.com/IBM-Cloud/bluemix-go v0.0.0-20211102075456-ffc4e11dfb16 // indirect
 	github.com/IBM-Cloud/power-go-client v1.6.0 // indirect
 	github.com/IBM/go-sdk-core/v5 v5.17.5 // indirect
+	github.com/IBM/ibm-cos-sdk-go v1.11.1 // indirect
 	github.com/IBM/keyprotect-go-client v0.12.2 // indirect
 	github.com/IBM/networking-go-sdk v0.45.0 // indirect
 	github.com/IBM/platform-services-go-sdk v0.69.0 // indirect
