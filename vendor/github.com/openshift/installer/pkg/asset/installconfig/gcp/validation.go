@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/openshift/installer/pkg/types"
+	dnstypes "github.com/openshift/installer/pkg/types/dns"
 	"github.com/openshift/installer/pkg/types/gcp"
 	"github.com/openshift/installer/pkg/validate"
 	mapiutil "github.com/openshift/machine-api-provider-gcp/pkg/cloud/gcp/actuators/util"
@@ -80,6 +81,9 @@ func validateInstanceAndDiskType(fldPath *field.Path, diskType, instanceType, ar
 	}
 
 	family, _, _ := strings.Cut(instanceType, "-")
+	if family == "custom" {
+		family = gcp.DefaultCustomInstanceType
+	}
 	diskTypes, ok := gcp.InstanceTypeToDiskTypeMap[family]
 	if !ok {
 		return field.NotFound(fldPath.Child("type"), family)
@@ -376,7 +380,7 @@ func checkRecordSets(client API, ic *types.InstallConfig, zone *dns.ManagedZone,
 
 // ValidateForProvisioning validates that the install config is valid for provisioning the cluster.
 func ValidateForProvisioning(ic *types.InstallConfig) error {
-	if ic.Platform.GCP.UserProvisionedDNS == gcp.UserProvisionedDNSEnabled {
+	if ic.Platform.GCP.UserProvisionedDNS == dnstypes.UserProvisionedDNSEnabled {
 		return nil
 	}
 
