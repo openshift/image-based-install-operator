@@ -42,7 +42,9 @@ func (i *installer) CreateInstallationIso(ctx context.Context, log logrus.FieldL
 	assets := []asset.WritableAsset{
 		&configimage.ConfigImage{},
 		&kubeconfig.ImageBasedAdminClient{},
-		&password.KubeadminPassword{}}
+		&password.KubeadminPassword{},
+		&configimage.ClusterConfiguration{},
+	}
 	fetcher := assetStore.NewAssetsFetcher(workDir)
 	return fetcher.FetchAndPersist(ctx, assets)
 }

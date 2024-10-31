@@ -257,8 +257,10 @@ var _ = Describe("Reconcile", func() {
 			Return(nil).Times(1).Do(func(any, any, any) {
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, IsoName), []byte("test"), 0644)).To(Succeed())
 			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, authDir), 0700)).To(Succeed())
+			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, kubeAdminFile), []byte("test"), 0644)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte("test"), 0644)).To(Succeed())
 		})
 	}
 
@@ -1459,6 +1461,9 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 			Expect(os.MkdirAll(filepath.Join(dir, ClusterConfigDir, authDir), 0700)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, authDir, kubeAdminFile), []byte("test"), 0644)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(dir, ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
+
+			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte("test"), 0644)).To(Succeed())
 		})
 	}
 

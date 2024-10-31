@@ -831,6 +831,11 @@ func (r *ImageClusterInstallReconciler) ensureCreds(ctx context.Context, log log
 	if err := r.Credentials.EnsureKubeconfigSecret(ctx, log, cd, filepath.Join(workDir, authDir, credentials.Kubeconfig)); err != nil {
 		return fmt.Errorf("failed to ensure kubeconfig secret: %w", err)
 	}
+
+	if err := r.Credentials.EnsureSeedReconfigurationSecret(ctx, log, cd, filepath.Join(workDir, ClusterConfigDir, credentials.SeedReconfigurationFileName)); err != nil {
+		return fmt.Errorf("failed to ensure seed reconfiguration secret %w", err)
+	}
+
 	return nil
 }
 
@@ -1183,7 +1188,8 @@ func fileExists(path string) bool {
 func verifyIsoAndAuthExists(clusterConfigPath string) bool {
 	for _, file := range []string{filepath.Join(clusterConfigPath, IsoName),
 		filepath.Join(clusterConfigPath, authDir, kubeAdminFile),
-		filepath.Join(clusterConfigPath, authDir, credentials.Kubeconfig)} {
+		filepath.Join(clusterConfigPath, authDir, credentials.Kubeconfig),
+		filepath.Join(clusterConfigPath, ClusterConfigDir, credentials.SeedReconfigurationFileName)} {
 		if !fileExists(file) {
 			return false
 		}
