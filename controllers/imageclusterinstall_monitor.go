@@ -93,6 +93,15 @@ func (r *ImageClusterInstallMonitor) monitorInstallationProgress(
 	}
 	if !bmh.Status.PoweredOn {
 		log.Infof("BareMetalHost %s/%s is not powered on yet", bmh.Name, bmh.Namespace)
+		timedout, err := r.handleClusterTimeout(ctx, log, ici, r.DefaultInstallTimeout)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if timedout {
+			log.Infof("BareMetalHost %s/%s failed to power on within the cluster installation timeout", bmh.Name, bmh.Namespace)
+			// in case of timeout we want to requeue after 1 hour
+			return ctrl.Result{RequeueAfter: time.Hour}, nil
+		}
 		if err := r.setClusterInstallingConditions(ctx, ici, "Waiting for BMH to power on"); err != nil {
 			log.WithError(err).Error("failed to set installing conditions")
 		}
