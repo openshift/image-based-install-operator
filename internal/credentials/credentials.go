@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	SecretResourceLabel = "image-based-installed.openshift.io/created"
-	SecretResourceValue = "true"
-	DefaultUser         = "kubeadmin"
-	Kubeconfig          = "kubeconfig"
-	kubeadmincreds      = "kubeadmincreds"
-	kubeAdminKey        = "password"
+	SecretResourceLabel         = "image-based-installed.openshift.io/created"
+	SecretResourceValue         = "true"
+	DefaultUser                 = "kubeadmin"
+	Kubeconfig                  = "kubeconfig"
+	kubeadmincreds              = "kubeadmincreds"
+	kubeAdminKey                = "password"
+	SeedReconfigurationFileName = "manifest.json"
 )
 
 type Credentials struct {
@@ -108,6 +109,32 @@ func (r *Credentials) EnsureAdminPasswordSecret(ctx context.Context,
 	return nil
 }
 
+func (r *Credentials) EnsureSeedReconfigurationSecret(ctx context.Context,
+	log logrus.FieldLogger,
+	cd *hivev1.ClusterDeployment,
+	seedReconfigurationFile string) error {
+
+	seedReconfigurationData, err := os.ReadFile(seedReconfigurationFile)
+	if err != nil {
+		return fmt.Errorf("failed to read seedReconfigurationFile file %s: %w", seedReconfigurationFile, err)
+	}
+
+	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
+	if exists, err := r.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, seedReconfigurationData); err != nil || exists {
+		return err
+	}
+
+	data := map[string][]byte{
+		SeedReconfigurationFileName: seedReconfigurationData,
+	}
+
+	if err := r.createOrUpdateClusterCredentialSecret(ctx, log, cd, SeedReconfigurationSecretName(cd.Name), data, SeedReconfigurationFileName); err != nil {
+		return fmt.Errorf("failed to create kubeadmin password secret: %w", err)
+	}
+
+	return nil
+}
+
 func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment, name string, data map[string][]byte, secretType string) error {
 	secret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
@@ -157,6 +184,10 @@ func KubeconfigSecretName(clusterDeploymentName string) string {
 
 func KubeadminPasswordSecretName(clusterDeploymentName string) string {
 	return clusterDeploymentName + "-admin-password"
+}
+
+func SeedReconfigurationSecretName(clusterDeploymentName string) string {
+	return clusterDeploymentName + "seed-reconfiguration"
 }
 
 func addLabel(labels map[string]string, labelKey, labelValue string) map[string]string {
