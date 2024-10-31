@@ -192,6 +192,26 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid machine network"))
 	})
 
+	It("create fail when proxy is invalid", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				Proxy: &Proxy{
+					HTTPProxy:  "http://proxy.com:3128",
+					HTTPSProxy: "http://proxy.com:3128",
+					NoProxy:    "noproxy.com",
+				},
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid proxy"))
+	})
+
 	It("update succeeds BMH ref update while image isn't ready", func() {
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
