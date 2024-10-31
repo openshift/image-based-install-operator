@@ -379,11 +379,9 @@ var _ = Describe("Monitor", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
 	})
 
-	It("verify status conditions set while host is not powered on", func() {
+	It("verify status conditions set while host is not powered on and timeout hasn't passed", func() {
 		bmh.Status.PoweredOn = false
 		Expect(c.Update(ctx, bmh)).To(Succeed())
-		// set negative timeout to ensure it triggers and so that no time is wasted in tests
-		clusterInstall.Annotations = map[string]string{installTimeoutAnnotation: "-1m"}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
@@ -407,8 +405,38 @@ var _ = Describe("Monitor", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.InstallInProgressReason))
-
 	})
+
+	It("verify status conditions set while host is not powered on and timeout passed", func() {
+		bmh.Status.PoweredOn = false
+		Expect(c.Update(ctx, bmh)).To(Succeed())
+		// set negative timeout to ensure it triggers and so that no time is wasted in tests
+		clusterInstall.Annotations = map[string]string{installTimeoutAnnotation: "-1m"}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: time.Hour}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallFailed)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.InstallTimedoutReason))
+	})
+
 	It("verify status conditions not set if fail to find BMH", func() {
 		Expect(c.Delete(ctx, bmh)).To(Succeed())
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
