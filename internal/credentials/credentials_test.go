@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	kubeconfigData = "kubeconfig"
-	kubeAdminData  = "kubeadmin"
+	kubeconfigData   = "kubeconfig"
+	kubeAdminData    = "kubeadmin"
+	seedReconfigData = "seed reconfig data"
 )
 
 var _ = Describe("Credentials", func() {
@@ -35,6 +36,7 @@ var _ = Describe("Credentials", func() {
 		ctx                        = context.Background()
 		kubeconfigFile             = ""
 		kubeAdminFile              = ""
+		seedReconfigurationFile    = ""
 		log                        = logrus.FieldLogger(logrus.New())
 	)
 	_ = v1alpha1.AddToScheme(scheme.Scheme)
@@ -65,6 +67,9 @@ var _ = Describe("Credentials", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		kubeAdminFile, err = createTempFile("kubeadmin", kubeAdminData)
+		Expect(err).NotTo(HaveOccurred())
+
+		seedReconfigurationFile, err = createTempFile("manifest.json", seedReconfigData)
 		Expect(err).NotTo(HaveOccurred())
 	})
 	AfterEach(func() {
@@ -122,6 +127,37 @@ var _ = Describe("Credentials", func() {
 
 	It("EnsureAdminPasswordSecret file doesn't exists", func() {
 		err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, "non-existing-file")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("EnsureSeedReconfiguration success", func() {
+		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+		Expect(err).NotTo(HaveOccurred())
+		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
+		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exists).To(BeTrue())
+	})
+
+	It("EnsureSeedReconfiguration already exists but data changed", func() {
+		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+		Expect(err).NotTo(HaveOccurred())
+		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
+		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exists).To(BeTrue())
+
+		seedReconfigurationFile, err = createTempFile("seedReconfiguration-new", "seedReconfiguration-new")
+		Expect(err).NotTo(HaveOccurred())
+		err = cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+		Expect(err).NotTo(HaveOccurred())
+		exists, err = cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte("seedReconfiguration-new"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exists).To(BeTrue())
+	})
+
+	It("EnsureSeedReconfiguration file doesn't exists", func() {
+		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, "non-existing-file")
 		Expect(err).To(HaveOccurred())
 	})
 })
