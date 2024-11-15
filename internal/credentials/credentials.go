@@ -3,6 +3,7 @@ package credentials
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -17,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/openshift/installer/pkg/types/imagebased"
 	"github.com/sirupsen/logrus"
 )
 
@@ -133,6 +135,27 @@ func (r *Credentials) EnsureSeedReconfigurationSecret(ctx context.Context,
 	}
 
 	return nil
+}
+
+func (r *Credentials) SeedReconfigSecretClusterIDs(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment) (string, string, error) {
+	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, secretRef, secret); err != nil {
+		return "", "", client.IgnoreNotFound(err)
+	}
+
+	log.Infof("Importing data from seed reconfiguration secret %s", secretRef)
+
+	secretSeedReconfigurationData, ok := secret.Data[SeedReconfigurationFileName]
+	if !ok {
+		return "", "", fmt.Errorf("failed to read secret seed reconfiguration data, secret key %s not found", SeedReconfigurationFileName)
+	}
+	secretSeedReconfiguration := imagebased.SeedReconfiguration{}
+	if err := json.Unmarshal(secretSeedReconfigurationData, &secretSeedReconfiguration); err != nil {
+		return "", "", fmt.Errorf("failed to decode secret seed reconfiguration: %w", err)
+	}
+
+	return secretSeedReconfiguration.ClusterID, secretSeedReconfiguration.InfraID, nil
 }
 
 func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment, name string, data map[string][]byte, secretType string) error {
