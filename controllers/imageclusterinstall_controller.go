@@ -19,6 +19,7 @@ package controllers
 import (
 	"bytes"
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -925,6 +926,7 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(
 	ici *v1alpha1.ImageClusterInstall,
 	cd *hivev1.ClusterDeployment) error {
 
+	// current state of cluster metadata is the source of truth for IDs if they are set
 	kubeconfigSecret := credentials.KubeconfigSecretName(cd.Name)
 	kubeadminPasswordSecret := credentials.KubeadminPasswordSecretName(cd.Name)
 	if ici.Spec.ClusterMetadata != nil &&
@@ -935,9 +937,18 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(
 		return nil
 	}
 
+	// do this here rather than in the secret import because these values are needed as input to the image based config file
+	secretClusterID, secretInfraID, err := r.Credentials.SeedReconfigSecretClusterIDs(ctx, log, cd)
+	if err != nil {
+		return fmt.Errorf("failed to get seed reconfiguration secret: %w", err)
+	}
+
 	var clusterID string
 	if ici.Spec.ClusterMetadata != nil && ici.Spec.ClusterMetadata.ClusterID != "" {
 		clusterID = ici.Spec.ClusterMetadata.ClusterID
+	} else if secretClusterID != "" {
+		clusterID = secretClusterID
+		log.Infof("using cluster ID (%s) from seed reconfiguration secret", clusterID)
 	} else {
 		clusterID = uuid.New().String()
 		log.Infof("created new cluster ID %s", clusterID)
@@ -946,6 +957,9 @@ func (r *ImageClusterInstallReconciler) setClusterInstallMetadata(
 	var infraID string
 	if ici.Spec.ClusterMetadata != nil && ici.Spec.ClusterMetadata.InfraID != "" {
 		infraID = ici.Spec.ClusterMetadata.InfraID
+	} else if secretInfraID != "" {
+		infraID = secretInfraID
+		log.Infof("using infra ID (%s) from seed reconfiguration secret", infraID)
 	} else {
 		infraID = generateInfraID(cd.Spec.ClusterName)
 		log.Infof("created new infra ID %s", infraID)

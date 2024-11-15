@@ -80,6 +80,39 @@ users:
     client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBOXlidEJxanFseUJtVzkvYmRXSTVKUVZLUmY4UDRQWkQ3SXBONnFKK25vT09wS21uCmNEcWdabnJKekNlSkFFb2pJcG5FNElhMm4zL2FscGJtY2VZRjlCdjVldkd6emtZQ04yK1RuOGJabC9oa1lSdkEKQ3RGSE9iUXlET1dMcTZJZEVFWVg1QjZYMXFFZitOb0FaSXVoZE9OWUhOc1pJQXV0enVlN1BPamsvVjdXOHJOVwpNQTlUL2RncXVhVGlSYStSZmpBZHJkanRKT3U1UzR2U2dSWHNqdXpXdk1jQ2EvOUl2ZEN4cUJ6ZW1pVjNQeVByClg0K0V5aU42OG92UzV5bkFYK1dUTmwvOGE0bjJJRFJoc1dtS2pIK0lHbW90OElJVG1aeVYveCttVnltWGlPb2YKdDlvUURxNld0ZmZVd21VSnFRTTIxTU12dmlQS2ltb2FjTFVIb3dJREFRQUJBb0lCQUVyQ2k1QW9LRTN1andmYgpmeGJTejFaVGMxUVpBMFNaT1pLamcwNG1PUWJaNUp3S2RZdU5NRmZQYkp0RW1qeHNNSlNXenViYjJRSUdPcWl5Cm5LSjNZZldsUUtIZjJ2UGFXWEZMWHV4Rnlpd2VCcjhaRmM0djM4dWtwajhnY0U5S2ltQVIwOGc5T05ERGpGaEsKR1RSUXlGWURMdlFMa2w0UEtsUWI1SmRZRzJ4SVc2ME40bHZudHNnRi9FeEdtdkRFem5kOXcxWUQvMEkrdUNOSAorU3R2eWcxbGJPN3lzcUJOMWtRaGZxck93eGowTnAwQndKbmtlOE80LzE4cGJBZkVIVjVQUVhzMFg3UWw5YmdpCjJrMWUxVzFJMm1wZ1NqOTIrMGljVmJpSys5Ukh3NVRYbzVwUWljK2pXWHlYV3VMcStRdEtYOUsvYmdmVms2MkgKdGZtV1FBRUNnWUVBK0lnUHZQRm44dkt1VWJYU0VLRHBXR0lOODRlZVlGMVJJR1laZVphV1NCZXVEL0xhdnVUcwphcnNuQThneW92SXNwTlRCNlRPUDE4OUVBdHhCNW40SmFaQ0doRW5MUjMweDdnMmx5S0dtL0VzbEd4QjNtWXowCmxvZDlidTdxRmNoSlVETEVtMVBlekVXT2VaWURvcFhnejJrWWtsZEdlbWY1cWwrNnNSV0JaYU1DZ1lFQS9wUkEKb3RSU2JKNGNYSm4vV3ZNVi9OTSs4NDJtVmliaGlqTlhIcHNLb0NuRkpzOU11L0tDV3pJVnRGUGNhcXBiWW1tbgpxM0xObWQxNHZXZktGc0NHSXJZQU9TVlRSa2U4aHZYdTJicnRzK2p4WFV0T3EvSlBYVUhBaXdEcER6bC9FUW9zCk9mdVY5L1JZWnhoTVUwNklhWHYva3ZiOUFoclJpMXlLTE16ajlnRUNnWUVBc1lpSUxZRUlyeng2RjNaWlEzV2UKbW5zWTJqQ3ppc1MrTWZXZEZ3VGgvMGVqR0ZOenZNOU1yb1ZZUGxSaEQ1TU5Id1c0S3Z5aE1Sa216U0JIbHYzTApmWFEzRXdLZnlrWjlSejdLZ1VJd1JhTHNNNlFVdTBROFo5Y0xYQllnYzBUcVVmYWlDUTdsWldmK2VZNFd0S3A1CnQ4K3NOTVZSWEJrditHdC9zZ1hadEI4Q2dZQVg5cXFTNlR1TS8rRVprbUZvRlVPM2xjYnlOQjQ1TTlXOUpaSUkKem4xVWtEbi9xam5GNDFFRDlwWDJjSUpxQS9rd0xWUGNIcVZkMjJ3WElDTDB1MUNsQ2M3QmtsTGhaYlZJV3ZRTgp5THZCV0tjSHFpUVFxWEZ4RE5Sc0FUenU4dkdVRUFvVHR5dnB1RFZ1RnVwd1dROGNKdERxNjViclVNenl1bFpEClcxSUdBUUtCZ1FEUlhPOFJVNzJVVU5JTDk4ZWZST3VmV2M3VG1BR0VwTlpMbEdRSjdtdEx5dFZPOUluRzlYeFQKOWRpQXZ5ZGZzMHBLRTlwVVRKbGJ1N1pBV1JmZUZiMWxyMHFCVkVzeWVmWkdSUWVwTUZ3RnprUVhZbEIrRXhBbQpITmxkQ2dLaU1Vby9OUmZyU0JRZ1BhTzl0YWFZY2xzWFRzTnUrOGdxS1lHQnJpMlpSTVdGUmc9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
 `
 
+const seedReconfigData = `{
+  "additionalTrustBundle": {
+    "userCaBundle": "",
+    "proxyConfigmapName": "",
+    "proxyConfigmapBundle": ""
+  },
+  "api_version": 1,
+  "base_domain": "example.com",
+  "cluster_id": "af5f4671-453c-4a4a-8b2b-bacf70552030",
+  "cluster_name": "ibiotest",
+  "hostname": "ibitesthost",
+  "infra_id": "ibiotest-67vn4",
+  "kubeadmin_password_hash": "mypasswordhash",
+  "KubeconfigCryptoRetention": {
+    "KubeAPICrypto": {
+      "ServingCrypto": {
+        "localhost_signer_private_key": "localhostsignerprivatekey",
+        "service_network_signer_private_key": "servicenetworksignerprivatekey",
+        "loadbalancer_external_signer_private_key": "loadabalancerexternalsignerprivatekey"
+      },
+      "ClientAuthCrypto": {
+        "admin_ca_certificate": "admincacertificate"
+      }
+    },
+    "IngresssCrypto": {
+      "ingress_ca": "ingressca",
+      "ingress_certificate_cn": "ingress-operator@1730475501"
+    }
+  },
+  "release_registry": "quay.io",
+  "pull_secret": "{\"auths\":{\"quay.io\":{\"auth\":\"cGFzc3dvcmQK\",\"email\":\"test@example.com\"}}}\n"
+}`
+
 func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
 	return &bmh_v1alpha1.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -260,7 +293,7 @@ var _ = Describe("Reconcile", func() {
 			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, kubeAdminFile), []byte("test"), 0644)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
-			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte("test"), 0644)).To(Succeed())
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte(seedReconfigData), 0644)).To(Succeed())
 		})
 	}
 
@@ -1134,6 +1167,53 @@ var _ = Describe("Reconcile", func() {
 		Expect(meta.AdminPasswordSecretRef.Name).To(Equal("test-cluster-admin-password"))
 	})
 
+	It("sets the cluster install metadata to the ids from the reconfig secret when it exists", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.Hostname = "thing"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		secretSeedReconfiguration := imagebased.SeedReconfiguration{}
+		Expect(json.Unmarshal([]byte(seedReconfigData), &secretSeedReconfiguration)).To(Succeed())
+		secretSeedReconfiguration.ClusterID = uuid.New().String()
+		secretSeedReconfiguration.InfraID = generateInfraID("testcluster")
+		secretData, err := json.Marshal(secretSeedReconfiguration)
+		Expect(err).NotTo(HaveOccurred())
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      credentials.SeedReconfigurationSecretName(clusterDeployment.Name),
+				Namespace: clusterDeployment.Namespace,
+			},
+			Data: map[string][]byte{credentials.SeedReconfigurationFileName: secretData},
+		}
+		Expect(c.Create(ctx, secret)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		updatedICI := v1alpha1.ImageClusterInstall{}
+		Expect(c.Get(ctx, key, &updatedICI)).To(Succeed())
+		meta := updatedICI.Spec.ClusterMetadata
+		Expect(meta).ToNot(BeNil())
+		Expect(meta.ClusterID).To(Equal(secretSeedReconfiguration.ClusterID))
+		Expect(meta.InfraID).To(Equal(secretSeedReconfiguration.InfraID))
+	})
+
 	It("succeeds in case bmh has ip in provided machine network", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
@@ -1463,7 +1543,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
 			Expect(os.MkdirAll(filepath.Join(dir, ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
 
-			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte("test"), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte(seedReconfigData), 0644)).To(Succeed())
 		})
 	}
 
