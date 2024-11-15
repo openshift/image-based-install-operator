@@ -21,7 +21,38 @@ import (
 const (
 	kubeconfigData   = "kubeconfig"
 	kubeAdminData    = "kubeadmin"
-	seedReconfigData = "seed reconfig data"
+	seedReconfigData = `{
+  "additionalTrustBundle": {
+    "userCaBundle": "",
+    "proxyConfigmapName": "",
+    "proxyConfigmapBundle": ""
+  },
+  "api_version": 1,
+  "base_domain": "example.com",
+  "cluster_id": "af5f4671-453c-4a4a-8b2b-bacf70552030",
+  "cluster_name": "ibiotest",
+  "hostname": "ibitesthost",
+  "infra_id": "ibiotest-67vn4",
+  "kubeadmin_password_hash": "mypasswordhash",
+  "KubeconfigCryptoRetention": {
+    "KubeAPICrypto": {
+      "ServingCrypto": {
+        "localhost_signer_private_key": "localhostsignerprivatekey",
+        "service_network_signer_private_key": "servicenetworksignerprivatekey",
+        "loadbalancer_external_signer_private_key": "loadabalancerexternalsignerprivatekey"
+      },
+      "ClientAuthCrypto": {
+        "admin_ca_certificate": "admincacertificate"
+      }
+    },
+    "IngresssCrypto": {
+      "ingress_ca": "ingressca",
+      "ingress_certificate_cn": "ingress-operator@1730475501"
+    }
+  },
+  "release_registry": "quay.io",
+  "pull_secret": "{\"auths\":{\"quay.io\":{\"auth\":\"cGFzc3dvcmQK\",\"email\":\"test@example.com\"}}}\n"
+}`
 )
 
 var _ = Describe("Credentials", func() {
@@ -159,6 +190,50 @@ var _ = Describe("Credentials", func() {
 	It("EnsureSeedReconfiguration file doesn't exists", func() {
 		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, "non-existing-file")
 		Expect(err).To(HaveOccurred())
+	})
+
+	Describe("SeedReconfigSecretClusterIDs", func() {
+		createSecret := func(data map[string][]byte) {
+			s := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      SeedReconfigurationSecretName(clusterDeployment.Name),
+					Namespace: clusterDeployment.Namespace,
+				},
+				Data: data,
+			}
+			Expect(c.Create(ctx, &s)).To(Succeed())
+		}
+
+		It("returns empty strings with no error if the secret doesn't exist", func() {
+			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterID).To(Equal(""))
+			Expect(infraID).To(Equal(""))
+		})
+
+		It("fails if the required secret key is not found", func() {
+			createSecret(map[string][]byte{"asdf": []byte("stuff")})
+			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
+			Expect(err).To(HaveOccurred())
+			Expect(clusterID).To(Equal(""))
+			Expect(infraID).To(Equal(""))
+		})
+
+		It("fails if the secret contains invalid json", func() {
+			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(`{"asdf": ["a",]}`)})
+			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
+			Expect(err).To(HaveOccurred())
+			Expect(clusterID).To(Equal(""))
+			Expect(infraID).To(Equal(""))
+		})
+
+		It("returns the ids from the secret", func() {
+			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterID).To(Equal("af5f4671-453c-4a4a-8b2b-bacf70552030"))
+			Expect(infraID).To(Equal("ibiotest-67vn4"))
+		})
 	})
 })
 
