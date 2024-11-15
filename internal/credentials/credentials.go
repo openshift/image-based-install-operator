@@ -137,6 +137,44 @@ func (r *Credentials) EnsureSeedReconfigurationSecret(ctx context.Context,
 	return nil
 }
 
+func (r *Credentials) ImportSeedReconfigurationCrypto(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment, seedReconfigurationFile string) error {
+	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, secretRef, secret); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	log.Infof("Importing data from seed reconfiguration secret %s", secretRef)
+
+	secretSeedReconfigurationData, ok := secret.Data[SeedReconfigurationFileName]
+	if !ok {
+		return fmt.Errorf("failed to read secret seed reconfiguration data, secret key %s not found", SeedReconfigurationFileName)
+	}
+	secretSeedReconfiguration := imagebased.SeedReconfiguration{}
+	if err := json.Unmarshal(secretSeedReconfigurationData, &secretSeedReconfiguration); err != nil {
+		return fmt.Errorf("failed to decode secret seed reconfiguration: %w", err)
+	}
+
+	localSeedReconfigurationData, err := os.ReadFile(seedReconfigurationFile)
+	if err != nil {
+		return fmt.Errorf("failed to read seedReconfigurationFile file %s: %w", seedReconfigurationFile, err)
+	}
+	localSeedReconfiguration := imagebased.SeedReconfiguration{}
+	if err := json.Unmarshal(localSeedReconfigurationData, &localSeedReconfiguration); err != nil {
+		return fmt.Errorf("failed to decode local seed reconfiguration: %w", err)
+	}
+
+	localSeedReconfiguration.KubeadminPasswordHash = secretSeedReconfiguration.KubeadminPasswordHash
+	localSeedReconfiguration.KubeconfigCryptoRetention = secretSeedReconfiguration.KubeconfigCryptoRetention
+
+	updatedSeedReconfigurationData, err := json.Marshal(localSeedReconfiguration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated seed reconfiguration data: %w", err)
+	}
+
+	return os.WriteFile(seedReconfigurationFile, updatedSeedReconfigurationData, 0o640)
+}
+
 func (r *Credentials) SeedReconfigSecretClusterIDs(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment) (string, string, error) {
 	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
 	secret := &corev1.Secret{}

@@ -765,6 +765,10 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return fmt.Errorf("failed to create installation manifest: %w", err)
 		}
 
+		if err := r.Credentials.ImportSeedReconfigurationCrypto(ctx, log, cd, filepath.Join(clusterConfigPath, ClusterConfigDir, credentials.SeedReconfigurationFileName)); err != nil {
+			return fmt.Errorf("failed to import existing seed reconfiguration data: %w", err)
+		}
+
 		if err := r.Installer.CreateInstallationIso(ctx, log, clusterConfigPath); err != nil {
 			return fmt.Errorf("failed to create installation iso: %w", err)
 		}

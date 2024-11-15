@@ -2,6 +2,7 @@ package credentials
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/installer/pkg/types/imagebased"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -234,6 +236,85 @@ var _ = Describe("Credentials", func() {
 			Expect(clusterID).To(Equal("af5f4671-453c-4a4a-8b2b-bacf70552030"))
 			Expect(infraID).To(Equal("ibiotest-67vn4"))
 		})
+	})
+
+	Describe("ImportSeedReconfigurationCrypto", func() {
+		createSecret := func(data map[string][]byte) {
+			s := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      SeedReconfigurationSecretName(clusterDeployment.Name),
+					Namespace: clusterDeployment.Namespace,
+				},
+				Data: data,
+			}
+			Expect(c.Create(ctx, &s)).To(Succeed())
+		}
+
+		It("changes nothing if the secret doesn't exist", func() {
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).To(Succeed())
+			newData, err := os.ReadFile(seedReconfigurationFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newData).To(Equal([]byte(seedReconfigData)))
+		})
+
+		It("fails if the secret doesn't contain to expected key", func() {
+			createSecret(map[string][]byte{"asdf": []byte("stuff")})
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).NotTo(Succeed())
+		})
+
+		It("fails if the secret json is invalid", func() {
+			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(`{"asdf": ["a",]}`)})
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).NotTo(Succeed())
+		})
+
+		It("fails if the local file doesn't exist", func() {
+			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+			Expect(os.Remove(seedReconfigurationFile)).To(Succeed())
+
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).NotTo(Succeed())
+		})
+
+		It("fails if the local file json is invalid", func() {
+			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+			Expect(os.WriteFile(seedReconfigurationFile, []byte(`{"asdf": ["a",]}`), 0600)).To(Succeed())
+
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).NotTo(Succeed())
+		})
+
+		It("overwrites required fields", func() {
+			newReconfig := imagebased.SeedReconfiguration{}
+			Expect(json.Unmarshal([]byte(seedReconfigData), &newReconfig)).To(Succeed())
+			newReconfig.KubeadminPasswordHash = "somenewhash"
+			newReconfig.KubeconfigCryptoRetention = imagebased.KubeConfigCryptoRetention{
+				KubeAPICrypto: imagebased.KubeAPICrypto{
+					ServingCrypto: imagebased.ServingCrypto{
+						LocalhostSignerPrivateKey:      "newlocalhostkey",
+						ServiceNetworkSignerPrivateKey: "newservicenetworkkey",
+						LoadbalancerSignerPrivateKey:   "newloadkey",
+					},
+					ClientAuthCrypto: imagebased.ClientAuthCrypto{
+						AdminCACertificate: "newadmincacert",
+					},
+				},
+				IngresssCrypto: imagebased.IngresssCrypto{
+					IngressCAPrivateKey:  "newingresskey",
+					IngressCertificateCN: "newingresscn",
+				},
+			}
+			newReconfigData, err := json.Marshal(newReconfig)
+			Expect(err).NotTo(HaveOccurred())
+			createSecret(map[string][]byte{SeedReconfigurationFileName: newReconfigData})
+
+			Expect(cm.ImportSeedReconfigurationCrypto(ctx, log, clusterDeployment, seedReconfigurationFile)).To(Succeed())
+
+			fileData, err := os.ReadFile(seedReconfigurationFile)
+			Expect(err).NotTo(HaveOccurred())
+			fileReconfig := imagebased.SeedReconfiguration{}
+			Expect(json.Unmarshal(fileData, &fileReconfig)).To(Succeed())
+			Expect(fileReconfig.KubeadminPasswordHash).To(Equal(newReconfig.KubeadminPasswordHash))
+			Expect(fileReconfig.KubeconfigCryptoRetention).To(Equal(newReconfig.KubeconfigCryptoRetention))
+		})
+
 	})
 })
 

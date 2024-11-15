@@ -1218,6 +1218,54 @@ var _ = Describe("Reconcile", func() {
 		Expect(meta.InfraID).To(Equal(secretSeedReconfiguration.InfraID))
 	})
 
+	It("sets cluster crypto to the data from the reconfig secret when it exists", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.Hostname = "thing"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		secretSeedReconfiguration := imagebased.SeedReconfiguration{}
+		Expect(json.Unmarshal([]byte(seedReconfigData), &secretSeedReconfiguration)).To(Succeed())
+		secretSeedReconfiguration.KubeadminPasswordHash = "somenewhash"
+		secretSeedReconfiguration.KubeconfigCryptoRetention.KubeAPICrypto.ServingCrypto.ServiceNetworkSignerPrivateKey = "newprivatekey"
+		secretData, err := json.Marshal(secretSeedReconfiguration)
+		Expect(err).NotTo(HaveOccurred())
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      credentials.SeedReconfigurationSecretName(clusterDeployment.Name),
+				Namespace: clusterDeployment.Namespace,
+			},
+			Data: map[string][]byte{credentials.SeedReconfigurationFileName: secretData},
+		}
+		Expect(c.Create(ctx, secret)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName))
+		Expect(err).NotTo(HaveOccurred())
+		config := &imagebased.SeedReconfiguration{}
+		Expect(json.Unmarshal(content, config)).To(Succeed())
+
+		Expect(config.KubeadminPasswordHash).To(Equal(secretSeedReconfiguration.KubeadminPasswordHash))
+		Expect(config.KubeconfigCryptoRetention).To(Equal(secretSeedReconfiguration.KubeconfigCryptoRetention))
+	})
+
 	It("succeeds in case bmh has ip in provided machine network", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
