@@ -28,6 +28,7 @@ import (
 //go:generate mockgen -source=installer.go -package=installer -destination=mock_installer.go
 type Installer interface {
 	CreateInstallationIso(ctx context.Context, log logrus.FieldLogger, workDir string) error
+	CreateInstallationManifest(ctx context.Context, log logrus.FieldLogger, workDir string) error
 }
 
 type installer struct {
@@ -37,13 +38,21 @@ func NewInstaller() Installer {
 	return &installer{}
 }
 
+func (i *installer) CreateInstallationManifest(ctx context.Context, log logrus.FieldLogger, workDir string) error {
+	log.Infof("Creating installation manifests from %s", workDir)
+	assets := []asset.WritableAsset{
+		&kubeconfig.ImageBasedAdminClient{},
+		&password.KubeadminPassword{},
+		&configimage.ClusterConfiguration{},
+	}
+	fetcher := assetStore.NewAssetsFetcher(workDir)
+	return fetcher.FetchAndPersist(ctx, assets)
+}
+
 func (i *installer) CreateInstallationIso(ctx context.Context, log logrus.FieldLogger, workDir string) error {
 	log.Infof("Creating installation ISO from %s", workDir)
 	assets := []asset.WritableAsset{
 		&configimage.ConfigImage{},
-		&kubeconfig.ImageBasedAdminClient{},
-		&password.KubeadminPassword{},
-		&configimage.ClusterConfiguration{},
 	}
 	fetcher := assetStore.NewAssetsFetcher(workDir)
 	return fetcher.FetchAndPersist(ctx, assets)

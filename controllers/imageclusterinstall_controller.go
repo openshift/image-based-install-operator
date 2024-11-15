@@ -761,6 +761,10 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return fmt.Errorf("failed to write install config: %w", err)
 		}
 
+		if err := r.Installer.CreateInstallationManifest(ctx, log, clusterConfigPath); err != nil {
+			return fmt.Errorf("failed to create installation manifest: %w", err)
+		}
+
 		if err := r.Installer.CreateInstallationIso(ctx, log, clusterConfigPath); err != nil {
 			return fmt.Errorf("failed to create installation iso: %w", err)
 		}

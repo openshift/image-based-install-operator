@@ -53,3 +53,17 @@ func (mr *MockInstallerMockRecorder) CreateInstallationIso(ctx, log, workDir any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInstallationIso", reflect.TypeOf((*MockInstaller)(nil).CreateInstallationIso), ctx, log, workDir)
 }
+
+// CreateInstallationManifest mocks base method.
+func (m *MockInstaller) CreateInstallationManifest(ctx context.Context, log logrus.FieldLogger, workDir string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateInstallationManifest", ctx, log, workDir)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateInstallationManifest indicates an expected call of CreateInstallationManifest.
+func (mr *MockInstallerMockRecorder) CreateInstallationManifest(ctx, log, workDir any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInstallationManifest", reflect.TypeOf((*MockInstaller)(nil).CreateInstallationManifest), ctx, log, workDir)
+}

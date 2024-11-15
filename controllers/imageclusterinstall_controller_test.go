@@ -286,14 +286,17 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	installerSuccess := func() {
+		installerMock.EXPECT().CreateInstallationManifest(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).Times(1).Do(func(any, any, any) {
+			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
+			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte(seedReconfigData), 0644)).To(Succeed())
+		})
 		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).Times(1).Do(func(any, any, any) {
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, IsoName), []byte("test"), 0644)).To(Succeed())
 			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, authDir), 0700)).To(Succeed())
-			Expect(os.MkdirAll(outputFilePath(ClusterConfigDir, ClusterConfigDir), 0700)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, kubeAdminFile), []byte("test"), 0644)).To(Succeed())
 			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, authDir, credentials.Kubeconfig), []byte(kubeconfig), 0644)).To(Succeed())
-			Expect(os.WriteFile(outputFilePath(ClusterConfigDir, ClusterConfigDir, credentials.SeedReconfigurationFileName), []byte(seedReconfigData), 0644)).To(Succeed())
 		})
 	}
 
@@ -358,6 +361,7 @@ var _ = Describe("Reconcile", func() {
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		installerMock.EXPECT().CreateInstallationManifest(gomock.Any(), gomock.Any(), gomock.Any())
 		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("failed")).Times(1)
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).To(HaveOccurred())
@@ -1535,6 +1539,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 
 	installerSuccess := func() {
 		dir := filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), "files")
+		installerMock.EXPECT().CreateInstallationManifest(gomock.Any(), gomock.Any(), gomock.Any())
 		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).Times(1).Do(func(any, any, any) {
 			Expect(os.WriteFile(filepath.Join(dir, ClusterConfigDir, IsoName), []byte("test"), 0644)).To(Succeed())
