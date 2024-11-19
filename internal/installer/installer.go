@@ -53,6 +53,7 @@ func (i *installer) CreateInstallationIso(ctx context.Context, log logrus.FieldL
 	log.Infof("Creating installation ISO from %s", workDir)
 	assets := []asset.WritableAsset{
 		&configimage.ConfigImage{},
+		&configimage.ClusterConfiguration{},
 	}
 	fetcher := assetStore.NewAssetsFetcher(workDir)
 	return fetcher.FetchAndPersist(ctx, assets)
