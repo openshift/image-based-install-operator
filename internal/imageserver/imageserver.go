@@ -30,7 +30,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	namespace := match[1]
 	name := match[2]
 	h.Log.Infof("Serving image for ImageClusterInstall %s/%s", namespace, name)
-	outPath := filepath.Join(h.ConfigsDir, namespace, name, controllers.FilesDir, controllers.ClusterConfigDir, controllers.IsoName)
+	outPath := filepath.Join(controllers.GetClusterConfigDir(h.ConfigsDir, namespace, name), controllers.IsoName)
 	if _, err := os.Stat(outPath); err != nil {
 		h.Log.WithError(err).Error("failed to find iso file")
 		http.NotFound(w, r)

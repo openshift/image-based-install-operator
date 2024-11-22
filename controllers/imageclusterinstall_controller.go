@@ -34,11 +34,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containers/image/v5/docker/reference"
-	"github.com/google/uuid"
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -53,6 +48,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/containers/image/v5/docker/reference"
+	"github.com/google/uuid"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
 
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
@@ -141,9 +142,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	// Nothing to do if the installation process started
-	if !ici.Status.BootTime.IsZero() {
+	// Nothing to do if the installation is complete
+	if installationCompleted(ici) {
 		return ctrl.Result{}, nil
+	}
+	// Nothing to do if the installation process started and the config.iso exists
+	if !ici.Status.BootTime.IsZero() {
+		clusterConfigDir := GetClusterConfigDir(filepath.Join(r.Options.DataDir, "namespaces"), ici.Namespace, string(ici.UID))
+		if verifyIsoAndAuthExists(clusterConfigDir) {
+			return ctrl.Result{}, nil
+		}
+		r.Log.Infof("Running reconcilee for ici with bootTime set")
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
@@ -284,6 +293,10 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func GetClusterConfigDir(namespacesDir, namespace, uid string) string {
+	return filepath.Join(namespacesDir, namespace, uid, FilesDir, ClusterConfigDir)
 }
 
 func (r *ImageClusterInstallReconciler) validateBMH(
