@@ -140,9 +140,15 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	// Nothing to do if the installation process started
+	// Nothing to do if the installation process started and the clusterInfo file exists
 	if !ici.Status.BootTime.IsZero() {
-		return ctrl.Result{}, nil
+		exists, err := r.clusterInfoFileExists(ici)
+		if err != nil {
+			log.Errorf("Failed to check if cluster info file exists: %v", err)
+		}
+		if exists {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
@@ -1236,6 +1242,21 @@ func (r *ImageClusterInstallReconciler) writeIBIOStartTimeCM(filePath string) er
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	return nil
+}
+
+func (r *ImageClusterInstallReconciler) clusterInfoFileExists(ici *v1alpha1.ImageClusterInstall) (bool, error) {
+	clusterInfoFilePath, err := r.clusterInfoFilePath(ici)
+	if err != nil {
+		return false, err
+	}
+	_, err = os.Stat(clusterInfoFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func setAnnotationIfNotExists(meta *metav1.ObjectMeta, key string, value string) bool {
