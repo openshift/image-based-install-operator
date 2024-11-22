@@ -8,13 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	apicfgv1 "github.com/openshift/api/config/v1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	installertypes "github.com/openshift/installer/pkg/types"
-	"github.com/openshift/installer/pkg/types/imagebased"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +17,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
+
+	"github.com/google/uuid"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	apicfgv1 "github.com/openshift/api/config/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	installertypes "github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/types/imagebased"
+	"github.com/sirupsen/logrus"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -309,6 +310,123 @@ var _ = Describe("Reconcile", func() {
 		Expect(config.InfraID).ToNot(Equal(""))
 		Expect(config.ReleaseRegistry).To(Equal("registry.example.com"))
 		Expect(config.Hostname).To(Equal(clusterInstall.Spec.Hostname))
+	})
+	It("exit early in case bootTime is set and config.iso exists", func() {
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
+		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Verify iso file exists
+		IsoPath := filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), "files", ClusterConfigDir, IsoName)
+		_, err = os.Stat(IsoPath)
+		Expect(os.IsNotExist(err)).To(BeFalse())
+		// Verify Boot time is set
+		Expect(clusterInstall.Status.BootTime).To(Not(BeNil()))
+		// Running again
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Verify the installer wasn't called
+		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	})
+	It("reconcile in case bootTime is set but config.iso doesn't exists", func() {
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
+		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Verify iso file exists
+		IsoPath := filepath.Join(dataDir, "namespaces", clusterInstallNamespace, string(clusterInstall.ObjectMeta.UID), "files", ClusterConfigDir, IsoName)
+		_, err = os.Stat(IsoPath)
+		Expect(os.IsNotExist(err)).To(BeFalse())
+		// Delete the configIso -   this simulates pod restart
+		os.Remove(IsoPath)
+		_, err = os.Stat(IsoPath)
+		Expect(os.IsNotExist(err)).To(BeTrue())
+
+		// Verify Boot time is set
+		Expect(clusterInstall.Status.BootTime).To(Not(BeNil()))
+		// Running again, we expect the installer to get called again
+		installerSuccess()
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+	})
+	It("exit early in case installation is complete", func() {
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
+		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		r.initializeConditions(ctx, clusterInstall)
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		cond.Status = corev1.ConditionTrue
+		setClusterInstallCondition(&clusterInstall.Status.Conditions, *cond)
+		Expect(c.Status().Update(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Verify the installer wasn't called
+		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	})
+
+	It("Reconcile in case bootTime is set but config.iso exists", func() {
+		clusterInstall.Spec.MachineNetwork = "192.0.2.0/24"
+		clusterInstall.Spec.Hostname = "thing"
+		clusterInstall.Spec.SSHKey = "my ssh key"
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Running again
+		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+		// Verify the installer wasn't called
+		installerMock.EXPECT().CreateInstallationIso(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 	})
 
 	It("installer command fails", func() {
