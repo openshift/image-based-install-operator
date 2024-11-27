@@ -959,6 +959,56 @@ var _ = Describe("Reconcile", func() {
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 
+	It("don't set reboot annotation in case data image was attached already", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.ExternallyProvisioned = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
+			Status: bmh_v1alpha1.DataImageStatus{AttachedImage: bmh_v1alpha1.AttachedImageReference{URL: imageURL()}}}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, bmh)).To(Succeed())
+		Expect(bmh.Spec.Image).To(BeNil())
+		Expect(bmh.Spec.Online).To(BeTrue())
+		Expect(bmh.Annotations).ToNot(HaveKey(rebootAnnotation))
+		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
+		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
+
+		Expect(c.Get(ctx, key, dataImage)).To(Succeed())
+		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
+		Expect(dataImage.Status.AttachedImage.URL).To(Equal(imageURL()))
+	})
+
 	It("sets the BMH ref in the cluster install status", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
