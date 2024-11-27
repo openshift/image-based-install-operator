@@ -257,7 +257,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		// notified about the newly created DataImage before adding the reboot annotation in updateBMHProvisioningState
 		return ctrl.Result{RequeueAfter: r.Options.DataImageCoolDownPeriod}, err
 	}
-	if err := r.updateBMHProvisioningState(ctx, log, bmh); err != nil {
+	if err := r.updateBMHProvisioningState(ctx, log, bmh, dataImage); err != nil {
 		log.WithError(err).Error("failed to update BareMetalHost provisioning state")
 		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update BareMetalHost provisioning state")
@@ -487,7 +487,7 @@ func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
 	return false
 }
 
-func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
+func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, dataImage *bmh_v1alpha1.DataImage) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
 
 	if annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
@@ -508,7 +508,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 		bmh.Spec.Online = true
 		log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
 	}
-	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, rebootAnnotationValue) {
+	if dataImage.Status.AttachedImage.URL == "" && !setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, rebootAnnotationValue) {
 		// Reboot host so we will reboot into disk
 		//Note that if the node was powered off the annotation will be removed upon boot (it will not reboot twice).
 		log.Infof("Adding reboot annotations to BareMetalHost (%s/%s)", bmh.Namespace, bmh.Name)
