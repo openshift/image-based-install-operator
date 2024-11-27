@@ -96,10 +96,9 @@ func WriteInstallConfig(
 			Replicas: swag.Int64(0),
 			Name:     "worker",
 		}},
-		PullSecret:            psData,
-		Proxy:                 proxy(ici.Spec.Proxy),
-		AdditionalTrustBundle: caBundle,
-		Platform:              installertypes.Platform{None: &none.Platform{}},
+		PullSecret: psData,
+		Proxy:      proxy(ici.Spec.Proxy),
+		Platform:   installertypes.Platform{None: &none.Platform{}},
 	}
 	if caBundle != "" {
 		installConfig.AdditionalTrustBundle = caBundle
