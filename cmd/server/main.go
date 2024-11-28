@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/kelseyhightower/envconfig"
@@ -39,6 +40,7 @@ func main() {
 		Log:        log,
 		WorkDir:    workDir,
 		ConfigsDir: filepath.Join(Options.DataDir, "namespaces"),
+		Mu:         sync.Mutex{},
 	}
 	http.Handle("/images/", s)
 	server := &http.Server{

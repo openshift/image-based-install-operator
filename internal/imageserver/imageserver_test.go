@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/diskfs/go-diskfs"
@@ -49,6 +50,7 @@ var _ = Describe("ServeHttp", func() {
 			Log:        logrus.New(),
 			WorkDir:    workDir,
 			ConfigsDir: configsDir,
+			Mu:         sync.Mutex{},
 		}
 		server = httptest.NewServer(s)
 		client = server.Client()

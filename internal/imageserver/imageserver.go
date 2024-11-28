@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
@@ -23,6 +24,7 @@ type Handler struct {
 	Log        logrus.FieldLogger
 	WorkDir    string
 	ConfigsDir string
+	Mu         sync.Mutex
 }
 
 var pathRegexp = regexp.MustCompile(`^/images/(.+)/(.+)\.iso$`)
@@ -65,7 +67,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if funcErr != nil {
-		h.Log.WithError(funcErr).Error("failed to acquire file lock")
+		h.Log.WithError(funcErr).Error("failed to acquire copy config dir")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -74,20 +76,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
 	outPath, err := tempFileName(h.WorkDir)
 	if err != nil {
 		h.Log.WithError(err).Error("failed to create iso output file")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if err := create(outPath, isoWorkDir, lca_api.BlockDeviceLabel); err != nil {
-		h.Log.WithError(err).Error("failed to create iso")
+	defer os.Remove(outPath)
+
+	if err = h.create(outPath, isoWorkDir, lca_api.BlockDeviceLabel, h.Log); err != nil {
+		h.Log.WithError(err).Errorf("failed to create ISO, outPath: %s, isoWorkDir: %s", outPath, isoWorkDir)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	defer os.Remove(outPath)
-
 	http.ServeFile(w, r, outPath)
 }
 
@@ -109,13 +110,13 @@ func copyDir(dst, src string) error {
 		}
 		defer dest.Close()
 
-		src, err := os.Open(path)
+		srcfile, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		defer src.Close()
+		defer srcfile.Close()
 
-		_, err = io.Copy(dest, src)
+		_, err = io.Copy(dest, srcfile)
 		return err
 	})
 }
@@ -135,7 +136,11 @@ func tempFileName(dir string) (string, error) {
 }
 
 // create builds an iso file at outPath with the given volumeLabel using the contents of the working directory
-func create(outPath string, workDir string, volumeLabel string) error {
+func (h *Handler) create(outPath string, workDir string, volumeLabel string, log logrus.FieldLogger) error {
+	// Block concurrent ISO creation.
+	h.Mu.Lock()
+	defer h.Mu.Unlock()
+
 	if err := os.MkdirAll(filepath.Dir(outPath), 0700); err != nil {
 		return err
 	}
