@@ -765,13 +765,35 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return fmt.Errorf("failed to generate extra manifests: %w", err)
 		}
 
+		configFilePath := clusterConfigPath
+		kubeconfig, kubeadmPassword, seedReconfig, secretsExist, err := r.Credentials.ClusterIdentitySecrets(ctx, cd)
+		if err != nil {
+			return fmt.Errorf("failed to check existence of cluster identity secrets: %w", err)
+		}
+		// if the secrets exist, create the config files in a temp dir to build the initial seed reconfig
+		// if they don't, create them in the working dir
+		if secretsExist {
+			tmpDirPath, err := os.MkdirTemp("", "asset-generation-")
+			if err != nil {
+				return fmt.Errorf("failed to create tempdir: %w", err)
+			}
+			defer os.RemoveAll(tmpDirPath)
+			configFilePath = tmpDirPath
+		}
+
 		log.Info("writing install config")
-		if err := installer.WriteInstallConfig(ici, cd, psData, caBundle, filepath.Join(clusterConfigPath, installConfigFilename)); err != nil {
+		if err := installer.WriteInstallConfig(ici, cd, psData, caBundle, filepath.Join(configFilePath, installConfigFilename)); err != nil {
 			return fmt.Errorf("failed to write install config: %w", err)
 		}
 
-		if err := r.writeImageBaseConfig(ctx, ici, bmh, filepath.Join(clusterConfigPath, imageBasedConfigFilename)); err != nil {
+		if err := r.writeImageBaseConfig(ctx, ici, bmh, filepath.Join(configFilePath, imageBasedConfigFilename)); err != nil {
 			return fmt.Errorf("failed to write install config: %w", err)
+		}
+
+		if secretsExist {
+			if err := r.Installer.WriteReinstallData(ctx, configFilePath, clusterConfigPath, kubeconfig, kubeadmPassword, seedReconfig); err != nil {
+				return fmt.Errorf("failed to write reinstall data: %w", err)
+			}
 		}
 
 		if err := r.Installer.CreateInstallationIso(ctx, log, clusterConfigPath); err != nil {

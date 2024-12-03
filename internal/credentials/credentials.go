@@ -141,17 +141,12 @@ func (r *Credentials) EnsureSeedReconfigurationSecret(ctx context.Context,
 
 func (r *Credentials) SeedReconfigSecretClusterIDs(ctx context.Context, log logrus.FieldLogger, cd *hivev1.ClusterDeployment) (string, string, error) {
 	secretRef := types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, secretRef, secret); err != nil {
-		return "", "", client.IgnoreNotFound(err)
+	secretSeedReconfigurationData, present, err := r.getSecretContent(ctx, secretRef, SeedReconfigurationFileName)
+	if !present || err != nil {
+		return "", "", err
 	}
-
 	log.Infof("Importing data from seed reconfiguration secret %s", secretRef)
 
-	secretSeedReconfigurationData, ok := secret.Data[SeedReconfigurationFileName]
-	if !ok {
-		return "", "", fmt.Errorf("failed to read secret seed reconfiguration data, secret key %s not found", SeedReconfigurationFileName)
-	}
 	secretSeedReconfiguration := imagebased.SeedReconfiguration{}
 	if err := json.Unmarshal(secretSeedReconfigurationData, &secretSeedReconfiguration); err != nil {
 		return "", "", fmt.Errorf("failed to decode secret seed reconfiguration: %w", err)
@@ -213,6 +208,46 @@ func KubeadminPasswordSecretName(clusterDeploymentName string) string {
 
 func SeedReconfigurationSecretName(clusterDeploymentName string) string {
 	return clusterDeploymentName + "seed-reconfiguration"
+}
+
+func (r *Credentials) getSecretContent(ctx context.Context, ref types.NamespacedName, key string) ([]byte, bool, error) {
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, ref, secret)
+	if errors.IsNotFound(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get secret %s: %w", ref, err)
+	}
+	val, exists := secret.Data[key]
+	return val, exists && len(val) != 0, nil
+}
+
+// ClusterIdentitySecrets returns the value of the three secrets representing the cluster identity (kubeconfig, kubeadmin-password, and seed-reconfiguration
+// `exist` is false if any of the secrets are not present or if the required key in any secret has no content
+// `err` is set if an error is encountered retrieving any secret
+func (r *Credentials) ClusterIdentitySecrets(ctx context.Context, cd *hivev1.ClusterDeployment) (kubeconfig []byte, kubeadminPassword []byte, seedReconfig []byte, exist bool, err error) {
+	var present bool
+
+	ref := types.NamespacedName{Namespace: cd.Namespace, Name: KubeconfigSecretName(cd.Name)}
+	kubeconfig, present, err = r.getSecretContent(ctx, ref, "kubeconfig")
+	if !present || err != nil {
+		return
+	}
+
+	ref = types.NamespacedName{Namespace: cd.Namespace, Name: KubeadminPasswordSecretName(cd.Name)}
+	kubeadminPassword, present, err = r.getSecretContent(ctx, ref, kubeAdminKey)
+	if !present || err != nil {
+		return
+	}
+
+	ref = types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
+	seedReconfig, present, err = r.getSecretContent(ctx, ref, SeedReconfigurationFileName)
+	if !present || err != nil {
+		return
+	}
+
+	return kubeconfig, kubeadminPassword, seedReconfig, true, nil
 }
 
 func addLabel(labels map[string]string, labelKey, labelValue string) map[string]string {
