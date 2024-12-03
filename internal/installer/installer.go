@@ -28,6 +28,7 @@ import (
 //go:generate mockgen -source=installer.go -package=installer -destination=mock_installer.go
 type Installer interface {
 	CreateInstallationIso(ctx context.Context, log logrus.FieldLogger, workDir string) error
+	WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, kubeconfig, kubeadmPassword, seedReconfigData []byte) error
 }
 
 type installer struct {

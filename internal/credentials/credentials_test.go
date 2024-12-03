@@ -2,6 +2,7 @@ package credentials
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/sirupsen/logrus"
+	gomock "go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -192,17 +194,23 @@ var _ = Describe("Credentials", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
-	Describe("SeedReconfigSecretClusterIDs", func() {
-		createSecret := func(data map[string][]byte) {
-			s := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      SeedReconfigurationSecretName(clusterDeployment.Name),
-					Namespace: clusterDeployment.Namespace,
-				},
-				Data: data,
-			}
-			Expect(c.Create(ctx, &s)).To(Succeed())
+	createSecret := func(name string, data map[string][]byte) {
+		s := corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: clusterDeployment.Namespace,
+			},
+			Data: data,
 		}
+		Expect(c.Create(ctx, &s)).To(Succeed())
+	}
+
+	Describe("SeedReconfigSecretClusterIDs", func() {
+		var secretName string
+
+		BeforeEach(func() {
+			secretName = SeedReconfigurationSecretName(clusterDeployment.Name)
+		})
 
 		It("returns empty strings with no error if the secret doesn't exist", func() {
 			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
@@ -211,16 +219,16 @@ var _ = Describe("Credentials", func() {
 			Expect(infraID).To(Equal(""))
 		})
 
-		It("fails if the required secret key is not found", func() {
-			createSecret(map[string][]byte{"asdf": []byte("stuff")})
+		It("returns empty strings with no error if secret key is not found", func() {
+			createSecret(secretName, map[string][]byte{"asdf": []byte("stuff")})
 			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
-			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(clusterID).To(Equal(""))
 			Expect(infraID).To(Equal(""))
 		})
 
 		It("fails if the secret contains invalid json", func() {
-			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(`{"asdf": ["a",]}`)})
+			createSecret(secretName, map[string][]byte{SeedReconfigurationFileName: []byte(`{"asdf": ["a",]}`)})
 			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
 			Expect(err).To(HaveOccurred())
 			Expect(clusterID).To(Equal(""))
@@ -228,11 +236,119 @@ var _ = Describe("Credentials", func() {
 		})
 
 		It("returns the ids from the secret", func() {
-			createSecret(map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+			createSecret(secretName, map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
 			clusterID, infraID, err := cm.SeedReconfigSecretClusterIDs(ctx, log, clusterDeployment)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(clusterID).To(Equal("af5f4671-453c-4a4a-8b2b-bacf70552030"))
 			Expect(infraID).To(Equal("ibiotest-67vn4"))
+		})
+	})
+
+	// test separately to reduce the permutations required when testing ClusterIdentitySecrets
+	Describe("getSecretContent", func() {
+		It("returns the requested key data", func() {
+			secretName := "mysecret"
+			key := "asdf"
+			val := []byte("stuff")
+			createSecret(secretName, map[string][]byte{key: val})
+
+			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
+			val, exists, err := cm.getSecretContent(ctx, ref, key)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+			Expect(val).To(Equal(val))
+		})
+
+		It("returns false when the secret doesn't exist", func() {
+			secretName := "mysecret"
+			key := "asdf"
+
+			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
+			_, exists, err := cm.getSecretContent(ctx, ref, key)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeFalse())
+		})
+
+		It("returns false when the key doesn't exist in the secret", func() {
+			secretName := "mysecret"
+			key := "asdf"
+			val := []byte("stuff")
+			createSecret(secretName, map[string][]byte{key: val})
+
+			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
+			_, exists, err := cm.getSecretContent(ctx, ref, "qwer")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeFalse())
+		})
+
+		It("returns false when the key exists with zero length", func() {
+			secretName := "mysecret"
+			key := "asdf"
+			val := []byte("")
+			createSecret(secretName, map[string][]byte{key: val})
+
+			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
+			val, exists, err := cm.getSecretContent(ctx, ref, key)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeFalse())
+		})
+
+		It("returns an error when Get fails", func() {
+			mockCtrl := gomock.NewController(GinkgoT())
+			defer mockCtrl.Finish()
+
+			mockClient := NewMockClient(mockCtrl)
+			cm.Client = mockClient
+
+			secretName := "mysecret"
+			key := "asdf"
+			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
+			mockClient.EXPECT().Get(gomock.Any(), ref, gomock.Any()).Return(fmt.Errorf("Get failed"))
+			_, _, err := cm.getSecretContent(ctx, ref, key)
+
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("ClusterIdentitySecrets", func() {
+		It("returns the contents and existence when all secrets exist", func() {
+			createSecret(KubeconfigSecretName(clusterDeployment.Name), map[string][]byte{"kubeconfig": []byte(kubeconfigData)})
+			createSecret(KubeadminPasswordSecretName(clusterDeployment.Name), map[string][]byte{kubeAdminKey: []byte(kubeAdminData)})
+			createSecret(SeedReconfigurationSecretName(clusterDeployment.Name), map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+
+			kubeconfig, kubeadminPassword, seedReconfig, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exist).To(BeTrue())
+			Expect(kubeconfig).To(Equal([]byte(kubeconfigData)))
+			Expect(kubeadminPassword).To(Equal([]byte(kubeAdminData)))
+			Expect(seedReconfig).To(Equal([]byte(seedReconfigData)))
+		})
+
+		It("returns exist == false when a secret doesn't exist", func() {
+			createSecret(KubeconfigSecretName(clusterDeployment.Name), map[string][]byte{"kubeconfig": []byte(kubeconfigData)})
+			createSecret(SeedReconfigurationSecretName(clusterDeployment.Name), map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
+
+			_, _, _, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exist).To(BeFalse())
+		})
+
+		It("returns an error when an error is encountered", func() {
+			mockCtrl := gomock.NewController(GinkgoT())
+			defer mockCtrl.Finish()
+			mockClient := NewMockClient(mockCtrl)
+			cm.Client = mockClient
+			mockClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("Get failed"))
+
+			_, _, _, _, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })
