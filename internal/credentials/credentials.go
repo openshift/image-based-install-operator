@@ -32,6 +32,8 @@ const (
 	SeedReconfigurationFileName = "manifest.json"
 )
 
+//go:generate mockgen --build_flags=--mod=mod -package=credentials -destination=mock_client.go sigs.k8s.io/controller-runtime/pkg/client Client
+
 type Credentials struct {
 	client.Client
 	Log    logrus.FieldLogger
