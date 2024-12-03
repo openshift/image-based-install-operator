@@ -53,3 +53,17 @@ func (mr *MockInstallerMockRecorder) CreateInstallationIso(ctx, log, workDir any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInstallationIso", reflect.TypeOf((*MockInstaller)(nil).CreateInstallationIso), ctx, log, workDir)
 }
+
+// WriteReinstallData mocks base method.
+func (m *MockInstaller) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, kubeconfig, kubeadmPassword, seedReconfigData []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteReinstallData", ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteReinstallData indicates an expected call of WriteReinstallData.
+func (mr *MockInstallerMockRecorder) WriteReinstallData(ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteReinstallData", reflect.TypeOf((*MockInstaller)(nil).WriteReinstallData), ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData)
+}

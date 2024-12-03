@@ -298,6 +298,16 @@ var _ = Describe("Reconcile", func() {
 		})
 	}
 
+	reinstallSuccess := func(expectedKubeconfig, expectedPassword, expectedReconfig []byte) {
+		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).Times(1).Do(func(_, _, _ any, kubeconfig, kubeadmPassword, seedReconfigData []byte) {
+			Expect(kubeconfig).To(Equal(expectedKubeconfig))
+			Expect(kubeadmPassword).To(Equal(expectedPassword))
+			Expect(seedReconfigData).To(Equal(expectedReconfig))
+		})
+		installerSuccess()
+	}
+
 	validateExtraManifestContent := func(file string, data string) {
 		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, extraManifestsDir, file))
 		Expect(err).NotTo(HaveOccurred())
@@ -404,7 +414,8 @@ var _ = Describe("Reconcile", func() {
 
 		// Verify Boot time is set
 		Expect(clusterInstall.Status.BootTime).To(Not(BeNil()))
-		// Running again, we expect the installer to get called again
+		// Running again, we expect the installer to get called again which will follow the reinstall flow because the secrets are present
+		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		installerSuccess()
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
@@ -1682,6 +1693,50 @@ var _ = Describe("Reconcile", func() {
 			Expect(c.Get(ctx, key, testCM)).To(Succeed())
 			Expect(testCM.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "ConfigMap %s/%s missing annotation", testCM.Namespace, testCM.Name)
 		}
+	})
+
+	Context("when the cluster identity secrets exist", func() {
+		createSecret := func(name string, data map[string][]byte) {
+			s := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: clusterDeployment.Namespace,
+				},
+				Data: data,
+			}
+			Expect(c.Create(ctx, &s)).To(Succeed())
+		}
+
+		BeforeEach(func() {
+			createSecret(clusterDeployment.Name+"-admin-kubeconfig", map[string][]byte{"kubeconfig": []byte(kubeconfig)})
+			createSecret(clusterDeployment.Name+"-admin-password", map[string][]byte{"password": []byte("password")})
+			createSecret(clusterDeployment.Name+"seed-reconfiguration", map[string][]byte{credentials.SeedReconfigurationFileName: []byte(seedReconfigData)})
+		})
+
+		It("runs the reinstall logic", func() {
+			bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+			Expect(c.Create(ctx, bmh)).To(Succeed())
+
+			clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			}
+			clusterInstall.Spec.Hostname = "thing"
+			Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+			clusterDeployment.Spec.ClusterName = "thingcluster"
+			clusterDeployment.Spec.BaseDomain = "example.com"
+			Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+			key := types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			}
+			reinstallSuccess([]byte(kubeconfig), []byte("password"), []byte(seedReconfigData))
+			res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res).To(Equal(ctrl.Result{}))
+		})
 	})
 })
 
