@@ -207,7 +207,7 @@ func KubeadminPasswordSecretName(clusterDeploymentName string) string {
 }
 
 func SeedReconfigurationSecretName(clusterDeploymentName string) string {
-	return clusterDeploymentName + "seed-reconfiguration"
+	return clusterDeploymentName + "-seed-reconfiguration"
 }
 
 func (r *Credentials) getSecretContent(ctx context.Context, ref types.NamespacedName, key string) ([]byte, bool, error) {

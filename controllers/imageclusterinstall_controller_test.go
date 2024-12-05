@@ -1710,7 +1710,7 @@ var _ = Describe("Reconcile", func() {
 		BeforeEach(func() {
 			createSecret(clusterDeployment.Name+"-admin-kubeconfig", map[string][]byte{"kubeconfig": []byte(kubeconfig)})
 			createSecret(clusterDeployment.Name+"-admin-password", map[string][]byte{"password": []byte("password")})
-			createSecret(clusterDeployment.Name+"seed-reconfiguration", map[string][]byte{credentials.SeedReconfigurationFileName: []byte(seedReconfigData)})
+			createSecret(clusterDeployment.Name+"-seed-reconfiguration", map[string][]byte{credentials.SeedReconfigurationFileName: []byte(seedReconfigData)})
 		})
 
 		It("runs the reinstall logic", func() {
