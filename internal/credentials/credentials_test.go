@@ -320,20 +320,20 @@ var _ = Describe("Credentials", func() {
 			createSecret(KubeadminPasswordSecretName(clusterDeployment.Name), map[string][]byte{kubeAdminKey: []byte(kubeAdminData)})
 			createSecret(SeedReconfigurationSecretName(clusterDeployment.Name), map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
 
-			kubeconfig, kubeadminPassword, seedReconfig, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+			idData, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exist).To(BeTrue())
-			Expect(kubeconfig).To(Equal([]byte(kubeconfigData)))
-			Expect(kubeadminPassword).To(Equal([]byte(kubeAdminData)))
-			Expect(seedReconfig).To(Equal([]byte(seedReconfigData)))
+			Expect(idData.Kubeconfig).To(Equal([]byte(kubeconfigData)))
+			Expect(idData.KubeadminPassword).To(Equal([]byte(kubeAdminData)))
+			Expect(idData.SeedReconfig).To(Equal([]byte(seedReconfigData)))
 		})
 
 		It("returns exist == false when a secret doesn't exist", func() {
 			createSecret(KubeconfigSecretName(clusterDeployment.Name), map[string][]byte{"kubeconfig": []byte(kubeconfigData)})
 			createSecret(SeedReconfigurationSecretName(clusterDeployment.Name), map[string][]byte{SeedReconfigurationFileName: []byte(seedReconfigData)})
 
-			_, _, _, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+			_, exist, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exist).To(BeFalse())
@@ -346,7 +346,7 @@ var _ = Describe("Credentials", func() {
 			cm.Client = mockClient
 			mockClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("Get failed"))
 
-			_, _, _, _, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
+			_, _, err := cm.ClusterIdentitySecrets(ctx, clusterDeployment)
 
 			Expect(err).To(HaveOccurred())
 		})

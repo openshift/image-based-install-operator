@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/installer/pkg/asset/imagebased/configimage"
 	"github.com/openshift/installer/pkg/asset/kubeconfig"
 	"github.com/openshift/installer/pkg/asset/password"
@@ -17,14 +18,14 @@ import (
 // WriteReinstallData writes out the SeedReconfiguration and auth data required for a reinstall to `isoWorkDir`
 // `tmpWorkDir` must contain an image-based-config and install-config file prior to calling this function
 // Crypto data from `seedReconfigData` will be merged into the SeedReconfiguration created based on the config files in `tmpWorkDir`
-func (i *installer) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, kubeconfig, kubeadmPassword, seedReconfigData []byte) error {
+func (i *installer) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, idData credentials.IdentityData) error {
 	clusterConfig, kubeconfigAssetPath, kubeadmPasswordAssetPath, err := getBaseAssets(ctx, tmpWorkDir)
 	if err != nil {
 		return err
 	}
 
 	secretSeedReconfig := imagebased.SeedReconfiguration{}
-	if err := json.Unmarshal(seedReconfigData, &secretSeedReconfig); err != nil {
+	if err := json.Unmarshal(idData.SeedReconfig, &secretSeedReconfig); err != nil {
 		return fmt.Errorf("failed to decode local seed reconfiguration: %w", err)
 	}
 
@@ -36,12 +37,12 @@ func (i *installer) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkD
 	}
 
 	kubeconfigPath := filepath.Join(isoWorkDir, kubeconfigAssetPath)
-	if err := writeAuth(kubeconfigPath, kubeconfig); err != nil {
+	if err := writeAuth(kubeconfigPath, idData.Kubeconfig); err != nil {
 		return err
 	}
 
 	kubeadmPasswordPath := filepath.Join(isoWorkDir, kubeadmPasswordAssetPath)
-	if err := writeAuth(kubeadmPasswordPath, kubeadmPassword); err != nil {
+	if err := writeAuth(kubeadmPasswordPath, idData.KubeadminPassword); err != nil {
 		return err
 	}
 

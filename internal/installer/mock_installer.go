@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	credentials "github.com/openshift/image-based-install-operator/internal/credentials"
 	logrus "github.com/sirupsen/logrus"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -55,15 +56,15 @@ func (mr *MockInstallerMockRecorder) CreateInstallationIso(ctx, log, workDir any
 }
 
 // WriteReinstallData mocks base method.
-func (m *MockInstaller) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, kubeconfig, kubeadmPassword, seedReconfigData []byte) error {
+func (m *MockInstaller) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, idData credentials.IdentityData) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteReinstallData", ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData)
+	ret := m.ctrl.Call(m, "WriteReinstallData", ctx, tmpWorkDir, isoWorkDir, idData)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WriteReinstallData indicates an expected call of WriteReinstallData.
-func (mr *MockInstallerMockRecorder) WriteReinstallData(ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData any) *gomock.Call {
+func (mr *MockInstallerMockRecorder) WriteReinstallData(ctx, tmpWorkDir, isoWorkDir, idData any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteReinstallData", reflect.TypeOf((*MockInstaller)(nil).WriteReinstallData), ctx, tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, seedReconfigData)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteReinstallData", reflect.TypeOf((*MockInstaller)(nil).WriteReinstallData), ctx, tmpWorkDir, isoWorkDir, idData)
 }
