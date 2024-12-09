@@ -40,6 +40,12 @@ type Credentials struct {
 	Scheme *runtime.Scheme
 }
 
+type IdentityData struct {
+	Kubeconfig        []byte
+	KubeadminPassword []byte
+	SeedReconfig      []byte
+}
+
 func (r *Credentials) secretExistsAndValid(ctx context.Context, log logrus.FieldLogger, secretRef types.NamespacedName, key string, data []byte) (bool, error) {
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, secretRef, secret)
@@ -226,28 +232,28 @@ func (r *Credentials) getSecretContent(ctx context.Context, ref types.Namespaced
 // ClusterIdentitySecrets returns the value of the three secrets representing the cluster identity (kubeconfig, kubeadmin-password, and seed-reconfiguration
 // `exist` is false if any of the secrets are not present or if the required key in any secret has no content
 // `err` is set if an error is encountered retrieving any secret
-func (r *Credentials) ClusterIdentitySecrets(ctx context.Context, cd *hivev1.ClusterDeployment) (kubeconfig []byte, kubeadminPassword []byte, seedReconfig []byte, exist bool, err error) {
+func (r *Credentials) ClusterIdentitySecrets(ctx context.Context, cd *hivev1.ClusterDeployment) (idData IdentityData, exist bool, err error) {
 	var present bool
 
 	ref := types.NamespacedName{Namespace: cd.Namespace, Name: KubeconfigSecretName(cd.Name)}
-	kubeconfig, present, err = r.getSecretContent(ctx, ref, "kubeconfig")
+	idData.Kubeconfig, present, err = r.getSecretContent(ctx, ref, "kubeconfig")
 	if !present || err != nil {
 		return
 	}
 
 	ref = types.NamespacedName{Namespace: cd.Namespace, Name: KubeadminPasswordSecretName(cd.Name)}
-	kubeadminPassword, present, err = r.getSecretContent(ctx, ref, kubeAdminKey)
+	idData.KubeadminPassword, present, err = r.getSecretContent(ctx, ref, kubeAdminKey)
 	if !present || err != nil {
 		return
 	}
 
 	ref = types.NamespacedName{Namespace: cd.Namespace, Name: SeedReconfigurationSecretName(cd.Name)}
-	seedReconfig, present, err = r.getSecretContent(ctx, ref, SeedReconfigurationFileName)
+	idData.SeedReconfig, present, err = r.getSecretContent(ctx, ref, SeedReconfigurationFileName)
 	if !present || err != nil {
 		return
 	}
 
-	return kubeconfig, kubeadminPassword, seedReconfig, true, nil
+	return idData, true, nil
 }
 
 func addLabel(labels map[string]string, labelKey, labelValue string) map[string]string {
