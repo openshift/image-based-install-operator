@@ -766,7 +766,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		}
 
 		configFilePath := clusterConfigPath
-		kubeconfig, kubeadmPassword, seedReconfig, secretsExist, err := r.Credentials.ClusterIdentitySecrets(ctx, cd)
+		idData, secretsExist, err := r.Credentials.ClusterIdentitySecrets(ctx, cd)
 		if err != nil {
 			return fmt.Errorf("failed to check existence of cluster identity secrets: %w", err)
 		}
@@ -791,7 +791,7 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		}
 
 		if secretsExist {
-			if err := r.Installer.WriteReinstallData(ctx, configFilePath, clusterConfigPath, kubeconfig, kubeadmPassword, seedReconfig); err != nil {
+			if err := r.Installer.WriteReinstallData(ctx, configFilePath, clusterConfigPath, idData); err != nil {
 				return fmt.Errorf("failed to write reinstall data: %w", err)
 			}
 		}

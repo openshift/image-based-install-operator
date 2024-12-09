@@ -23,12 +23,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 )
 
 //go:generate mockgen -source=installer.go -package=installer -destination=mock_installer.go
 type Installer interface {
 	CreateInstallationIso(ctx context.Context, log logrus.FieldLogger, workDir string) error
-	WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, kubeconfig, kubeadmPassword, seedReconfigData []byte) error
+	WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkDir string, idData credentials.IdentityData) error
 }
 
 type installer struct {

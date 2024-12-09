@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/installer/pkg/types/imagebased"
 )
 
@@ -100,24 +101,30 @@ var _ = Describe("WriteReinstallData", func() {
 	})
 
 	It("writes the auth files in the iso workdir", func() {
-		kubeconfig := []byte("kubeconfig")
-		kubeadmPassword := []byte("password")
+		idData := credentials.IdentityData{
+			Kubeconfig:        []byte("kubeconfig"),
+			KubeadminPassword: []byte("password"),
+			SeedReconfig:      []byte("{}"),
+		}
 
-		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, []byte("{}"))).To(Succeed())
+		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)).To(Succeed())
 
 		kubeconfigContent, err := os.ReadFile(filepath.Join(isoWorkDir, "auth", "kubeconfig"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(kubeconfigContent).To(Equal(kubeconfig))
+		Expect(kubeconfigContent).To(Equal(idData.Kubeconfig))
 		kubeadmPasswordContent, err := os.ReadFile(filepath.Join(isoWorkDir, "auth", "kubeadmin-password"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(kubeadmPasswordContent).To(Equal(kubeadmPassword))
+		Expect(kubeadmPasswordContent).To(Equal(idData.KubeadminPassword))
 	})
 
 	It("overwrites the seed reconfig crypto with what is passed", func() {
-		kubeconfig := []byte("kubeconfig")
-		kubeadmPassword := []byte("password")
+		idData := credentials.IdentityData{
+			Kubeconfig:        []byte("kubeconfig"),
+			KubeadminPassword: []byte("password"),
+			SeedReconfig:      []byte(secretSeedReconfig),
+		}
 
-		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, []byte(secretSeedReconfig))).To(Succeed())
+		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)).To(Succeed())
 		seedReconfigContent, err := os.ReadFile(filepath.Join(isoWorkDir, "cluster-configuration", "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		seedReconfig := imagebased.SeedReconfiguration{}
@@ -144,10 +151,13 @@ var _ = Describe("WriteReinstallData", func() {
 	})
 
 	It("maintains new values from config", func() {
-		kubeconfig := []byte("kubeconfig")
-		kubeadmPassword := []byte("password")
+		idData := credentials.IdentityData{
+			Kubeconfig:        []byte("kubeconfig"),
+			KubeadminPassword: []byte("password"),
+			SeedReconfig:      []byte(secretSeedReconfig),
+		}
 
-		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, kubeconfig, kubeadmPassword, []byte(secretSeedReconfig))).To(Succeed())
+		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)).To(Succeed())
 		seedReconfigContent, err := os.ReadFile(filepath.Join(isoWorkDir, "cluster-configuration", "manifest.json"))
 		Expect(err).NotTo(HaveOccurred())
 		seedReconfig := imagebased.SeedReconfiguration{}

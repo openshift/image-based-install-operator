@@ -299,11 +299,11 @@ var _ = Describe("Reconcile", func() {
 	}
 
 	reinstallSuccess := func(expectedKubeconfig, expectedPassword, expectedReconfig []byte) {
-		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).Times(1).Do(func(_, _, _ any, kubeconfig, kubeadmPassword, seedReconfigData []byte) {
-			Expect(kubeconfig).To(Equal(expectedKubeconfig))
-			Expect(kubeadmPassword).To(Equal(expectedPassword))
-			Expect(seedReconfigData).To(Equal(expectedReconfig))
+		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).Times(1).Do(func(_, _, _ any, idData credentials.IdentityData) {
+			Expect(idData.Kubeconfig).To(Equal(expectedKubeconfig))
+			Expect(idData.KubeadminPassword).To(Equal(expectedPassword))
+			Expect(idData.SeedReconfig).To(Equal(expectedReconfig))
 		})
 		installerSuccess()
 	}
@@ -415,7 +415,7 @@ var _ = Describe("Reconcile", func() {
 		// Verify Boot time is set
 		Expect(clusterInstall.Status.BootTime).To(Not(BeNil()))
 		// Running again, we expect the installer to get called again which will follow the reinstall flow because the secrets are present
-		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
+		installerMock.EXPECT().WriteReinstallData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		installerSuccess()
 		res, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
