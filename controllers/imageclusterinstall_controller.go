@@ -739,15 +739,15 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 
 	locked, lockErr, funcErr := filelock.WithWriteLock(lockDir, func() (err error) {
 
-		clusterConfigPath := filepath.Join(filesDir, ClusterConfigDir)
-		if verifyIsoAndAuthExists(clusterConfigPath) {
+		isoWorkDir := filepath.Join(filesDir, ClusterConfigDir)
+		if verifyIsoAndAuthExists(isoWorkDir) {
 			// in case image exists we should ensure credentials in case something failed before it
-			return r.ensureCreds(ctx, log, cd, clusterConfigPath)
+			return r.ensureCreds(ctx, log, cd, isoWorkDir)
 		}
 		log.Info("writing input data for image cluster install")
 
-		os.RemoveAll(clusterConfigPath)
-		if err := os.MkdirAll(clusterConfigPath, 0700); err != nil {
+		os.RemoveAll(isoWorkDir)
+		if err := os.MkdirAll(isoWorkDir, 0700); err != nil {
 			return err
 		}
 
@@ -761,11 +761,11 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 			return fmt.Errorf("failed to get ca bundle: %w", err)
 		}
 
-		if err := r.generateExtraManifests(clusterConfigPath, ici, ctx); err != nil {
+		if err := r.generateExtraManifests(isoWorkDir, ici, ctx); err != nil {
 			return fmt.Errorf("failed to generate extra manifests: %w", err)
 		}
 
-		configFilePath := clusterConfigPath
+		configFilePath := isoWorkDir
 		idData, secretsExist, err := r.Credentials.ClusterIdentitySecrets(ctx, cd)
 		if err != nil {
 			return fmt.Errorf("failed to check existence of cluster identity secrets: %w", err)
@@ -791,16 +791,16 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 		}
 
 		if secretsExist {
-			if err := r.Installer.WriteReinstallData(ctx, configFilePath, clusterConfigPath, idData); err != nil {
+			if err := r.Installer.WriteReinstallData(ctx, configFilePath, isoWorkDir, idData); err != nil {
 				return fmt.Errorf("failed to write reinstall data: %w", err)
 			}
 		}
 
-		if err := r.Installer.CreateInstallationIso(ctx, log, clusterConfigPath); err != nil {
+		if err := r.Installer.CreateInstallationIso(ctx, log, isoWorkDir); err != nil {
 			return fmt.Errorf("failed to create installation iso: %w", err)
 		}
 
-		return r.ensureCreds(ctx, log, cd, clusterConfigPath)
+		return r.ensureCreds(ctx, log, cd, isoWorkDir)
 
 	})
 	if lockErr != nil {
