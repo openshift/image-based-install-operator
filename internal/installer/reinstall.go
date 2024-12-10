@@ -29,6 +29,10 @@ func (i *installer) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkD
 		return fmt.Errorf("failed to decode local seed reconfiguration: %w", err)
 	}
 
+	if err := validateReinstallConfig(clusterConfig.Config, &secretSeedReconfig); err != nil {
+		return fmt.Errorf("cluster configuration is not valid for reinstall: %w", err)
+	}
+
 	clusterConfig.Config.KubeadminPasswordHash = secretSeedReconfig.KubeadminPasswordHash
 	clusterConfig.Config.KubeconfigCryptoRetention = secretSeedReconfig.KubeconfigCryptoRetention
 
@@ -44,6 +48,17 @@ func (i *installer) WriteReinstallData(ctx context.Context, tmpWorkDir, isoWorkD
 	kubeadmPasswordPath := filepath.Join(isoWorkDir, kubeadmPasswordAssetPath)
 	if err := writeAuth(kubeadmPasswordPath, idData.KubeadminPassword); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func validateReinstallConfig(newConfig, secretConfig *imagebased.SeedReconfiguration) error {
+	if newConfig.BaseDomain != secretConfig.BaseDomain {
+		return fmt.Errorf("provided base domain (%s) must match previous base domain (%s)", newConfig.BaseDomain, secretConfig.BaseDomain)
+	}
+	if newConfig.ClusterName != secretConfig.ClusterName {
+		return fmt.Errorf("provided cluster name (%s) must match previous cluster name (%s)", newConfig.ClusterName, secretConfig.ClusterName)
 	}
 
 	return nil
