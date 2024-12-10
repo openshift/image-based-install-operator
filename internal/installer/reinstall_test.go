@@ -104,7 +104,7 @@ var _ = Describe("WriteReinstallData", func() {
 		idData := credentials.IdentityData{
 			Kubeconfig:        []byte("kubeconfig"),
 			KubeadminPassword: []byte("password"),
-			SeedReconfig:      []byte("{}"),
+			SeedReconfig:      []byte(secretSeedReconfig),
 		}
 
 		Expect(inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)).To(Succeed())
@@ -166,4 +166,26 @@ var _ = Describe("WriteReinstallData", func() {
 		// note this is the value from the installconfig which is different from the secret seed reconfig
 		Expect(seedReconfig.PullSecret).To(Equal("{\"auths\":{\"quay.io\":{\"auth\":\"dXNlcjpwYXNzCg==\"}}}"))
 	})
+
+	DescribeTable("reinstall validations",
+		func(reconfigKey, reconfigValue, errSubstring string) {
+			seedReconfig := map[string]interface{}{}
+			Expect(json.Unmarshal([]byte(secretSeedReconfig), &seedReconfig)).To(Succeed())
+			seedReconfig[reconfigKey] = interface{}(reconfigValue)
+			data, err := json.Marshal(seedReconfig)
+			Expect(err).ToNot(HaveOccurred())
+
+			idData := credentials.IdentityData{
+				Kubeconfig:        []byte("kubeconfig"),
+				KubeadminPassword: []byte("password"),
+				SeedReconfig:      []byte(data),
+			}
+
+			err = inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(errSubstring))
+		},
+		Entry("check base domain has not changed", "base_domain", "example.org", "provided base domain (example.com) must match previous base domain (example.org)"),
+		Entry("check cluster name has not changed", "cluster_name", "mycluster", "provided cluster name (test) must match previous cluster name (mycluster)"),
+	)
 })
