@@ -175,25 +175,28 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 		Type: corev1.SecretTypeOpaque,
 	}
 
-	secret.Labels = addLabel(secret.Labels, "hive.openshift.io/cluster-deployment-name", cd.Name)
-	secret.Labels = addLabel(secret.Labels, "hive.openshift.io/secret-type", secretType)
-	secret.Labels = addLabel(secret.Labels, SecretResourceLabel, SecretResourceValue)
-
 	deploymentGVK, err := apiutil.GVKForObject(cd, r.Scheme)
 	if err != nil {
 		log.WithError(err).Errorf("error getting GVK for clusterdeployment")
 		return err
 	}
-	secret.OwnerReferences = []metav1.OwnerReference{{
-		APIVersion:         deploymentGVK.GroupVersion().String(),
-		Kind:               deploymentGVK.Kind,
-		Name:               cd.Name,
-		UID:                cd.UID,
-		BlockOwnerDeletion: ptr.To(true),
-	}}
+
 	mutateFn := func() error {
+		secret.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion:         deploymentGVK.GroupVersion().String(),
+			Kind:               deploymentGVK.Kind,
+			Name:               cd.Name,
+			UID:                cd.UID,
+			BlockOwnerDeletion: ptr.To(true),
+		}}
+
+		secret.Labels = addLabel(secret.Labels, "hive.openshift.io/cluster-deployment-name", cd.Name)
+		secret.Labels = addLabel(secret.Labels, "hive.openshift.io/secret-type", secretType)
+		secret.Labels = addLabel(secret.Labels, SecretResourceLabel, SecretResourceValue)
+
 		// Update the Secret object with the desired data
 		secret.Data = data
+
 		return nil
 	}
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, mutateFn)
