@@ -194,6 +194,41 @@ var _ = Describe("Credentials", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	Describe("createOrUpdateClusterCredentialSecret", func() {
+		It("sets filter label if it was removed", func() {
+			name := "test-secret"
+			data := map[string][]byte{"thing": []byte("stuff")}
+			Expect(cm.createOrUpdateClusterCredentialSecret(ctx, log, clusterDeployment, name, data, "thing")).To(Succeed())
+
+			secret := corev1.Secret{}
+			key := types.NamespacedName{Name: name, Namespace: clusterDeployment.Namespace}
+			Expect(c.Get(ctx, key, &secret)).To(Succeed())
+			delete(secret.Labels, SecretResourceLabel)
+			Expect(c.Update(ctx, &secret)).To(Succeed())
+
+			Expect(cm.createOrUpdateClusterCredentialSecret(ctx, log, clusterDeployment, name, data, "thing")).To(Succeed())
+			Expect(c.Get(ctx, key, &secret)).To(Succeed())
+			Expect(secret.Labels).To(HaveKeyWithValue(SecretResourceLabel, SecretResourceValue))
+		})
+
+		It("updates OwnerReference if it was removed", func() {
+			name := "test-secret"
+			data := map[string][]byte{"thing": []byte("stuff")}
+			Expect(cm.createOrUpdateClusterCredentialSecret(ctx, log, clusterDeployment, name, data, "thing")).To(Succeed())
+
+			secret := corev1.Secret{}
+			key := types.NamespacedName{Name: name, Namespace: clusterDeployment.Namespace}
+			Expect(c.Get(ctx, key, &secret)).To(Succeed())
+			secret.OwnerReferences = nil
+			Expect(c.Update(ctx, &secret)).To(Succeed())
+
+			Expect(cm.createOrUpdateClusterCredentialSecret(ctx, log, clusterDeployment, name, data, "thing")).To(Succeed())
+			Expect(c.Get(ctx, key, &secret)).To(Succeed())
+			Expect(len(secret.OwnerReferences)).To(Equal(1))
+			Expect(secret.OwnerReferences[0].Name).To(Equal(clusterDeployment.Name))
+		})
+	})
+
 	createSecret := func(name string, data map[string][]byte) {
 		s := corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
