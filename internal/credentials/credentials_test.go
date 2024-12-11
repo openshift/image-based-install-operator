@@ -109,6 +109,13 @@ var _ = Describe("Credentials", func() {
 		os.Remove(kubeconfigFile)
 	})
 
+	verifySecretPreservationLabel := func(name, namespace string) {
+		key := types.NamespacedName{Name: name, Namespace: namespace}
+		secret := &corev1.Secret{}
+		Expect(c.Get(ctx, key, secret)).To(Succeed())
+		Expect(secret.Labels).To(HaveKeyWithValue(secretPreservationLabel, secretPreservationValue))
+	}
+
 	Describe("EnsureKubeconfigSecret", func() {
 		getKubeconfigFromSecret := func(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment) []byte {
 			kubeconfigSecret := &corev1.Secret{}
@@ -128,6 +135,11 @@ var _ = Describe("Credentials", func() {
 			err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
 			Expect(err).NotTo(HaveOccurred())
 			verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, kubeconfigData)
+		})
+
+		It("sets the siteconfig secret preservation label", func() {
+			Expect(cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)).To(Succeed())
+			verifySecretPreservationLabel(clusterDeployment.Name+"-admin-kubeconfig", clusterDeployment.Namespace)
 		})
 
 		It("already exists but data changed", func() {
@@ -156,6 +168,11 @@ var _ = Describe("Credentials", func() {
 			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte(kubeAdminData))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exists).To(BeTrue())
+		})
+
+		It("sets the siteconfig secret preservation label", func() {
+			Expect(cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeconfigFile)).To(Succeed())
+			verifySecretPreservationLabel(KubeadminPasswordSecretName(clusterDeployment.Name), clusterDeployment.Namespace)
 		})
 
 		It("already exists but data changed", func() {
@@ -189,6 +206,11 @@ var _ = Describe("Credentials", func() {
 			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exists).To(BeTrue())
+		})
+
+		It("sets the siteconfig secret preservation label", func() {
+			Expect(cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, kubeconfigFile)).To(Succeed())
+			verifySecretPreservationLabel(SeedReconfigurationSecretName(clusterDeployment.Name), clusterDeployment.Namespace)
 		})
 
 		It("already exists but data changed", func() {
