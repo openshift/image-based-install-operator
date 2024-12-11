@@ -109,89 +109,109 @@ var _ = Describe("Credentials", func() {
 		os.Remove(kubeconfigFile)
 	})
 
-	It("EnsureKubeconfigSecret success", func() {
-		err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
-		Expect(err).NotTo(HaveOccurred())
-		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, kubeconfigData)
+	Describe("EnsureKubeconfigSecret", func() {
+		getKubeconfigFromSecret := func(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment) []byte {
+			kubeconfigSecret := &corev1.Secret{}
+			err := kClient.Get(ctx, client.ObjectKey{Namespace: cd.Namespace, Name: cd.Name + "-admin-kubeconfig"}, kubeconfigSecret)
+			Expect(err).NotTo(HaveOccurred())
+			kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
+			Expect(exists).To(BeTrue())
+			return kubeconfigSecretData
+		}
+
+		verifyKubeconfigSecret := func(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment, data string) {
+			kubeconfigSecretData := getKubeconfigFromSecret(ctx, kClient, cd)
+			Expect(string(kubeconfigSecretData)).To(Equal(data))
+		}
+
+		It("success", func() {
+			err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
+			Expect(err).NotTo(HaveOccurred())
+			verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, kubeconfigData)
+		})
+
+		It("already exists but data changed", func() {
+			err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
+			Expect(err).NotTo(HaveOccurred())
+			verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, kubeconfigData)
+
+			kubeconfigFile, err = createTempFile("kubeconfig-new", "kubeconfig-new")
+			Expect(err).NotTo(HaveOccurred())
+			err = cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
+			Expect(err).NotTo(HaveOccurred())
+			verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, "kubeconfig-new")
+		})
+
+		It("file doesn't exists", func() {
+			err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, "non-existing-file")
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
-	It("EnsureKubeconfigSecret already exists but data changed", func() {
-		err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
-		Expect(err).NotTo(HaveOccurred())
-		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, kubeconfigData)
+	Describe("EnsureAdminPasswordSecret", func() {
+		It("success", func() {
+			err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
+			Expect(err).NotTo(HaveOccurred())
+			secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: KubeadminPasswordSecretName(clusterDeployment.Name)}
+			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte(kubeAdminData))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+		})
 
-		kubeconfigFile, err = createTempFile("kubeconfig-new", "kubeconfig-new")
-		Expect(err).NotTo(HaveOccurred())
-		err = cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, kubeconfigFile)
-		Expect(err).NotTo(HaveOccurred())
-		verifyKubeconfigSecret(ctx, cm.Client, clusterDeployment, "kubeconfig-new")
+		It("already exists but data changed", func() {
+			err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
+			Expect(err).NotTo(HaveOccurred())
+			secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: KubeadminPasswordSecretName(clusterDeployment.Name)}
+			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte(kubeAdminData))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+
+			kubeAdminFile, err = createTempFile("kubeAdminData-new", "kubeAdminData-new")
+			Expect(err).NotTo(HaveOccurred())
+			err = cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
+			Expect(err).NotTo(HaveOccurred())
+			exists, err = cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte("kubeAdminData-new"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+		})
+
+		It("file doesn't exists", func() {
+			err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, "non-existing-file")
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
-	It("EnsureKubeconfigSecret file doesn't exists", func() {
-		err := cm.EnsureKubeconfigSecret(ctx, log, clusterDeployment, "non-existing-file")
-		Expect(err).To(HaveOccurred())
-	})
+	Describe("EnsureSeedReconfigurationSecret", func() {
+		It("success", func() {
+			err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+			Expect(err).NotTo(HaveOccurred())
+			secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
+			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+		})
 
-	It("EnsureAdminPasswordSecret success", func() {
-		err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
-		Expect(err).NotTo(HaveOccurred())
-		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: KubeadminPasswordSecretName(clusterDeployment.Name)}
-		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte(kubeAdminData))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
-	})
+		It("already exists but data changed", func() {
+			err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+			Expect(err).NotTo(HaveOccurred())
+			secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
+			exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
 
-	It("EnsureAdminPasswordSecret already exists but data changed", func() {
-		err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
-		Expect(err).NotTo(HaveOccurred())
-		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: KubeadminPasswordSecretName(clusterDeployment.Name)}
-		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte(kubeAdminData))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
+			seedReconfigurationFile, err = createTempFile("seedReconfiguration-new", "seedReconfiguration-new")
+			Expect(err).NotTo(HaveOccurred())
+			err = cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
+			Expect(err).NotTo(HaveOccurred())
+			exists, err = cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte("seedReconfiguration-new"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exists).To(BeTrue())
+		})
 
-		kubeAdminFile, err = createTempFile("kubeAdminData-new", "kubeAdminData-new")
-		Expect(err).NotTo(HaveOccurred())
-		err = cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, kubeAdminFile)
-		Expect(err).NotTo(HaveOccurred())
-		exists, err = cm.secretExistsAndValid(ctx, log, secretRef, "password", []byte("kubeAdminData-new"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
-	})
-
-	It("EnsureAdminPasswordSecret file doesn't exists", func() {
-		err := cm.EnsureAdminPasswordSecret(ctx, log, clusterDeployment, "non-existing-file")
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("EnsureSeedReconfiguration success", func() {
-		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
-		Expect(err).NotTo(HaveOccurred())
-		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
-		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
-	})
-
-	It("EnsureSeedReconfiguration already exists but data changed", func() {
-		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
-		Expect(err).NotTo(HaveOccurred())
-		secretRef := types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: SeedReconfigurationSecretName(clusterDeployment.Name)}
-		exists, err := cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte(seedReconfigData))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
-
-		seedReconfigurationFile, err = createTempFile("seedReconfiguration-new", "seedReconfiguration-new")
-		Expect(err).NotTo(HaveOccurred())
-		err = cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, seedReconfigurationFile)
-		Expect(err).NotTo(HaveOccurred())
-		exists, err = cm.secretExistsAndValid(ctx, log, secretRef, SeedReconfigurationFileName, []byte("seedReconfiguration-new"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(exists).To(BeTrue())
-	})
-
-	It("EnsureSeedReconfiguration file doesn't exists", func() {
-		err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, "non-existing-file")
-		Expect(err).To(HaveOccurred())
+		It("file doesn't exists", func() {
+			err := cm.EnsureSeedReconfigurationSecret(ctx, log, clusterDeployment, "non-existing-file")
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
 	Describe("createOrUpdateClusterCredentialSecret", func() {
@@ -387,20 +407,6 @@ var _ = Describe("Credentials", func() {
 		})
 	})
 })
-
-func verifyKubeconfigSecret(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment, data string) {
-	kubeconfigSecretData := getKubeconfigFromSecret(ctx, kClient, cd)
-	Expect(string(kubeconfigSecretData)).To(Equal(data))
-}
-
-func getKubeconfigFromSecret(ctx context.Context, kClient client.Client, cd *hivev1.ClusterDeployment) []byte {
-	kubeconfigSecret := &corev1.Secret{}
-	err := kClient.Get(ctx, client.ObjectKey{Namespace: cd.Namespace, Name: cd.Name + "-admin-kubeconfig"}, kubeconfigSecret)
-	Expect(err).NotTo(HaveOccurred())
-	kubeconfigSecretData, exists := kubeconfigSecret.Data["kubeconfig"]
-	Expect(exists).To(BeTrue())
-	return kubeconfigSecretData
-}
 
 func createTempFile(prefix, data string) (string, error) {
 	f, err := os.CreateTemp("", prefix)
