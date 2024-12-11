@@ -190,9 +190,9 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 			BlockOwnerDeletion: ptr.To(true),
 		}}
 
-		secret.Labels = addLabel(secret.Labels, "hive.openshift.io/cluster-deployment-name", cd.Name)
-		secret.Labels = addLabel(secret.Labels, "hive.openshift.io/secret-type", secretType)
-		secret.Labels = addLabel(secret.Labels, SecretResourceLabel, SecretResourceValue)
+		metav1.SetMetaDataLabel(&secret.ObjectMeta, "hive.openshift.io/cluster-deployment-name", cd.Name)
+		metav1.SetMetaDataLabel(&secret.ObjectMeta, "hive.openshift.io/secret-type", secretType)
+		metav1.SetMetaDataLabel(&secret.ObjectMeta, SecretResourceLabel, SecretResourceValue)
 
 		// Update the Secret object with the desired data
 		secret.Data = data
@@ -257,16 +257,4 @@ func (r *Credentials) ClusterIdentitySecrets(ctx context.Context, cd *hivev1.Clu
 	}
 
 	return idData, true, nil
-}
-
-func addLabel(labels map[string]string, labelKey, labelValue string) map[string]string {
-	if labelKey == "" {
-		// Don't need to add a label.
-		return labels
-	}
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[labelKey] = labelValue
-	return labels
 }
