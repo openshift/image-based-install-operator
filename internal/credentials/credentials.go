@@ -30,6 +30,9 @@ const (
 	kubeadmincreds              = "kubeadmincreds"
 	kubeAdminKey                = "password"
 	SeedReconfigurationFileName = "manifest.json"
+
+	secretPreservationLabel = "siteconfig.open-cluster-management.io/preserve"
+	secretPreservationValue = "cluster-identity"
 )
 
 //go:generate mockgen --build_flags=--mod=mod -package=credentials -destination=mock_client.go sigs.k8s.io/controller-runtime/pkg/client Client
@@ -193,6 +196,7 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, "hive.openshift.io/cluster-deployment-name", cd.Name)
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, "hive.openshift.io/secret-type", secretType)
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, SecretResourceLabel, SecretResourceValue)
+		metav1.SetMetaDataLabel(&secret.ObjectMeta, secretPreservationLabel, secretPreservationValue)
 
 		// Update the Secret object with the desired data
 		secret.Data = data
