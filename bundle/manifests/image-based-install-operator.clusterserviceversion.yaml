@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-10-15T09:01:15Z"
+    createdAt: "2024-12-13T15:40:12Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -201,9 +201,6 @@ spec:
                   initialDelaySeconds: 5
                   periodSeconds: 10
                 resources:
-                  limits:
-                    cpu: 500m
-                    memory: 1500Mi
                   requests:
                     cpu: 10m
                     memory: 250Mi
@@ -232,9 +229,6 @@ spec:
                 - containerPort: 8000
                   name: config-server
                 resources:
-                  limits:
-                    cpu: 500m
-                    memory: 128Mi
                   requests:
                     cpu: 10m
                     memory: 64Mi
