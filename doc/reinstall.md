@@ -29,7 +29,6 @@ Once the secrets are backed up some data needs to be removed to ensure they work
 
 Remove the following fields if they are present from all the previously created secret files:
 - metadata.creationTimestamp
-- metadata.labels (remove all except `image-based-installed.openshift.io/created`)
 - metadata.ownerReferences
 - metadata.resourceVersion
 - metadata.uid
@@ -86,13 +85,11 @@ type: Opaque
 
 #### Remove the existing cluster resources
 
-Delete the following resources associated with the original cluster installation:
+Ensure that the following resources associated with the original cluster installation have been deleted, or delete them manually:
 - `ClusterDeployment`
 - `ImageClusterInstall`
 - `BareMetalHost`
 - `DataImage`
-- `Secrets`
-- `ConfigMaps`
 
 #### Create the secrets from the original installation
 
