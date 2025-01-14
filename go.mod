@@ -1,6 +1,6 @@
 module github.com/openshift/image-based-install-operator
 
-go 1.19
+go 1.22
 
 require (
 	github.com/containers/image/v5 v5.29.0
