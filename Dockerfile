@@ -17,7 +17,7 @@ COPY vendor/ vendor/
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/manager/main.go
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o server cmd/server/main.go
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:9.4
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 
 #RUN microdnf install glibc-devel
 
