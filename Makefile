@@ -284,5 +284,5 @@ catalog-push: ## Push a catalog image.
 
 .PHONY: vendor
 vendor: ## Update go modules and vendor dependencies, set GOPROXY=direct to avoid using the GOPROXY environment variable in order to bring installer
-	GOPROXY=direct go mod tidy
-	GOPROXY=direct go mod vendor
+	GOPROXY=https://proxy.golang.org,direct go mod tidy
+	GOPROXY=https://proxy.golang.org,direct go mod vendor
