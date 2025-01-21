@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-12-13T15:40:12Z"
+    createdAt: "2025-01-21T15:34:34Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -186,6 +186,8 @@ spec:
                   value: https
                 - name: MAX_CONCURRENT_RECONCILES
                   value: "1"
+                - name: TMPDIR
+                  value: /data
                 image: controller:latest
                 livenessProbe:
                   httpGet:
@@ -209,6 +211,8 @@ spec:
                   capabilities:
                     drop:
                     - ALL
+                  privileged: false
+                  readOnlyRootFilesystem: true
                 volumeMounts:
                 - mountPath: /data
                   name: data
@@ -237,6 +241,8 @@ spec:
                   capabilities:
                     drop:
                     - ALL
+                  privileged: false
+                  readOnlyRootFilesystem: true
                 volumeMounts:
                 - mountPath: /data
                   name: data
