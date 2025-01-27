@@ -215,9 +215,9 @@ func (a *OptionalInstallConfig) validateControlPlaneConfiguration(installConfig 
 	var fieldPath *field.Path
 
 	if installConfig.ControlPlane != nil {
-		if *installConfig.ControlPlane.Replicas != 1 && *installConfig.ControlPlane.Replicas != 3 {
+		if *installConfig.ControlPlane.Replicas < 1 || *installConfig.ControlPlane.Replicas > 5 || *installConfig.ControlPlane.Replicas == 2 {
 			fieldPath = field.NewPath("ControlPlane", "Replicas")
-			allErrs = append(allErrs, field.Invalid(fieldPath, installConfig.ControlPlane.Replicas, fmt.Sprintf("ControlPlane.Replicas can only be set to 3 or 1. Found %v", *installConfig.ControlPlane.Replicas)))
+			allErrs = append(allErrs, field.Invalid(fieldPath, installConfig.ControlPlane.Replicas, fmt.Sprintf("ControlPlane.Replicas can only be set to 5, 4, 3, or 1. Found %v", *installConfig.ControlPlane.Replicas)))
 		}
 	}
 	return allErrs
@@ -357,12 +357,6 @@ func (a *OptionalInstallConfig) validateBMCConfig(installConfig *types.InstallCo
 }
 
 func warnUnusedConfig(installConfig *types.InstallConfig) {
-	// "Proxyonly" is the default set from generic install config code
-	if installConfig.AdditionalTrustBundlePolicy != "Proxyonly" {
-		fieldPath := field.NewPath("AdditionalTrustBundlePolicy")
-		logrus.Warnf(fmt.Sprintf("%s: %s is ignored", fieldPath, installConfig.AdditionalTrustBundlePolicy))
-	}
-
 	for i, compute := range installConfig.Compute {
 		if compute.Hyperthreading != "Enabled" {
 			fieldPath := field.NewPath(fmt.Sprintf("Compute[%d]", i), "Hyperthreading")

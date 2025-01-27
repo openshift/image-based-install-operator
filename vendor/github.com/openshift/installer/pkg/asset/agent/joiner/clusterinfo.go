@@ -29,6 +29,7 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/agent"
 	"github.com/openshift/installer/pkg/asset/agent/workflow"
+	workflowreport "github.com/openshift/installer/pkg/asset/agent/workflow/report"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/aws"
 	"github.com/openshift/installer/pkg/types/azure"
@@ -72,6 +73,8 @@ type ClusterInfo struct {
 	IgnitionEndpointWorker        *models.IgnitionEndpoint
 	FIPS                          bool
 	Nodes                         *corev1.NodeList
+	ChronyConf                    *igntypes.File
+	BootArtifactsBaseURL          string
 }
 
 var _ asset.WritableAsset = (*ClusterInfo)(nil)
@@ -91,12 +94,16 @@ func (*ClusterInfo) Dependencies() []asset.Asset {
 }
 
 // Generate generates the ClusterInfo.
-func (ci *ClusterInfo) Generate(_ context.Context, dependencies asset.Parents) error {
+func (ci *ClusterInfo) Generate(ctx context.Context, dependencies asset.Parents) error {
 	agentWorkflow := &workflow.AgentWorkflow{}
 	dependencies.Get(agentWorkflow, &ci.addNodesConfig)
 
 	if agentWorkflow.Workflow != workflow.AgentWorkflowTypeAddNodes {
 		return nil
+	}
+
+	if err := workflowreport.GetReport(ctx).Stage(workflow.StageClusterInspection); err != nil {
+		return err
 	}
 
 	err := ci.initClients()
@@ -119,13 +126,19 @@ func (ci *ClusterInfo) Generate(_ context.Context, dependencies asset.Parents) e
 		ci.retrieveClusterName,
 		ci.retrieveSSHKey,
 		ci.retrieveFIPS,
+		ci.retrieveWorkerChronyConfig,
+		ci.retrieveBootArtifactsBaseURL,
 		ci.retrieveNamespace,
 	} {
 		if err := f(); err != nil {
 			return err
 		}
 	}
-	return ci.validate().ToAggregate()
+
+	if err = ci.validate().ToAggregate(); err != nil {
+		return err
+	}
+	return ci.reportResult(ctx)
 }
 
 func (ci *ClusterInfo) initClients() error {
@@ -241,6 +254,19 @@ func (ci *ClusterInfo) retrieveArchitecture() error {
 func (ci *ClusterInfo) retrieveFIPS() error {
 	workerMachineConfig, err := ci.OpenshiftMachineConfigClient.MachineconfigurationV1().MachineConfigs().Get(context.Background(), "99-worker-fips", metav1.GetOptions{})
 	if err != nil {
+		// Older oc client may not have sufficient permissions,
+		// falling back to previous implementation.
+		if errors.IsForbidden(err) {
+			installConfig, err := ci.retrieveInstallConfig()
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			ci.FIPS = installConfig.FIPS
+			return nil
+		}
 		// This resource is not created when FIPS is not enabled
 		if errors.IsNotFound(err) {
 			return nil
@@ -260,6 +286,19 @@ func (ci *ClusterInfo) retrieveSSHKey() error {
 
 	workerMachineConfig, err := ci.OpenshiftMachineConfigClient.MachineconfigurationV1().MachineConfigs().Get(context.Background(), "99-worker-ssh", metav1.GetOptions{})
 	if err != nil {
+		// Older oc client may not have sufficient permissions,
+		// falling back to previous implementation.
+		if errors.IsForbidden(err) {
+			installConfig, err := ci.retrieveInstallConfig()
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			ci.SSHKey = installConfig.SSHKey
+			return nil
+		}
 		return err
 	}
 	var ign igntypes.Config
@@ -276,9 +315,74 @@ func (ci *ClusterInfo) retrieveSSHKey() error {
 	return nil
 }
 
+func (ci *ClusterInfo) retrieveWorkerChronyConfig() error {
+	workerMachineConfig, err := ci.OpenshiftMachineConfigClient.MachineconfigurationV1().MachineConfigs().Get(context.Background(), "50-workers-chrony-configuration", metav1.GetOptions{})
+	if err != nil {
+		// Older oc client may not have sufficient permissions,
+		// falling back to previous implementation.
+		if errors.IsForbidden(err) {
+			return nil
+		}
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	var ign igntypes.Config
+	if err := yaml.Unmarshal(workerMachineConfig.Spec.Config.Raw, &ign); err != nil {
+		return err
+	}
+	for _, f := range ign.Storage.Files {
+		if f.Path != "/etc/chrony.conf" {
+			continue
+		}
+		chronyConf := f
+		ci.ChronyConf = &chronyConf
+		break
+	}
+	return nil
+}
+
+func (ci *ClusterInfo) retrieveBootArtifactsBaseURL() error {
+	if ci.addNodesConfig.Config.BootArtifactsBaseURL != "" {
+		ci.BootArtifactsBaseURL = ci.addNodesConfig.Config.BootArtifactsBaseURL
+	}
+	return nil
+}
+
+func (ci *ClusterInfo) retrieveInstallConfig() (*types.InstallConfig, error) {
+	clusterConfig, err := ci.Client.CoreV1().ConfigMaps("kube-system").Get(context.Background(), "cluster-config-v1", metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	data, ok := clusterConfig.Data["install-config"]
+	if !ok {
+		return nil, fmt.Errorf("cannot find install-config data")
+	}
+
+	installConfig := types.InstallConfig{}
+	if err = yaml.Unmarshal([]byte(data), &installConfig); err != nil {
+		return nil, err
+	}
+	return &installConfig, nil
+}
+
 func (ci *ClusterInfo) retrieveImageDigestMirrorSets() error {
 	imageDigestMirrorSets, err := ci.OpenshiftClient.ConfigV1().ImageDigestMirrorSets().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
+		// Older oc client may not have sufficient permissions,
+		// falling back to previous implementation.
+		if errors.IsForbidden(err) {
+			installConfig, err := ci.retrieveInstallConfig()
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			ci.ImageDigestSources = installConfig.ImageDigestSources
+			return nil
+		}
 		if !errors.IsNotFound(err) {
 			return err
 		}
@@ -303,6 +407,19 @@ func (ci *ClusterInfo) retrieveImageDigestMirrorSets() error {
 func (ci *ClusterInfo) retrieveImageContentPolicies() error {
 	imageContentPolicies, err := ci.OpenshiftClient.ConfigV1().ImageContentPolicies().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
+		// Older oc client may not have sufficient permissions,
+		// falling back to previous implementation.
+		if errors.IsForbidden(err) {
+			installConfig, err := ci.retrieveInstallConfig()
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			ci.DeprecatedImageContentSources = installConfig.DeprecatedImageContentSources
+			return nil
+		}
 		if !errors.IsNotFound(err) {
 			return err
 		}
@@ -522,4 +639,21 @@ func (ci *ClusterInfo) toTypesPlatform(platformType configv1.PlatformType) (type
 	}
 
 	return platform, nil
+}
+
+func (ci *ClusterInfo) reportResult(ctx context.Context) error {
+	results := map[string]string{
+		"Version":      ci.Version,
+		"ReleaseImage": ci.ReleaseImage,
+		"OSImage":      ci.OSImageLocation,
+		"PlatformType": string(ci.PlatformType),
+		"Architecture": ci.Architecture,
+	}
+
+	data, err := json.Marshal(results)
+	if err != nil {
+		return err
+	}
+
+	return workflowreport.GetReport(ctx).StageResult(workflow.StageClusterInspection, string(data))
 }
