@@ -20,6 +20,17 @@ RUN GODEBUG=madvdontneed=1 GOGC=50 CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5
 
+ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
+    DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
+
+LABEL name="image-based-install-operator" \
+      summary="${SUMMARY}" \
+      description="${DESCRIPTION}" \
+      com.redhat.component="image-based-install-operator" \
+      io.k8s.display-name="Image Based Install Operator" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.openshift.tags="install,cluster,provisioning"
+
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
