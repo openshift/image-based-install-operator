@@ -6,7 +6,6 @@ WORKDIR /opt/app-root/src
 
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN go mod download
 
 # Copy the go source
 COPY cmd/ cmd/
