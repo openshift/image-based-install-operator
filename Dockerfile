@@ -19,6 +19,17 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o bu
 
 FROM registry.ci.openshift.org/ocp/4.17:base-rhel9
 
+ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
+    DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
+
+LABEL name="image-based-install-operator" \
+      summary="${SUMMARY}" \
+      description="${DESCRIPTION}" \
+      com.redhat.component="image-based-install-operator" \
+      io.k8s.display-name="Image Based Install Operator" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.openshift.tags="install,cluster,provisioning"
+
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
