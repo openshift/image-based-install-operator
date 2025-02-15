@@ -18,7 +18,7 @@ COPY vendor/ vendor/
 RUN GODEBUG=madvdontneed=1 GOGC=50 CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/manager cmd/manager/main.go
 RUN GODEBUG=madvdontneed=1 GOGC=50 CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5-1736404155
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5-1739420147
 
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
