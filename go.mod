@@ -13,7 +13,7 @@ require (
 	github.com/metal3-io/baremetal-operator/apis v0.6.1
 	github.com/onsi/ginkgo/v2 v2.14.0
 	github.com/onsi/gomega v1.30.0
-	github.com/openshift-kni/lifecycle-agent v0.0.0-20240830194832-3f35535374a6
+	github.com/openshift-kni/lifecycle-agent bc80cbf560e8
 	github.com/openshift/api v0.0.0-20240423014330-2cb60a113ad1
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
 	github.com/openshift/library-go v0.0.0-20240422143640-fad649cbbd63
