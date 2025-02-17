@@ -110,7 +110,7 @@ spec:
           secretName: ibi-config-serving-certs
       - name: webhook-certs
         secret:
-          secretName: webhook-certs
+          secretName: ibi-webhook-serving-certs
       serviceAccountName: image-based-install-operator
       terminationGracePeriodSeconds: 10
 ---

@@ -10,7 +10,7 @@ webhooks:
   - v1
   clientConfig:
     service:
-      name: webhook-service
+      name: image-based-install-webhook
       namespace: system
       path: /validate-extensions-hive-openshift-io-v1alpha1-imageclusterinstall
   failurePolicy: Fail
