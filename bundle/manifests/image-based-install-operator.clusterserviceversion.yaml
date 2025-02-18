@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-01-21T15:34:34Z"
+    createdAt: "2025-02-18T20:07:47Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -262,7 +262,7 @@ spec:
                   secretName: ibi-config-serving-certs
               - name: webhook-certs
                 secret:
-                  secretName: webhook-certs
+                  secretName: ibi-webhook-serving-certs
       permissions:
       - rules:
         - apiGroups:
