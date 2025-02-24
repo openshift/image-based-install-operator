@@ -19,7 +19,6 @@ package controllers
 import (
 	"bytes"
 	"context"
-
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -540,6 +539,9 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 func (r *ImageClusterInstallReconciler) ensureBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) (*bmh_v1alpha1.DataImage, error) {
 	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
+		if !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
+			return dataImage, fmt.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+		}
 		return dataImage, nil
 	}
 
