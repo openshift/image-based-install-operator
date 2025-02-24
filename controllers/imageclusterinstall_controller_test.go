@@ -922,6 +922,60 @@ var _ = Describe("Reconcile", func() {
 
 	})
 
+	It("Set status condition in case dataImage exists and being deleted", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.ExternallyProvisioned = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		dataImage := bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       bmh.Name,
+				Namespace:  bmh.Namespace,
+				Finalizers: []string{"test.finalizer"}, // Prevent immediate deletion
+			},
+		}
+		Expect(c.Create(ctx, &dataImage)).To(Succeed())
+
+		Expect(c.Delete(ctx, &dataImage)).To(Succeed())
+		Eventually(func() *metav1.Time {
+			err := c.Get(ctx, client.ObjectKey{Name: dataImage.Name, Namespace: dataImage.Namespace}, &dataImage)
+			if err != nil {
+				return nil
+			}
+			return dataImage.DeletionTimestamp
+		}).ShouldNot(BeNil()) // Ensure deletion timestamp is set
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: clusterInstallNamespace,
+				Name:      clusterInstallName,
+			},
+		}
+		installerSuccess()
+		expectedErr := fmt.Sprintf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+		res, err := r.Reconcile(ctx, req)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(BeEquivalentTo(expectedErr))
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal(expectedErr))
+	})
+
 	It("configures a referenced BMH with state registering and ExternallyProvisioned true", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateRegistering)
 		bmh.Spec.ExternallyProvisioned = true
