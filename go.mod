@@ -243,7 +243,7 @@ require (
 replace github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20240611081634-a92cc4b9ae8b
 
 replace (
-	github.com/openshift/assisted-service/api => github.com/openshift/assisted-service/api v0.0.0-20241001055825-63e8b0d3ad63
+	github.com/openshift/assisted-service/api => github.com/openshift/assisted-service/api 0889f438699f
 	github.com/openshift/assisted-service/models => github.com/openshift/assisted-service/models v0.0.0-20241001055825-63e8b0d3ad63
 	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20200929152424-eab2e087f366 // Indirect dependency through MAO from cluster API providers
 
