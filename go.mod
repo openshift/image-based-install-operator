@@ -96,6 +96,6 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20240611081634-a92cc4b9ae8b
+replace github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis 307bd7fc9a71
 
 replace k8s.io/client-go => k8s.io/client-go v0.29.4
