@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -28,11 +29,8 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/kelseyhightower/envconfig"
-	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
-	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,6 +43,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	"github.com/kelseyhightower/envconfig"
+	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
 
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/controllers"
@@ -191,10 +194,41 @@ func main() {
 		os.Exit(1)
 	}
 
+	go EnqueueExistingImageClusterInstall(mgr)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
+	}
+}
+
+func EnqueueExistingImageClusterInstall(mgr manager.Manager) {
+	ctx := context.Background()
+
+	// Wait for cache to sync
+	setupLog.Info("Waiting for cache to sync...")
+	if synced := mgr.GetCache().WaitForCacheSync(ctx); !synced {
+		setupLog.Error(fmt.Errorf("Failed to wait for cache to sync"), "failed to wait for cache to sync while enqueuing existing ImageClusterInstall")
+		os.Exit(1)
+	}
+	setupLog.Info("Cache successfully started and synced")
+
+	// List existing resources and enqueue those with ClusterInstallCompleted condition false
+	var icilList v1alpha1.ImageClusterInstallList
+	if err := mgr.GetClient().List(ctx, &icilList); err != nil {
+		setupLog.Error(err, "Failed to list ImageClusterInstall")
+		os.Exit(1)
+	}
+
+	for _, ici := range icilList.Items {
+		if !controllers.InstallationCompleted(&ici) {
+			setupLog.Info("Enqueuing existing ImageClusterInstall:", "namespace", ici.Namespace, "name", ici.Name)
+			// Triggers reconciliation
+			if err := mgr.GetClient().Status().Update(ctx, &ici); err != nil {
+				setupLog.Info("Failed to requeue ImageClusterInstall", "namespace", ici.Namespace, "name", ici.Name)
+			}
+		}
 	}
 }
 
