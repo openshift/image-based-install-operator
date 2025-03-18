@@ -221,17 +221,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 	}
 
-	res, err := r.validateBMH(ctx, log, ici, bmh)
-	if err != nil || !res.IsZero() {
-		return res, err
+	if err = r.validateBMH(ctx, log, ici, bmh); err != nil {
+		// in case of failure to validate the BMH just requeue
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := r.setClusterInstallMetadata(ctx, log, ici, clusterDeployment); err != nil {
+	if err = r.setClusterInstallMetadata(ctx, log, ici, clusterDeployment); err != nil {
 		log.WithError(err).Error("failed to set ImageClusterInstall data")
 		return ctrl.Result{}, err
 	}
 
-	res, err = r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
+	res, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
 	if !res.IsZero() || err != nil {
 		if err != nil {
 			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
@@ -261,6 +261,10 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		return ctrl.Result{}, err
 	}
+	if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, v1alpha1.HostValidationsOKMsg); updateErr != nil {
+		log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+	}
+
 	if dataImage.ObjectMeta.CreationTimestamp.Time.Add(r.Options.DataImageCoolDownPeriod).After(time.Now()) {
 		// in case the dataImage was created less than a second ago requeuee to allow BMO some time to get
 		// notified about the newly created DataImage before adding the reboot annotation in updateBMHProvisioningState
@@ -303,7 +307,7 @@ func (r *ImageClusterInstallReconciler) validateBMH(
 	ctx context.Context,
 	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
-	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
+	bmh *bmh_v1alpha1.BareMetalHost) error {
 
 	// Skip validations in case of the state is Externally Provisioned as it will not be inspected
 	if bmh.Spec.ExternallyProvisioned {
@@ -311,7 +315,7 @@ func (r *ImageClusterInstallReconciler) validateBMH(
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	// no need to validate if inspect annotation is disabled
@@ -320,47 +324,34 @@ func (r *ImageClusterInstallReconciler) validateBMH(
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable {
 		log.Infof("BareMetalHost (%s/%s) isn't available", bmh.Namespace, bmh.Name)
-		msg := fmt.Sprintf("BareMetalHost (%s/%s) provisioning state is: %s, waiting for %s", bmh.Namespace, bmh.Name, bmh.Status.Provisioning.State, bmh_v1alpha1.StateAvailable)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
+		err := fmt.Errorf("BareMetalHost (%s/%s) provisioning state is: %s, waiting for %s", bmh.Namespace, bmh.Name, bmh.Status.Provisioning.State, bmh_v1alpha1.StateAvailable)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		log.Info(msg)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return err
 	}
 
 	if bmh.Status.HardwareDetails == nil {
-		msg := fmt.Sprintf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
+		err := fmt.Errorf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
-		log.Info(msg)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return err
 	}
 
-	var err error
-	defer func() {
-		reason := v1alpha1.HostValidationSucceeded
-		msg := v1alpha1.HostValidationsOKMsg
-		if err != nil {
-			reason = v1alpha1.HostValidationFailedReason
-			msg = fmt.Sprintf("failed to validate host: %s", err.Error())
-		}
-
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, reason, msg); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-	}()
-	err = r.validateBMHMachineNetwork(ici.Spec.MachineNetwork, *bmh.Status.HardwareDetails)
+	err := r.validateBMHMachineNetwork(ici.Spec.MachineNetwork, *bmh.Status.HardwareDetails)
 	if err != nil {
-		log.WithError(err).Error("failed to validate BMH machine network")
-		return ctrl.Result{}, err
+		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationFailedReason, err.Error()); updateErr != nil {
+			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+		}
+		return err
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
@@ -375,7 +366,6 @@ func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
 			return nil
 		}
 	}
-
 	return fmt.Errorf("bmh host doesn't have any nic with ip in provided machineNetwork %s", machineNetwork)
 }
 
@@ -539,8 +529,9 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 func (r *ImageClusterInstallReconciler) ensureBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) (*bmh_v1alpha1.DataImage, error) {
 	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
-		if !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
-			return dataImage, fmt.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+		if err == nil && !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
+			err = fmt.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+			return dataImage, err
 		}
 		return dataImage, nil
 	}

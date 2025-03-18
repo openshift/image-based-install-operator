@@ -959,21 +959,22 @@ var _ = Describe("Reconcile", func() {
 			},
 		}
 		installerSuccess()
-		expectedErr := fmt.Sprintf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(BeEquivalentTo(expectedErr))
+		Expect(err.Error()).To(ContainSubstring("already exists but is being deleted, probably leftover from previous installation"))
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
+		expectedReason := fmt.Sprintf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Message).To(Equal(expectedErr))
+		Expect(cond.Message).To(Equal(expectedReason))
 	})
 
 	It("configures a referenced BMH with state registering and ExternallyProvisioned true", func() {
@@ -1619,14 +1620,14 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("bmh host doesn't have any nic with ip in provided"))
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
-		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("bmh host doesn't have any nic with ip in provided machineNetwork"))
 
 		// good one
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
