@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -74,7 +73,7 @@ func (r *ImageClusterInstallMonitor) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 	// Nothing to do if the installation process has already stopped
-	if installationCompleted(ici) {
+	if InstallationCompleted(ici) {
 		log.Infof("Cluster %s/%s finished installation process, nothing to do", ici.Namespace, ici.Name)
 		return ctrl.Result{}, nil
 	}
