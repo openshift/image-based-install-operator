@@ -165,7 +165,7 @@ func installationTimedout(ici *v1alpha1.ImageClusterInstall) bool {
 	return cond != nil && cond.Status == corev1.ConditionTrue && cond.Reason == v1alpha1.InstallTimedoutReason
 }
 
-func installationCompleted(ici *v1alpha1.ImageClusterInstall) bool {
+func InstallationCompleted(ici *v1alpha1.ImageClusterInstall) bool {
 	cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallCompleted)
 	return cond != nil && cond.Status == corev1.ConditionTrue
 }

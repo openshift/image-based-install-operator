@@ -143,7 +143,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// Nothing to do if the installation is complete
-	if installationCompleted(ici) {
+	if InstallationCompleted(ici) {
 		return ctrl.Result{}, nil
 	}
 	// Nothing to do if the installation process started and the config.iso exists
