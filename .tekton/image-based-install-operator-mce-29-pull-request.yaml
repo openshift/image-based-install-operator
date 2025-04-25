@@ -603,7 +603,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-image-based-install-operator-mce-29
   workspaces:
   - name: git-auth
     secret:
