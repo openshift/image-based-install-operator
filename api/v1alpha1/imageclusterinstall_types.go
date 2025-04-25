@@ -25,13 +25,15 @@ import (
 )
 
 const (
-	ImageNotReadyReason = "NotReady"
-	ImageReadyReason    = "Ready"
-	ImageReadyMessage   = "Image is ready for use"
+	ConfigurationPendingReason = "ConfigurationPending"
+	ConfigurationFailedReason = "ConfigurationFailed"
 
-	HostConfiguraionFailedReason      = "HostConfigurationFailed"
-	HostConfiguraionSucceededReason   = "HostConfigurationSucceeded"
-	HostConfigurationSucceededMessage = "Configuration image is attached to the referenced host"
+	ImageCreationFailedReason = "ImageCreationFailed"
+	ImageCreationPendingReason = "ImageCreationPending"
+
+	HostConfigurationPendingReason   = "HostConfigurationPending"
+	HostConfigurationFailedReason    = "HostConfigurationFailed"
+	HostConfigurationSucceededReason = "HostConfigurationSucceeded"
 
 	InstallTimedoutReason  = "ClusterInstallationTimedOut"
 	InstallTimedoutMessage = "Cluster installation is taking longer than expected"
@@ -42,10 +44,8 @@ const (
 	InstallSucceededReason  = "ClusterInstallationSucceeded"
 	InstallSucceededMessage = "Cluster installation has succeeded"
 
-	HostValidationFailedReason = "HostValidationFailed"
-	HostValidationSucceeded    = "HostValidationSucceeded"
-	HostValidationPending      = "HostValidationPending"
-	HostValidationsOKMsg       = "The host's validations are passing and image is ready"
+	HostValidationFailedReason  = "HostValidationFailed"
+	HostValidationPendingReason = "HostValidationPending"
 )
 
 // ImageClusterInstallSpec defines the desired state of ImageClusterInstall

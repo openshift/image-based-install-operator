@@ -805,13 +805,13 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Message).To(Equal("clusterDeployment with name 'test-cluster' in namespace 'test-namespace' not found"))
+		Expect(cond.Message).To(Equal("failed to get ClusterDeployment test-namespace/test-cluster"))
 	})
 
 	It("creates extra manifests", func() {
@@ -962,13 +962,13 @@ var _ = Describe("Reconcile", func() {
 		res, err := r.Reconcile(ctx, req)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("already exists but is being deleted, probably leftover from previous installation"))
-		Expect(res).To(Equal(ctrl.Result{}))
+		Expect(res.RequeueAfter).To(Equal(30 * time.Second))
 
 		key := types.NamespacedName{
 			Namespace: clusterInstallNamespace,
 			Name:      clusterInstallName,
 		}
-		expectedReason := fmt.Sprintf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+		expectedReason := "previous DataImage is being deleted"
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -1309,7 +1309,7 @@ var _ = Describe("Reconcile", func() {
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Message).To(Equal("clusterDeploymentRef is unset"))
+		Expect(cond.Message).To(Equal("ClusterDeploymentRef is unset"))
 
 	})
 
@@ -1330,8 +1330,8 @@ var _ = Describe("Reconcile", func() {
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
-		Expect(cond.Message).To(Equal("No BareMetalHostRef set, nothing to do without provided bmh"))
+		Expect(cond.Reason).To(Equal(v1alpha1.ConfigurationPendingReason))
+		Expect(cond.Message).To(Equal("no BareMetalHostRef set, nothing to do without provided bmh"))
 	})
 
 	It("Set ClusterInstallRequirementsMet to false in case there is not actual bmh under the reference", func() {
@@ -1351,14 +1351,14 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
-		Expect(cond.Message).To(Equal("baremetalhosts.metal3.io \"doesntExist\" not found"))
+		Expect(cond.Reason).To(Equal(v1alpha1.ConfigurationPendingReason))
+		Expect(cond.Message).To(Equal("failed to get BareMetalHost test-bmh-namespace/doesntExist"))
 	})
 
 	It("updates the cluster install and cluster deployment metadata", func() {
@@ -1518,7 +1518,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
-	It("in case there is no actual bmh under the reference we should not return error", func() {
+	It("in case there is no actual bmh under the reference we should return error", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
@@ -1535,7 +1535,7 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
@@ -1566,7 +1566,7 @@ var _ = Describe("Reconcile", func() {
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPending))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationPendingReason))
 
 		// good one
 		Expect(c.Get(ctx, types.NamespacedName{
@@ -1596,7 +1596,7 @@ var _ = Describe("Reconcile", func() {
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationSucceeded))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
 	})
 
 	It("fails in case bmh has no ip in provided machine network but after changing machine network it succeeds", func() {
@@ -1620,7 +1620,7 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).To(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -1651,7 +1651,7 @@ var _ = Describe("Reconcile", func() {
 		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
-		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationSucceeded))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
 	})
 
 	It("labels secrets for backup", func() {
