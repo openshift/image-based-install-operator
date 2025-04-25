@@ -100,52 +100,8 @@ func (r *ImageClusterInstallReconciler) initializeConditions(ctx context.Context
 	return r.Status().Patch(ctx, ici, patch)
 }
 
-func (r *ImageClusterInstallReconciler) setImageReadyCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
-	cond := hivev1.ClusterInstallCondition{
-		Type:    hivev1.ClusterInstallRequirementsMet,
-		Status:  corev1.ConditionTrue,
-		Reason:  v1alpha1.ImageReadyReason,
-		Message: v1alpha1.ImageReadyMessage,
-	}
-
-	if err != nil {
-		cond.Status = corev1.ConditionFalse
-		cond.Reason = v1alpha1.ImageNotReadyReason
-		cond.Message = err.Error()
-	}
-
-	patch := client.MergeFrom(ici.DeepCopy())
-	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
-		return nil
-	}
-	r.Log.Infof("Setting image ready condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
-	return r.Status().Patch(ctx, ici, patch)
-}
-
-func (r *ImageClusterInstallReconciler) setHostConfiguredCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall, err error) error {
-	cond := hivev1.ClusterInstallCondition{
-		Type:    hivev1.ClusterInstallRequirementsMet,
-		Status:  corev1.ConditionTrue,
-		Reason:  v1alpha1.HostConfiguraionSucceededReason,
-		Message: v1alpha1.HostConfigurationSucceededMessage,
-	}
-
-	if err != nil {
-		cond.Status = corev1.ConditionFalse
-		cond.Reason = v1alpha1.HostConfiguraionFailedReason
-		cond.Message = err.Error()
-	}
-
-	patch := client.MergeFrom(ici.DeepCopy())
-	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
-		return nil
-	}
-	r.Log.Infof("Setting host configured condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
-	return r.Status().Patch(ctx, ici, patch)
-}
-
 func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.Context, ici *v1alpha1.ImageClusterInstall,
-	status corev1.ConditionStatus, reason, msg string) error {
+	status corev1.ConditionStatus, reason, msg string) {
 	cond := hivev1.ClusterInstallCondition{
 		Type:    hivev1.ClusterInstallRequirementsMet,
 		Status:  status,
@@ -154,10 +110,13 @@ func (r *ImageClusterInstallReconciler) setRequirementsMetCondition(ctx context.
 	}
 	patch := client.MergeFrom(ici.DeepCopy())
 	if updated := setClusterInstallCondition(&ici.Status.Conditions, cond); !updated {
-		return nil
+		return
 	}
 	r.Log.Infof("Setting requirements met condition, status: %s, reason: %s, message: %s", cond.Status, cond.Reason, cond.Message)
-	return r.Status().Patch(ctx, ici, patch)
+	updateErr := r.Status().Patch(ctx, ici, patch)
+	if updateErr != nil {
+		r.Log.WithError(updateErr).Error("failed to update requirements met condition")
+	}
 }
 
 func installationTimedout(ici *v1alpha1.ImageClusterInstall) bool {
