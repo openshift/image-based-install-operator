@@ -31,7 +31,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Hostname: "test",
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageCreationFailedReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -51,7 +51,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Hostname: "test",
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageCreationFailedReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -70,7 +70,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Hostname: "test",
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageCreationFailedReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -90,7 +90,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Hostname: "test",
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageCreationFailedReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -222,7 +222,7 @@ var _ = Describe("ValidateUpdate", func() {
 				Hostname: "test",
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageNotReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionFalse, ImageCreationFailedReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -301,7 +301,7 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, HostConfigurationSucceededReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -331,7 +331,7 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, HostConfigurationSucceededReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
@@ -389,7 +389,7 @@ var _ = Describe("ValidateUpdate", func() {
 				},
 			},
 			Status: ImageClusterInstallStatus{
-				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, ImageReadyReason),
+				Conditions: setClusterInstallCondition(hivev1.ClusterInstallRequirementsMet, corev1.ConditionTrue, HostConfigurationSucceededReason),
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
