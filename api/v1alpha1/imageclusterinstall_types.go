@@ -26,9 +26,9 @@ import (
 
 const (
 	ConfigurationPendingReason = "ConfigurationPending"
-	ConfigurationFailedReason = "ConfigurationFailed"
+	ConfigurationFailedReason  = "ConfigurationFailed"
 
-	ImageCreationFailedReason = "ImageCreationFailed"
+	ImageCreationFailedReason  = "ImageCreationFailed"
 	ImageCreationPendingReason = "ImageCreationPending"
 
 	HostConfigurationPendingReason   = "HostConfigurationPending"

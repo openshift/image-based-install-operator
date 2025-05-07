@@ -805,7 +805,7 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -960,8 +960,7 @@ var _ = Describe("Reconcile", func() {
 		}
 		installerSuccess()
 		res, err := r.Reconcile(ctx, req)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("already exists but is being deleted, probably leftover from previous installation"))
+		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(Equal(30 * time.Second))
 
 		key := types.NamespacedName{
@@ -1295,7 +1294,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
 
-	It("doesn't error when ClusterDeploymentRef is unset", func() {
+	It("sets the ClusterInstallRequirementsMet condition to false when ClusterDeploymentRef is unset", func() {
 		clusterInstall.Spec.ClusterDeploymentRef = nil
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		key := types.NamespacedName{
@@ -1331,7 +1330,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.ConfigurationPendingReason))
-		Expect(cond.Message).To(Equal("no BareMetalHostRef set, nothing to do without provided bmh"))
+		Expect(cond.Message).To(Equal("BareMetalHostRef is unset"))
 	})
 
 	It("Set ClusterInstallRequirementsMet to false in case there is not actual bmh under the reference", func() {
@@ -1351,7 +1350,7 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
@@ -1518,7 +1517,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal(clusterInstall.Spec.MachineNetwork))
 	})
 
-	It("in case there is no actual bmh under the reference we should return error", func() {
+	It("in case there is no actual bmh under the reference we should not return error", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
 			Name:      bmh.Name,
@@ -1535,10 +1534,10 @@ var _ = Describe("Reconcile", func() {
 			Name:      clusterInstallName,
 		}
 		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("reque in case bmh has no hw details but after adding them it succeeds", func() {
+	It("requeue in case bmh has no hw details but after adding them it succeeds", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Status.HardwareDetails = nil
 		Expect(c.Create(ctx, bmh)).To(Succeed())
