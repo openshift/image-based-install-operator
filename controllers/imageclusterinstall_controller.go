@@ -19,12 +19,14 @@ package controllers
 import (
 	"bytes"
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -36,7 +38,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -152,7 +154,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		if verifyIsoAndAuthExists(clusterConfigDir) {
 			return ctrl.Result{}, nil
 		}
-		r.Log.Infof("Running reconcilee for ici with bootTime set")
+		log.Info("Running reconcile for ici with bootTime set")
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
@@ -160,128 +162,231 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
+	cond := hivev1.ClusterInstallCondition{
+		Type:    hivev1.ClusterInstallRequirementsMet,
+		Status:  corev1.ConditionFalse,
+		Reason:  "Unknown",
+		Message: "Unknown",
+	}
+	defer func() {
+		r.setRequirementsMetCondition(ctx, ici, cond.Status, cond.Reason, cond.Message)
+	}()
+
+	// 1. Config validation phase
+	// Possible reasons for not meeting requirements and exiting reconcile:
+	// - ConfigurationPending (default): it's either the user needs to complete the ImageClusterInstall definition, or some of
+	//   referenced resources (CD or BMH) are not available yet. In both cases the reconcile ends, and will be triggered again
+	//   when the problem is resolved.
+	// - ConfigurationFailed: sets this reason when AutomatedCleaningMode cannot be modified in BMH.
+	cond.Reason = v1alpha1.ConfigurationPendingReason
+	cd, bmh, err := r.validateConfiguration(ctx, ici, &cond, log)
+	if cd == nil || bmh == nil || err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 2. Host validation phase
+	// Possible reasons for not meeting requirements and exiting reconcile:
+	// - HostValidationPending: if BMH provisioning or hardware inspection is not ready yet, reconcile is requeued for 30s later.
+	// - HostValidationFailed (default): in case of any errors or invalid BMH configuration the reconcile ends here.
+	// Default is HostValidationFailedReason but validateBMH() can change this to HostValidationPendingReason
+	cond.Reason = v1alpha1.HostValidationFailedReason
+	res, err := r.validateHost(ctx, ici, bmh, &cond, log)
+	if !res.IsZero() || err != nil {
+		return res, err
+	}
+
+	if err := r.setClusterInstallMetadata(ctx, log, ici, cd); err != nil {
+		cond.Message = "failed to set ClusterMetaData in ImageClusterInstall"
+		log.Error(err)
+		return ctrl.Result{}, err
+	}
+
+	// 3. Image creation phase
+	// Possible reasons for not meeting requirements and exiting reconcile:
+	// - ImageCreationPending: when lock cannot be acquired, reconcile gets requeued for 5s later to try again.
+	// - ImageCreationFailed (default): any other unexpected error stops the reconcile loop with this reason.
+	cond.Reason = v1alpha1.ImageCreationFailedReason
+	imageUrl, res, err := r.createImage(ctx, ici, req, bmh, cd, &cond, log)
+	if !res.IsZero() || err != nil {
+		return res, err
+	}
+
+	r.labelReferencedObjectsForBackup(ctx, log, ici, cd)
+
+	// 4. Host configuration phase
+	// Possible reasons for not meeting requirements and exiting reconcile:
+	// - HostConfigurationPending: sets this reason in following scenarios:
+	//   > earlier DataImage instance is still being deleted for some reason (requeue after 30s)
+	//   > current DataImage was just created less than a second ago so BMO might not be notified yet (requeue after 1s)
+	//   > image-based-install-managed annotation is not set yet in BMH (no requeue)
+	// - HostConfigurationFailed (default): any unexpected errors during this phase will lead to this reason and finish reconcile.
+	cond.Reason = v1alpha1.HostConfigurationFailedReason
+	continueReconcile, res, err := r.configureHost(ctx, ici, imageUrl, bmh, &cond, log)
+	if !continueReconcile || !res.IsZero() || err != nil {
+		return res, err
+	}
+
+	// Requirements met, host configured
+	cond.Status = corev1.ConditionTrue
+	cond.Reason = v1alpha1.HostConfigurationSucceededReason
+	cond.Message = "configuration image is attached to the referenced host"
+
+	return ctrl.Result{}, nil
+}
+
+func GetClusterConfigDir(namespacesDir, namespace, uid string) string {
+	return filepath.Join(namespacesDir, namespace, uid, FilesDir, ClusterConfigDir)
+}
+
+func (r *ImageClusterInstallReconciler) validateConfiguration(
+	ctx context.Context,
+	ici *v1alpha1.ImageClusterInstall,
+	cond *hivev1.ClusterInstallCondition,
+	log logrus.FieldLogger,
+) (*hivev1.ClusterDeployment, *bmh_v1alpha1.BareMetalHost, error) {
+
 	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
-		errorMessagge := fmt.Errorf("clusterDeploymentRef is unset")
-		log.Error(errorMessagge)
-		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil
+		cond.Message = "ClusterDeploymentRef is unset"
+		log.Error(errors.New(cond.Message))
+		return nil, nil, nil
 	}
 
-	clusterDeployment := &hivev1.ClusterDeployment{}
-	cdKey := types.NamespacedName{
-		Namespace: ici.Namespace,
-		Name:      ici.Spec.ClusterDeploymentRef.Name,
-	}
-	if err := r.Get(ctx, cdKey, clusterDeployment); err != nil {
-		if !errors.IsNotFound(err) {
-			log.WithError(err).Errorf(
-				"failed to get ClusterDeployment with name '%s' in namespace '%s'",
-				cdKey.Name, cdKey.Namespace)
-			return ctrl.Result{}, err
-		}
-		errorMessagge := fmt.Errorf("clusterDeployment with name '%s' in namespace '%s' not found",
-			cdKey.Name, cdKey.Namespace)
-		log.WithError(err).Error(errorMessagge)
-		if updateErr := r.setImageReadyCondition(ctx, ici, errorMessagge); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{Requeue: true}, nil
+	cd, err := r.getCD(ctx, ici)
+	if err != nil {
+		cond.Message = fmt.Sprintf("failed to get ClusterDeployment %s/%s", ici.Namespace, ici.Spec.ClusterDeploymentRef.Name)
+		log.Error(err)
+		return nil, nil, nil
 	}
 
-	if ici.Spec.BareMetalHostRef == nil {
-		msg := "No BareMetalHostRef set, nothing to do without provided bmh"
-		log.Infof(msg)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return ctrl.Result{}, nil
+	if ici.Spec.BareMetalHostRef == nil || ici.Spec.BareMetalHostRef.Name == "" {
+		cond.Message = "BareMetalHostRef is unset"
+		log.Error(errors.New(cond.Message))
+		return nil, nil, nil
 	}
 
 	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
 	if err != nil {
-		log.WithError(err).Infof("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return ctrl.Result{}, nil
+		cond.Message = fmt.Sprintf("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		log.Error(err)
+		return nil, nil, nil
 	}
 
-	// AutomatedCleaningMode is set at the beginning of this flow because we don't want that ironic
-	// will format the disk
+	// AutomatedCleaningMode is set at the beginning of this flow because we don't want ironic to format the disk
 	if bmh.Spec.AutomatedCleaningMode != bmh_v1alpha1.CleaningModeDisabled {
 		patch := client.MergeFrom(bmh.DeepCopy())
 		bmh.Spec.AutomatedCleaningMode = bmh_v1alpha1.CleaningModeDisabled
 		log.Infof("Disable automated cleaning mode for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 		if err := r.Patch(ctx, bmh, patch); err != nil {
-			return ctrl.Result{}, err
+			cond.Reason = v1alpha1.ConfigurationFailedReason
+			cond.Message = fmt.Sprintf("failed to disable automated cleaning mode for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+			log.WithError(err).Error(cond.Message)
+			return nil, nil, err
 		}
 	}
 
-	if err = r.validateBMH(ctx, log, ici, bmh); err != nil {
-		// in case of failure to validate the BMH just requeue
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
+	return cd, bmh, nil
+}
 
-	if err = r.setClusterInstallMetadata(ctx, log, ici, clusterDeployment); err != nil {
-		log.WithError(err).Error("failed to set ImageClusterInstall data")
-		return ctrl.Result{}, err
-	}
+func (r *ImageClusterInstallReconciler) validateHost(
+	ctx context.Context,
+	ici *v1alpha1.ImageClusterInstall,
+	bmh *bmh_v1alpha1.BareMetalHost,
+	cond *hivev1.ClusterInstallCondition,
+	log logrus.FieldLogger,
+) (ctrl.Result, error) {
 
-	res, err := r.writeInputData(ctx, log, ici, clusterDeployment, bmh)
-	if !res.IsZero() || err != nil {
-		if err != nil {
-			if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
-				log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-			}
-			log.Error(err)
-		}
+	if res, err := r.validateBMH(ici, bmh, cond); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	r.labelReferencedObjectsForBackup(ctx, log, ici, clusterDeployment)
+	if !bmh.Spec.ExternallyProvisioned {
+		log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
+		patch := client.MergeFrom(bmh.DeepCopy())
+		bmh.Spec.ExternallyProvisioned = true
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ImageClusterInstallReconciler) createImage(
+	ctx context.Context,
+	ici *v1alpha1.ImageClusterInstall,
+	req ctrl.Request,
+	bmh *bmh_v1alpha1.BareMetalHost,
+	cd *hivev1.ClusterDeployment,
+	cond *hivev1.ClusterInstallCondition,
+	log logrus.FieldLogger,
+) (string, ctrl.Result, error) {
+
+	res, err := r.writeInputData(ctx, log, ici, cd, bmh)
+	if !res.IsZero() || err != nil {
+		if err != nil {
+			cond.Reason = v1alpha1.ImageCreationFailedReason
+			cond.Message = "failed to create image"
+			log.Error(err)
+		} else {
+			cond.Reason = v1alpha1.ImageCreationPendingReason
+			cond.Message = "could not acquire lock for image data"
+		}
+		return "", res, err
+	}
 
 	imageUrl, err := url.JoinPath(r.BaseURL, "images", req.Namespace, fmt.Sprintf("%s.iso", ici.ObjectMeta.UID))
 	if err != nil {
-		log.WithError(err).Error("failed to create image url")
-		if updateErr := r.setImageReadyCondition(ctx, ici, err); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return ctrl.Result{}, err
+		cond.Message = "failed to create image url"
+		log.WithError(err).Error(cond.Message)
+		return "", ctrl.Result{}, err
 	}
 
-	dataImage, err := r.ensureBMHDataImage(ctx, log, bmh, imageUrl)
-	if err != nil {
-		log.WithError(err).Error("failed to create BareMetalHost DataImage")
-		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-			log.WithError(updateErr).Error("failed to create DataImage")
-		}
-		return ctrl.Result{}, err
+	return imageUrl, ctrl.Result{}, nil
+}
+
+func (r *ImageClusterInstallReconciler) configureHost(
+	ctx context.Context,
+	ici *v1alpha1.ImageClusterInstall,
+	imageUrl string,
+	bmh *bmh_v1alpha1.BareMetalHost,
+	cond *hivev1.ClusterInstallCondition,
+	log logrus.FieldLogger,
+) (bool, ctrl.Result, error) {
+
+	continueReconcile := false
+
+	dataImage, res, err := r.ensureBMHDataImage(ctx, log, bmh, imageUrl)
+	if !res.IsZero() {
+		cond.Reason = v1alpha1.HostConfigurationPendingReason
+		cond.Message = "previous DataImage is being deleted"
+		return continueReconcile, res, nil
 	}
-	if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, v1alpha1.HostValidationsOKMsg); updateErr != nil {
-		log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
+	if err != nil {
+		cond.Message = "failed to create BareMetalHost DataImage"
+		log.WithError(err).Error(cond.Message)
+		return continueReconcile, ctrl.Result{}, err
 	}
 
 	if dataImage.ObjectMeta.CreationTimestamp.Time.Add(r.Options.DataImageCoolDownPeriod).After(time.Now()) {
-		// in case the dataImage was created less than a second ago requeuee to allow BMO some time to get
+		// in case the dataImage was created less than a second ago requeue to allow BMO some time to get
 		// notified about the newly created DataImage before adding the reboot annotation in updateBMHProvisioningState
-		return ctrl.Result{RequeueAfter: r.Options.DataImageCoolDownPeriod}, err
+		cond.Reason = v1alpha1.HostConfigurationPendingReason
+		cond.Message = "waiting for DataImage to cool down"
+		return continueReconcile, ctrl.Result{RequeueAfter: r.Options.DataImageCoolDownPeriod}, nil
 	}
+
 	if err := r.updateBMHProvisioningState(ctx, log, bmh, dataImage); err != nil {
-		log.WithError(err).Error("failed to update BareMetalHost provisioning state")
-		if updateErr := r.setHostConfiguredCondition(ctx, ici, err); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update BareMetalHost provisioning state")
-		}
-		return ctrl.Result{}, err
+		cond.Message = "failed to update BareMetalHost provisioning state"
+		log.WithError(err).Error(cond.Message)
+		return continueReconcile, ctrl.Result{}, err
 	}
 	if !annotationExists(&bmh.ObjectMeta, ibioManagedBMH) {
 		// TODO: consider replacing this condition with `dataDisk.Status.AttachedImage`
-		log.Infof("Nothing to do, waiting for BMH to get %s annotation", ibioManagedBMH)
-		return ctrl.Result{}, nil
-
+		cond.Reason = v1alpha1.HostConfigurationPendingReason
+		cond.Message = fmt.Sprintf("waiting for BMH provisioning state to be StateAvailable or StateExternallyProvisioned, current state is: %s", bmh.Status.Provisioning.State)
+		log.Info(cond.Message)
+		return continueReconcile, ctrl.Result{}, nil
 	}
 
 	if ici.Status.BareMetalHostRef == nil {
@@ -292,66 +397,56 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		log.Info("Setting Status.BareMetalHostRef and installation starting condition")
 		if err := r.Status().Patch(ctx, ici, patch); err != nil {
-			log.WithError(err).Error("failed to set Status.BareMetalHostRef")
-			return ctrl.Result{}, err
+			cond.Message = "failed to set Status.BareMetalHostRef"
+			log.WithError(err).Error(cond.Message)
+			return continueReconcile, ctrl.Result{}, err
 		}
 	}
-	return ctrl.Result{}, nil
-}
 
-func GetClusterConfigDir(namespacesDir, namespace, uid string) string {
-	return filepath.Join(namespacesDir, namespace, uid, FilesDir, ClusterConfigDir)
+	continueReconcile = true
+	return continueReconcile, ctrl.Result{}, nil
 }
 
 func (r *ImageClusterInstallReconciler) validateBMH(
-	ctx context.Context,
-	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
-	bmh *bmh_v1alpha1.BareMetalHost) error {
+	bmh *bmh_v1alpha1.BareMetalHost,
+	cond *hivev1.ClusterInstallCondition) (ctrl.Result, error) {
 
 	// Skip validations in case of the state is Externally Provisioned as it will not be inspected
 	if bmh.Spec.ExternallyProvisioned {
-		msg := fmt.Sprintf("BareMetalHost %s/%s, is externally provisioned, skipping hardware validation", bmh.Namespace, bmh.Name)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return nil
+		r.Log.Infof("Skipping hardware validation for BareMetalHost %s/%s, externally provisioned", bmh.Namespace, bmh.Name)
+		return ctrl.Result{}, nil
 	}
 
 	// no need to validate if inspect annotation is disabled
 	if bmh.ObjectMeta.Annotations != nil && !isInspectionEnabled(bmh) {
-		msg := fmt.Sprintf("inspection is disabled for BareMetalHost %s/%s, skip hardware validation", bmh.Namespace, bmh.Name)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionTrue, v1alpha1.HostValidationSucceeded, msg); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return nil
+		r.Log.Infof("Skipping hardware validation for BareMetalHost %s/%s, inspection is disabled", bmh.Namespace, bmh.Name)
+		return ctrl.Result{}, nil
 	}
 
+	// requeue in case of provisioning not ready
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable {
-		log.Infof("BareMetalHost (%s/%s) isn't available", bmh.Namespace, bmh.Name)
-		err := fmt.Errorf("BareMetalHost (%s/%s) provisioning state is: %s, waiting for %s", bmh.Namespace, bmh.Name, bmh.Status.Provisioning.State, bmh_v1alpha1.StateAvailable)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return err
+		cond.Message = fmt.Sprintf("BareMetalHost (%s/%s) provisioning state is: %s, waiting for %s", bmh.Namespace, bmh.Name, bmh.Status.Provisioning.State, bmh_v1alpha1.StateAvailable)
+		cond.Reason = v1alpha1.HostValidationPendingReason
+		r.Log.Info(cond.Message)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
+	// requeue in case of BMH inspection is not ready yet
 	if bmh.Status.HardwareDetails == nil {
-		err := fmt.Errorf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, err.Error()); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return err
+		cond.Message = fmt.Sprintf("hardware details not found for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		cond.Reason = v1alpha1.HostValidationPendingReason
+		r.Log.Info(cond.Message)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
+	// do not requeue in case of invalid BMH
 	err := r.validateBMHMachineNetwork(ici.Spec.MachineNetwork, *bmh.Status.HardwareDetails)
 	if err != nil {
-		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationFailedReason, err.Error()); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
-		return err
+		cond.Message = err.Error()
+		return ctrl.Result{}, err
 	}
-	return nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
@@ -500,13 +595,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
 		return nil
 	}
-	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
-	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
-		if !bmh.Spec.ExternallyProvisioned {
-			log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
-			bmh.Spec.ExternallyProvisioned = true
-		}
-	}
+	log.Infof("BareMetalHost %s/%s PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if !bmh.Spec.Online {
 		bmh.Spec.Online = true
 		log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
@@ -526,18 +615,22 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 
 // ensureBMHDataImage will create a dataImage with the URL for the config ISO if dataImage didn't exist
 // or return the existing dataImage if it does.
-func (r *ImageClusterInstallReconciler) ensureBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost, url string) (*bmh_v1alpha1.DataImage, error) {
+func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	bmh *bmh_v1alpha1.BareMetalHost,
+	url string) (*bmh_v1alpha1.DataImage, ctrl.Result, error) {
 	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
 	if err == nil {
-		if err == nil && !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
-			err = fmt.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
-			return dataImage, err
+		if !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
+			log.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
+			return dataImage, ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
-		return dataImage, nil
+		return dataImage, ctrl.Result{}, nil
 	}
 
-	if err != nil && !errors.IsNotFound(err) {
-		return dataImage, err
+	if err != nil && !k8sapierrors.IsNotFound(err) {
+		return dataImage, ctrl.Result{}, err
 	}
 	log.Infof("creating new dataImage for BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
 	// Name and namespace must match the ones in BMH
@@ -552,14 +645,28 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(ctx context.Context, 
 	}
 	err = controllerutil.SetControllerReference(bmh, dataImage, r.Client.Scheme())
 	if err != nil {
-		return dataImage, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
+		return dataImage, ctrl.Result{}, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
 
 	err = r.Create(ctx, dataImage)
 	if err != nil {
-		return dataImage, fmt.Errorf("failed to create dataImage due to %w", err)
+		return dataImage, ctrl.Result{}, fmt.Errorf("failed to create dataImage due to %w", err)
 	}
-	return r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+
+	dataImage, err = r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	return dataImage, ctrl.Result{}, err
+}
+
+func (r *ImageClusterInstallReconciler) getCD(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (*hivev1.ClusterDeployment, error) {
+	clusterDeployment := &hivev1.ClusterDeployment{}
+	cdKey := types.NamespacedName{
+		Namespace: ici.Namespace,
+		Name:      ici.Spec.ClusterDeploymentRef.Name,
+	}
+	if err := r.Get(ctx, cdKey, clusterDeployment); err != nil {
+		return nil, err
+	}
+	return clusterDeployment, nil
 }
 
 func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
@@ -583,7 +690,7 @@ func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, 
 
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	if err := r.Get(ctx, bmhRef, bmh); err != nil {
-		if errors.IsNotFound(err) {
+		if k8sapierrors.IsNotFound(err) {
 			log.Warnf("Referenced BareMetalHost %s/%s does not exist, not waiting for dataImage deletion", bmhRef.Namespace, bmhRef.Name)
 			return nil, nil
 		} else {
@@ -617,7 +724,7 @@ func (r *ImageClusterInstallReconciler) deleteDataImage(ctx context.Context, log
 	dataImage := &bmh_v1alpha1.DataImage{}
 
 	if err := r.Get(ctx, dataImageRef, dataImage); err != nil {
-		if errors.IsNotFound(err) {
+		if k8sapierrors.IsNotFound(err) {
 			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", dataImageRef.Namespace, dataImageRef.Name)
 			return nil, nil
 		}
@@ -804,9 +911,6 @@ func (r *ImageClusterInstallReconciler) writeInputData(
 	}
 	if !locked {
 		log.Info("requeueing due to lock contention")
-		if updateErr := r.setImageReadyCondition(ctx, ici, fmt.Errorf("could not acquire lock for image data")); updateErr != nil {
-			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
-		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
