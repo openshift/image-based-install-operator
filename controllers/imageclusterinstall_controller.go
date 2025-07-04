@@ -150,6 +150,13 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	// Nothing to do if the installation process started and the config.iso exists
 	if !ici.Status.BootTime.IsZero() {
+		cond := findCondition(ici.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		if cond != nil && cond.Status == corev1.ConditionFalse {
+			r.setRequirementsMetCondition(ctx, ici,
+				corev1.ConditionTrue,
+				v1alpha1.HostConfigurationSucceededReason,
+				"configuration image is attached to the referenced host")
+		}
 		clusterConfigDir := GetClusterConfigDir(filepath.Join(r.Options.DataDir, "namespaces"), ici.Namespace, string(ici.UID))
 		if verifyIsoAndAuthExists(clusterConfigDir) {
 			return ctrl.Result{}, nil
