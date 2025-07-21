@@ -28,7 +28,7 @@ spec:
     value:
     - linux/x86_64
   - name: dockerfile
-    value: Dockerfile
+    value: Dockerfile.konflux
   - name: path-context
     value: .
   pipelineSpec:
@@ -67,7 +67,7 @@ spec:
         to build image.
       name: path-context
       type: string
-    - default: Dockerfile
+    - default: Dockerfile.konflux
       description: Path to the Dockerfile inside the context specified by parameter
         path-context
       name: dockerfile
@@ -80,11 +80,11 @@ spec:
       description: Skip checks against built image
       name: skip-checks
       type: string
-    - default: "false"
+    - default: "true"
       description: Execute the build with network isolation
       name: hermetic
       type: string
-    - default: ""
+    - default: '[{"type": "gomod", "path": "."}, {"type": "rpm", "path": "."}]'
       description: Build dependencies to be prefetched by Cachi2
       name: prefetch-input
       type: string
@@ -93,7 +93,7 @@ spec:
         1h, 2d, 3w for hours, days, and weeks, respectively.
       name: image-expires-after
       type: string
-    - default: "false"
+    - default: "true"
       description: Build a source image.
       name: build-source-image
       type: string
@@ -190,6 +190,8 @@ spec:
         value: $(params.output-image).prefetch
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
+      - name: dev-package-managers
+        value: "true"
       runAfter:
       - clone-repository
       taskRef:
