@@ -448,7 +448,7 @@ func (r *ImageClusterInstallReconciler) validateBMH(
 	}
 
 	// do not requeue in case of invalid BMH
-	err := r.validateBMHMachineNetwork(ici.Spec.MachineNetwork, *bmh.Status.HardwareDetails)
+	err := r.validateBMHMachineNetworks(ici.Spec.MachineNetwork, ici.Spec.MachineNetworks, *bmh.Status.HardwareDetails)
 	if err != nil {
 		cond.Message = err.Error()
 		return ctrl.Result{}, err
@@ -456,19 +456,126 @@ func (r *ImageClusterInstallReconciler) validateBMH(
 	return ctrl.Result{}, nil
 }
 
-func (r *ImageClusterInstallReconciler) validateBMHMachineNetwork(
-	machineNetwork string,
+func (r *ImageClusterInstallReconciler) validateBMHMachineNetworks(
+	legacyMachineNetwork string,
+	machineNetworks []v1alpha1.MachineNetworkEntry,
 	hwDetails bmh_v1alpha1.HardwareDetails) error {
-	if machineNetwork == "" {
+
+	effectiveNetworks, err := getEffectiveMachineNetworksCIDRs(legacyMachineNetwork, machineNetworks, r.Log)
+	if err != nil {
+		return err
+	}
+	if len(effectiveNetworks) == 0 {
 		return nil
 	}
-	for _, nic := range hwDetails.NIC {
-		inCIDR, _ := ipInCidr(nic.IP, machineNetwork)
-		if inCIDR {
-			return nil
+
+	if len(effectiveNetworks) == 1 {
+		// Single-stack: check if any NIC has an IP in the machine network
+		for _, nic := range hwDetails.NIC {
+			if nic.IP == "" {
+				continue
+			}
+			inCIDR, _ := ipInCidr(nic.IP, effectiveNetworks[0])
+			if inCIDR {
+				return nil
+			}
+		}
+		return fmt.Errorf("bmh host doesn't have any nic with ip in provided machineNetwork %v", effectiveNetworks[0])
+	}
+
+	// Dual-stack: need to find a NIC that has both IPv4 and IPv6 addresses
+	// in the corresponding machine networks
+	return r.validateDualStackMachineNetworks(effectiveNetworks, hwDetails.NIC)
+}
+
+// validateDualStackMachineNetworks validates that there's a NIC with both
+// IPv4 and IPv6 addresses in their corresponding machine networks
+func (r *ImageClusterInstallReconciler) validateDualStackMachineNetworks(networks []string, nics []bmh_v1alpha1.NIC) error {
+	var ipv4Networks, ipv6Networks []string
+	for _, network := range networks {
+		if isIPv4CIDR(network) {
+			ipv4Networks = append(ipv4Networks, network)
+		} else {
+			ipv6Networks = append(ipv6Networks, network)
 		}
 	}
-	return fmt.Errorf("bmh host doesn't have any nic with ip in provided machineNetwork %s", machineNetwork)
+
+	if len(ipv4Networks) == 0 || len(ipv6Networks) == 0 {
+		return fmt.Errorf("dual-stack configuration requires both IPv4 and IPv6 machine networks, got IPv4: %v, IPv6: %v", ipv4Networks, ipv6Networks)
+	}
+
+	nicsByMAC := make(map[string][]bmh_v1alpha1.NIC)
+	for _, nic := range nics {
+		if nic.MAC != "" && nic.IP != "" {
+			nicsByMAC[nic.MAC] = append(nicsByMAC[nic.MAC], nic)
+		}
+	}
+
+	for _, macNics := range nicsByMAC {
+		hasIPv4InNetwork := false
+		hasIPv6InNetwork := false
+
+		for _, nic := range macNics {
+			for _, ipv4Net := range ipv4Networks {
+				if inCIDR, _ := ipInCidr(nic.IP, ipv4Net); inCIDR {
+					hasIPv4InNetwork = true
+					break
+				}
+			}
+
+			for _, ipv6Net := range ipv6Networks {
+				if inCIDR, _ := ipInCidr(nic.IP, ipv6Net); inCIDR {
+					hasIPv6InNetwork = true
+					break
+				}
+			}
+
+			if hasIPv4InNetwork && hasIPv6InNetwork {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("bmh host doesn't have a nic with both IPv4 and IPv6 addresses in the provided dual-stack machineNetworks. IPv4 networks: %v, IPv6 networks: %v", ipv4Networks, ipv6Networks)
+}
+
+// isIPv4CIDR determines if a CIDR string represents an IPv4 network
+func isIPv4CIDR(cidr string) bool {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	return ipNet.IP.To4() != nil
+}
+
+// getEffectiveMachineNetworksCIDRs returns the effective machine network CIDRs.
+// If both MachineNetwork and MachineNetworks are specified, MachineNetwork should match
+// the first element of MachineNetworks.
+func getEffectiveMachineNetworksCIDRs(
+	legacyMachineNetwork string,
+	machineNetworks []v1alpha1.MachineNetworkEntry,
+	log logrus.FieldLogger,
+) ([]string, error) {
+	if len(machineNetworks) > 0 {
+		if legacyMachineNetwork != "" {
+			first := machineNetworks[0].CIDR
+			if legacyMachineNetwork != first {
+				return nil, fmt.Errorf("MachineNetwork (%s) does not match the first MachineNetworks entry (%s)", legacyMachineNetwork, first)
+			}
+		}
+		networks := make([]string, len(machineNetworks))
+		for i, network := range machineNetworks {
+			networks[i] = network.CIDR
+		}
+		return networks, nil
+	}
+
+	if legacyMachineNetwork != "" {
+		log.Infof("Using legacy MachineNetwork field '%s' - consider migrating to MachineNetworks field", legacyMachineNetwork)
+		return []string{legacyMachineNetwork}, nil
+	}
+
+	return nil, nil
 }
 
 func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj client.Object) []reconcile.Request {
