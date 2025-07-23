@@ -1653,6 +1653,328 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
 	})
 
+	It("succeeds when no machine networks are specified", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		// No machine networks specified - should be valid
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
+	})
+
+	It("succeeds with single network using new MachineNetworks field", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"}}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		content, err := os.ReadFile(outputFilePath(ClusterConfigDir, installConfigFilename))
+		Expect(err).NotTo(HaveOccurred())
+		infoOut := &installertypes.InstallConfig{}
+		Expect(json.Unmarshal(content, infoOut)).To(Succeed())
+
+		Expect(infoOut.MachineNetwork).To(HaveLen(1))
+		Expect(infoOut.MachineNetwork[0].CIDR.String()).To(Equal("192.168.1.0/24"))
+	})
+
+	It("fails with dual-stack when BMH has IPv4 but no IPv6 in networks", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		// Only IPv4 address, missing IPv6
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("bmh host doesn't have a nic with both IPv4 and IPv6 addresses"))
+	})
+
+	It("fails with dual-stack when BMH has IPv6 but no IPv4 in networks", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		// Only IPv6 address, missing IPv4
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("bmh host doesn't have a nic with both IPv4 and IPv6 addresses"))
+	})
+
+	It("fails with dual-stack when all networks are IPv4", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "10.0.0.0/8"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("dual-stack configuration requires both IPv4 and IPv6 machine networks"))
+	})
+
+	It("fails with dual-stack when BMH has different MACs for IPv4 and IPv6", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		// Different MACs for IPv4 and IPv6 (different physical interfaces)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
+			{IP: "2001:db8::30", MAC: "11:22:33:44:55:66"},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("bmh host doesn't have a nic with both IPv4 and IPv6 addresses"))
+	})
+
+	It("succeeds with dual-stack when BMH reports multiple NIC with correct IPv4/IPv6 IPs", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"}, // IPv4 in machine network
+			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"}, // IPv6 in machine network
+			{IP: "10.0.0.50", MAC: "11:22:33:44:55:66"},    // IPv4 outside machine network
+			{IP: "2001:db9::50", MAC: "22:33:44:55:66:77"}, // IPv6 outside machine network
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
+	})
+
+	It("ignores NICs with empty IP or MAC addresses", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "", MAC: "aa:bb:cc:dd:ee:ff"},             // Empty IP
+			{IP: "192.168.1.30", MAC: ""},                  // Empty MAC
+			{IP: "192.168.1.31", MAC: "aa:bb:cc:dd:ee:ff"}, // Valid IPv4
+			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"}, // Valid IPv6
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"},
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostConfigurationSucceededReason))
+	})
+
+	It("returns error when legacy MachineNetwork mismatches first MachineNetworks entry", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
+			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
+			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"},
+		}
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		// Set both legacy and new fields - mismatch should now error
+		clusterInstall.Spec.MachineNetwork = "10.0.0.0/8" // Wrong network
+		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
+			{CIDR: "192.168.1.0/24"}, // Correct networks
+			{CIDR: "2001:db8::/64"},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		clusterDeployment.Spec.ClusterName = "thingcluster"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).To(HaveOccurred())
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallRequirementsMet)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(v1alpha1.HostValidationFailedReason))
+		Expect(cond.Message).To(ContainSubstring("does not match the first MachineNetworks entry"))
+	})
+
 	It("labels secrets for backup", func() {
 		clusterInstall.Spec.ClusterMetadata = &hivev1.ClusterMetadata{
 			AdminKubeconfigSecretRef: corev1.LocalObjectReference{Name: clusterDeployment.Name + "-admin-kubeconfig"},

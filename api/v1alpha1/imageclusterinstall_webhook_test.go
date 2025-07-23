@@ -192,6 +192,65 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid machine network"))
 	})
 
+	It("create success when dual-stack machine networks are valid", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				MachineNetworks: []MachineNetworkEntry{
+					{CIDR: "192.0.2.0/24"},
+					{CIDR: "2001:db8::/64"},
+				},
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+
+	It("create fail when machine networks have invalid CIDR", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				MachineNetworks: []MachineNetworkEntry{
+					{CIDR: "192.0.2.0/24"},
+					{CIDR: "invalid_cidr"},
+				},
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err.Error()).To(ContainSubstring("invalid machine network"))
+		Expect(err.Error()).To(ContainSubstring("machine network 1"))
+	})
+
+	It("create success when both legacy and new machine network fields are valid", func() {
+		newClusterInstall := &ImageClusterInstall{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "config",
+				Namespace: "test-namespace",
+			},
+			Spec: ImageClusterInstallSpec{
+				MachineNetwork: "192.0.2.0/24", // Legacy field
+				MachineNetworks: []MachineNetworkEntry{ // New field takes precedence
+					{CIDR: "192.0.2.0/24"},
+					{CIDR: "2001:db8::/64"},
+				},
+			},
+		}
+
+		warns, err := newClusterInstall.ValidateCreate()
+		Expect(warns).To(BeNil())
+		Expect(err).To(BeNil())
+	})
+
 	It("create fail when proxy is invalid", func() {
 		newClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{

@@ -6,6 +6,7 @@ toolchain go1.22.6
 
 require (
 	github.com/containers/image/v5 v5.31.0
+	github.com/go-logr/logr v1.4.2
 	github.com/go-openapi/swag v0.23.0
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
@@ -90,7 +91,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect

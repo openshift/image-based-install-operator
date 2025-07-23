@@ -94,8 +94,17 @@ type ImageClusterInstallSpec struct {
 	// MachineNetwork is the subnet provided by user for the ocp cluster.
 	// This will be used to create the node network and choose ip address for the node.
 	// Equivalent to install-config.yaml's machineNetwork.
+	// Deprecated: Use MachineNetworks instead.
 	// +optional.
 	MachineNetwork string `json:"machineNetwork,omitempty"`
+
+	// MachineNetworks is the list of IP address pools for machines.
+	// This enables dual-stack support by allowing multiple networks.
+	// If both MachineNetwork and MachineNetworks are specified, MachineNetwork should match
+	// the first element of MachineNetworks.
+	// Use instead of MachineNetwork.
+	// +optional
+	MachineNetworks []MachineNetworkEntry `json:"machineNetworks,omitempty"`
 
 	// Proxy defines the proxy settings to be applied in relocated cluster
 	// +optional
@@ -160,6 +169,12 @@ type Proxy struct {
 	// used.
 	// +optional
 	NoProxy string `json:"noProxy,omitempty"`
+}
+
+// MachineNetworkEntry is a single IP address block for node IP blocks.
+type MachineNetworkEntry struct {
+	// CIDR is the IP block address pool for machines within the cluster.
+	CIDR string `json:"cidr"`
 }
 
 //+kubebuilder:object:root=true
