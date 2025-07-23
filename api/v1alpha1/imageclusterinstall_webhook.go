@@ -90,12 +90,10 @@ func (r *ImageClusterInstall) validate() error {
 		return fmt.Errorf("invalid hostname: %w", err)
 	}
 
-	// Validate machine networks (both old and new fields)
 	if err := isValidMachineNetworks(r.Spec.MachineNetwork, r.Spec.MachineNetworks); err != nil {
 		return fmt.Errorf("invalid machine network: %w", err)
 	}
 
-	// Get effective machine networks for proxy validation
 	effectiveMachineNetworks := getEffectiveMachineNetworks(r.Spec.MachineNetwork, r.Spec.MachineNetworks)
 	if err := isValidProxy(r.Spec.Proxy, effectiveMachineNetworks); err != nil {
 		return fmt.Errorf("invalid proxy: %w", err)
