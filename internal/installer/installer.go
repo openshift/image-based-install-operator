@@ -106,12 +106,17 @@ func WriteInstallConfig(
 		installConfig.AdditionalTrustBundle = caBundle
 	}
 
-	if ici.Spec.MachineNetwork != "" {
-		cidr, err := ipnet.ParseCIDR(ici.Spec.MachineNetwork)
-		if err != nil {
-			return fmt.Errorf("failed to parse machine network CIDR: %w", err)
+	// Handle machine networks (dual-stack support)
+	machineNetworks := getEffectiveMachineNetworks(ici)
+	if len(machineNetworks) > 0 {
+		installConfig.Networking.MachineNetwork = make([]installertypes.MachineNetworkEntry, len(machineNetworks))
+		for i, network := range machineNetworks {
+			cidr, err := ipnet.ParseCIDR(network)
+			if err != nil {
+				return fmt.Errorf("failed to parse machine network CIDR %s: %w", network, err)
+			}
+			installConfig.Networking.MachineNetwork[i] = installertypes.MachineNetworkEntry{CIDR: *cidr}
 		}
-		installConfig.Networking.MachineNetwork = []installertypes.MachineNetworkEntry{{CIDR: *cidr}}
 	}
 
 	if ici.Spec.ImageDigestSources != nil {
@@ -128,6 +133,25 @@ func WriteInstallConfig(
 
 	return nil
 
+}
+
+// getEffectiveMachineNetworks returns the effective machine networks from the ICI spec
+func getEffectiveMachineNetworks(ici *v1alpha1.ImageClusterInstall) []string {
+	// Prefer new MachineNetworks field over legacy MachineNetwork
+	if len(ici.Spec.MachineNetworks) > 0 {
+		networks := make([]string, len(ici.Spec.MachineNetworks))
+		for i, network := range ici.Spec.MachineNetworks {
+			networks[i] = network.CIDR
+		}
+		return networks
+	}
+
+	// Fall back to legacy MachineNetwork field
+	if ici.Spec.MachineNetwork != "" {
+		return []string{ici.Spec.MachineNetwork}
+	}
+
+	return nil
 }
 
 // all the logic of creating right noProxy is part of LCA, here we just pass it as is
