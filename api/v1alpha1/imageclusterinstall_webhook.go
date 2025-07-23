@@ -90,10 +90,14 @@ func (r *ImageClusterInstall) validate() error {
 		return fmt.Errorf("invalid hostname: %w", err)
 	}
 
-	if err := isValidMachineNetwork(r.Spec.MachineNetwork); err != nil {
+	// Validate machine networks (both old and new fields)
+	if err := isValidMachineNetworks(r.Spec.MachineNetwork, r.Spec.MachineNetworks); err != nil {
 		return fmt.Errorf("invalid machine network: %w", err)
 	}
-	if err := isValidProxy(r.Spec.Proxy, r.Spec.MachineNetwork); err != nil {
+
+	// Get effective machine networks for proxy validation
+	effectiveMachineNetworks := getEffectiveMachineNetworks(r.Spec.MachineNetwork, r.Spec.MachineNetworks)
+	if err := isValidProxy(r.Spec.Proxy, effectiveMachineNetworks); err != nil {
 		return fmt.Errorf("invalid proxy: %w", err)
 	}
 	return nil
@@ -139,20 +143,55 @@ func isValidHostname(hostname string) error {
 	return nil
 }
 
-func isValidMachineNetwork(machineNetwork string) error {
-	if machineNetwork == "" {
-		return nil
+// isValidMachineNetworks validates both legacy MachineNetwork and new MachineNetworks fields
+func isValidMachineNetworks(legacyMachineNetwork string, machineNetworks []MachineNetworkEntry) error {
+	// If both are specified, MachineNetworks takes precedence but we still validate both
+	if legacyMachineNetwork != "" {
+		if err := isValidNetwork(legacyMachineNetwork); err != nil {
+			return err
+		}
 	}
 
-	_, _, err := net.ParseCIDR(machineNetwork)
+	for i, network := range machineNetworks {
+		if err := isValidNetwork(network.CIDR); err != nil {
+			return fmt.Errorf("machine network %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// getEffectiveMachineNetworks returns the effective machine networks for other validations
+func getEffectiveMachineNetworks(legacyMachineNetwork string, machineNetworks []MachineNetworkEntry) []string {
+	if len(machineNetworks) > 0 {
+		networks := make([]string, len(machineNetworks))
+		for i, network := range machineNetworks {
+			networks[i] = network.CIDR
+		}
+		return networks
+	}
+
+	if legacyMachineNetwork != "" {
+		return []string{legacyMachineNetwork}
+	}
+
+	return nil
+}
+
+func isValidNetwork(network string) error {
+	if network == "" {
+		return fmt.Errorf("network is empty")
+	}
+
+	_, _, err := net.ParseCIDR(network)
 	if err != nil {
-		return fmt.Errorf("error parsing machine network, check that it is valid cidr: %w", err)
+		return fmt.Errorf("error parsing network, check that it is valid cidr: %w", err)
 	}
 	return nil
 }
 
-func isValidProxy(proxy *Proxy, machineNetwork string) error {
-	if proxy != nil && machineNetwork == "" {
+func isValidProxy(proxy *Proxy, machineNetworks []string) error {
+	if proxy != nil && len(machineNetworks) == 0 {
 		return errors.New("machine network must be set when proxy is defined")
 	}
 	return nil
