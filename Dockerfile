@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.17 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.20 as builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -19,12 +19,12 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o bu
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
 
 
-FROM registry.ci.openshift.org/ocp/4.17:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
 
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
-RUN dnf install -y nmstate-libs-2.2.33-1.el9_4.x86_64 nmstate-2.2.33-1.el9_4.x86_64 && dnf clean all && rm -rf /var/cache/dnf/*
+RUN dnf install -y nmstate-libs-2.2.48-1.el9_4.x86_64 nmstate-2.2.48-1.el9_4.x86_64 && dnf clean all && rm -rf /var/cache/dnf/*
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
