@@ -288,7 +288,8 @@ spec:
                 description: |-
                   MachineNetworks is the list of IP address pools for machines.
                   This enables dual-stack support by allowing multiple networks.
-                  If both MachineNetwork and MachineNetworks are specified, MachineNetworks takes precedence.
+                  If both MachineNetwork and MachineNetworks are specified, MachineNetwork should match
+                  the first element of MachineNetworks.
                   Use instead of MachineNetwork.
                 items:
                   description: MachineNetworkEntry is a single IP address block for

@@ -23,12 +23,20 @@ metadata:
             "imageSetRef": {
               "name": "4.14.10"
             },
+            "machineNetworks": [
+              {
+                "cidr": "192.0.2.0/24"
+              },
+              {
+                "cidr": "2001:db8::/64"
+              }
+            ],
             "nodeIP": "192.0.2.100"
           }
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-02-18T20:07:47Z"
+    createdAt: "2025-08-26T08:13:06Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -227,6 +235,10 @@ spec:
                   value: /certs/tls.crt
                 - name: PORT
                   value: "8000"
+                - name: TMPDIR
+                  value: /data
+                - name: XDG_CACHE_HOME
+                  value: /data/.cache
                 image: controller:latest
                 name: server
                 ports:
@@ -248,6 +260,8 @@ spec:
                   name: data
                 - mountPath: /certs
                   name: certs
+                - mountPath: /tmp
+                  name: tmp
               securityContext:
                 runAsNonRoot: true
                 seccompProfile:
@@ -257,6 +271,8 @@ spec:
               volumes:
               - emptyDir: {}
                 name: data
+              - emptyDir: {}
+                name: tmp
               - name: certs
                 secret:
                   secretName: ibi-config-serving-certs
