@@ -1,0 +1,105 @@
+---
+lockfileVersion: 1
+lockfileVendor: redhat
+arches:
+- arch: aarch64
+  packages:
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/aarch64/appstream/os/Packages/n/nmstate-2.2.45-1.el9_6.aarch64.rpm
+    repoid: rhel-9-for-aarch64-appstream-rpms
+    size: 3946432
+    checksum: sha256:0d4ecf3788a2a430d5166e1da71dbbaa93106f8e7c8fadacc9b415c6cc0d136f
+    name: nmstate
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/aarch64/appstream/os/Packages/n/nmstate-libs-2.2.45-1.el9_6.aarch64.rpm
+    repoid: rhel-9-for-aarch64-appstream-rpms
+    size: 3079491
+    checksum: sha256:6fed6addf82b89bdbd8c4aeb3921c7faad9eb4aedad003985c7bc06d27a54323
+    name: nmstate-libs
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/aarch64/baseos/os/Packages/n/NetworkManager-config-server-1.52.0-4.el9_6.noarch.rpm
+    repoid: rhel-9-for-aarch64-baseos-rpms
+    size: 9685
+    checksum: sha256:5b431a020d9aef324c0d8578aec6bd8b6c94e5636f653623866575206f150f7a
+    name: NetworkManager-config-server
+    evr: 1:1.52.0-4.el9_6
+    sourcerpm: NetworkManager-1.52.0-4.el9_6.src.rpm
+  source: []
+  module_metadata: []
+- arch: ppc64le
+  packages:
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/ppc64le/appstream/os/Packages/n/nmstate-2.2.45-1.el9_6.ppc64le.rpm
+    repoid: rhel-9-for-ppc64le-appstream-rpms
+    size: 4132771
+    checksum: sha256:4022112702f55516fe11963a19ccc1ff679044080bd12f374fa3e56c9b16aeb3
+    name: nmstate
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/ppc64le/appstream/os/Packages/n/nmstate-libs-2.2.45-1.el9_6.ppc64le.rpm
+    repoid: rhel-9-for-ppc64le-appstream-rpms
+    size: 3235456
+    checksum: sha256:52ddb47f7334e260d53ed395f0966a6f25c1c49e05638f9014c8d1045a066227
+    name: nmstate-libs
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/ppc64le/baseos/os/Packages/n/NetworkManager-config-server-1.52.0-4.el9_6.noarch.rpm
+    repoid: rhel-9-for-ppc64le-baseos-rpms
+    size: 9685
+    checksum: sha256:5b431a020d9aef324c0d8578aec6bd8b6c94e5636f653623866575206f150f7a
+    name: NetworkManager-config-server
+    evr: 1:1.52.0-4.el9_6
+    sourcerpm: NetworkManager-1.52.0-4.el9_6.src.rpm
+  source: []
+  module_metadata: []
+- arch: s390x
+  packages:
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/s390x/appstream/os/Packages/n/nmstate-2.2.45-1.el9_6.s390x.rpm
+    repoid: rhel-9-for-s390x-appstream-rpms
+    size: 4998102
+    checksum: sha256:ef84bee35bcec8d3bc795d704a42371d9b70b37cae2a86d6dd537b8b7e61cbc7
+    name: nmstate
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/s390x/appstream/os/Packages/n/nmstate-libs-2.2.45-1.el9_6.s390x.rpm
+    repoid: rhel-9-for-s390x-appstream-rpms
+    size: 3846461
+    checksum: sha256:abf4a3a559a769c4d7f732402a50966789715d908cf5367d03d572fb487f4f64
+    name: nmstate-libs
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/s390x/baseos/os/Packages/n/NetworkManager-config-server-1.52.0-4.el9_6.noarch.rpm
+    repoid: rhel-9-for-s390x-baseos-rpms
+    size: 9685
+    checksum: sha256:5b431a020d9aef324c0d8578aec6bd8b6c94e5636f653623866575206f150f7a
+    name: NetworkManager-config-server
+    evr: 1:1.52.0-4.el9_6
+    sourcerpm: NetworkManager-1.52.0-4.el9_6.src.rpm
+  source: []
+  module_metadata: []
+- arch: x86_64
+  packages:
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/x86_64/appstream/os/Packages/n/nmstate-2.2.45-1.el9_6.x86_64.rpm
+    repoid: rhel-9-for-x86_64-appstream-rpms
+    size: 4173611
+    checksum: sha256:9618fb746efee42c56278900c3ded88f4d420edbe50041d1db9e3e75cb89a8cc
+    name: nmstate
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/x86_64/appstream/os/Packages/n/nmstate-libs-2.2.45-1.el9_6.x86_64.rpm
+    repoid: rhel-9-for-x86_64-appstream-rpms
+    size: 3258256
+    checksum: sha256:d2a367f6d37305680137e694472b31e8c41cedc7e4a1c5a06643cb616e9aa8b2
+    name: nmstate-libs
+    evr: 2.2.45-1.el9_6
+    sourcerpm: nmstate-2.2.45-1.el9_6.src.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel9/9/x86_64/baseos/os/Packages/n/NetworkManager-config-server-1.52.0-4.el9_6.noarch.rpm
+    repoid: rhel-9-for-x86_64-baseos-rpms
+    size: 9685
+    checksum: sha256:5b431a020d9aef324c0d8578aec6bd8b6c94e5636f653623866575206f150f7a
+    name: NetworkManager-config-server
+    evr: 1:1.52.0-4.el9_6
+    sourcerpm: NetworkManager-1.52.0-4.el9_6.src.rpm
+  source: []
+  module_metadata: []
+
