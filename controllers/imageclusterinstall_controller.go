@@ -194,7 +194,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	if ici.Spec.BareMetalHostRef == nil {
 		msg := "No BareMetalHostRef set, nothing to do without provided bmh"
-		log.Infof(msg)
+		log.Info(msg)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
