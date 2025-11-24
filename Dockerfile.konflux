@@ -22,6 +22,8 @@ FROM registry.redhat.io/rhel9-4-els/rhel:9.4
 ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
     DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
 
+ARG version=2.9
+
 LABEL name="multicluster-engine/image-based-install-rhel9" \
       cpe="cpe:/a:redhat:multicluster_engine:2.9::el9" \
       summary="${SUMMARY}" \
@@ -29,7 +31,12 @@ LABEL name="multicluster-engine/image-based-install-rhel9" \
       com.redhat.component="image-based-install-operator" \
       io.k8s.display-name="Image Based Install Operator" \
       io.k8s.description="${DESCRIPTION}" \
-      io.openshift.tags="install,cluster,provisioning"
+      io.openshift.tags="install,cluster,provisioning" \
+      distribution-scope="public" \
+      release="${version}" \
+      version="${version}" \
+      url="https://github.com/openshift/image-based-install-operator" \
+      vendor="Red Hat, Inc."
 
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
