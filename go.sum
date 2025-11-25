@@ -735,8 +735,8 @@ github.com/openshift/golang-crypto v0.33.1-0.20250310193910-9003f682e581 h1:YWom
 github.com/openshift/golang-crypto v0.33.1-0.20250310193910-9003f682e581/go.mod h1:bVdXmD7IV/4GdElGPozy6U7lWdRXA4qyRVGJV57uQ5M=
 github.com/openshift/golang-oauth2 v0.26.1-0.20250310184649-06a918c6239d h1:iQfTKBmMcwFTxxVWV7U/C6GqgIIWTKD8l5HXslvn53s=
 github.com/openshift/golang-oauth2 v0.26.1-0.20250310184649-06a918c6239d/go.mod h1:XYTD2NtWslqkgxebSiOHnXEap4TF09sJSc7H1sXbhtI=
-github.com/openshift/hive/apis v0.0.0-20251031193107-899e2c99e938 h1:vM0rJqzfIfNJCcNe8pz0ErVT5nQNyUBv6DHWv/oEaUU=
-github.com/openshift/hive/apis v0.0.0-20251031193107-899e2c99e938/go.mod h1:B8r0x5pxVdoVmZNIiiTIonvarlstfasBleqXqpw2nP8=
+github.com/openshift/hive/apis v0.0.0-20251118235423-715614a9f379 h1:XBazcnuEEhbjtmQbk4R1FU9zi2BXTi/aVq54qlbvcBY=
+github.com/openshift/hive/apis v0.0.0-20251118235423-715614a9f379/go.mod h1:B8r0x5pxVdoVmZNIiiTIonvarlstfasBleqXqpw2nP8=
 github.com/openshift/installer v1.4.19-ec5.0.20250731075026-eeedb7501d87 h1:Tl3/U3Z8/qoeicRfcjw8KCBJRKsDGir0QlMTwWlb8YE=
 github.com/openshift/installer v1.4.19-ec5.0.20250731075026-eeedb7501d87/go.mod h1:EAuYk70kJemUuZgERE0RA5rQG/uYuH0hQ2N9ySU0SGs=
 github.com/openshift/library-go v0.0.0-20250114132252-af5b21ebad2f h1:inJ2wNKevyuR+7VfBecMJ+HjEsVwbTtw0x3SoZZ24uI=
