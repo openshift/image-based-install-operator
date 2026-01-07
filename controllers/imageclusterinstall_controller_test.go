@@ -566,6 +566,51 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 	})
 
+	It("sets restore status annotation on image cluster install", func() {
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify the restore status annotation was set
+		updatedICI := &v1alpha1.ImageClusterInstall{}
+		Expect(c.Get(ctx, key, updatedICI)).To(Succeed())
+		Expect(updatedICI.Annotations).To(HaveKey(restoreStatusAnnotation))
+		Expect(updatedICI.Annotations[restoreStatusAnnotation]).To(Equal(restoreStatusAnnotationValue))
+	})
+
+	It("stops reconcile early when status is empty and restore name label is set", func() {
+		clusterInstall.ObjectMeta.Labels = map[string]string{
+			restoreSourceLabel: "test-restore",
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+
+		// Reconcile should stop early - no installer methods should be called
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify the status remains empty (reconcile stopped early)
+		updatedICI := &v1alpha1.ImageClusterInstall{}
+		Expect(c.Get(ctx, key, updatedICI)).To(Succeed())
+		Expect(len(updatedICI.Status.Conditions)).To(Equal(0))
+		Expect(updatedICI.Status.InstallRestarts).To(Equal(0))
+		Expect(updatedICI.Status.BareMetalHostRef).To(BeNil())
+		Expect(updatedICI.Status.BootTime.IsZero()).To(BeTrue())
+	})
+
 	It("creates the ca bundle", func() {
 		caData := map[string]string{caBundleFileName: "mycabundle"}
 		cm := &corev1.ConfigMap{

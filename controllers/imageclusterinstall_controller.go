@@ -91,28 +91,31 @@ type imagePullSecret struct {
 }
 
 const (
-	detachedAnnotation          = "baremetalhost.metal3.io/detached"
-	detachedAnnotationValue     = "imageclusterinstall-controller"
-	inspectAnnotation           = "inspect.metal3.io"
-	rebootAnnotation            = "reboot.metal3.io"
-	rebootAnnotationValue       = ""
-	ibioManagedBMH              = "image-based-install-managed"
-	ClusterConfigDir            = "cluster-configuration"
-	extraManifestsDir           = "extra-manifests"
-	nmstateSecretKey            = "nmstate"
-	clusterInstallFinalizerName = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
-	caBundleFileName            = "tls-ca-bundle.pem"
-	imageBasedInstallInvoker    = "image-based-install"
-	invokerCMFileName           = "invoker-cm.yaml"
-	installTimeoutAnnotation    = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
-	backupLabel                 = "cluster.open-cluster-management.io/backup"
-	backupLabelValue            = "true"
-	imageBasedConfigFilename    = "image-based-config.yaml"
-	installConfigFilename       = "install-config.yaml"
-	authDir                     = "auth"
-	kubeAdminFile               = "kubeadmin-password"
-	FilesDir                    = "files"
-	IsoName                     = "imagebasedconfig.iso"
+	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	detachedAnnotationValue      = "imageclusterinstall-controller"
+	inspectAnnotation            = "inspect.metal3.io"
+	rebootAnnotation             = "reboot.metal3.io"
+	rebootAnnotationValue        = ""
+	ibioManagedBMH               = "image-based-install-managed"
+	ClusterConfigDir             = "cluster-configuration"
+	extraManifestsDir            = "extra-manifests"
+	nmstateSecretKey             = "nmstate"
+	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
+	caBundleFileName             = "tls-ca-bundle.pem"
+	imageBasedInstallInvoker     = "image-based-install"
+	invokerCMFileName            = "invoker-cm.yaml"
+	installTimeoutAnnotation     = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
+	backupLabel                  = "cluster.open-cluster-management.io/backup"
+	backupLabelValue             = "true"
+	imageBasedConfigFilename     = "image-based-config.yaml"
+	installConfigFilename        = "install-config.yaml"
+	authDir                      = "auth"
+	kubeAdminFile                = "kubeadmin-password"
+	FilesDir                     = "files"
+	IsoName                      = "imagebasedconfig.iso"
+	restoreStatusAnnotation      = "velero.io/restore-status"
+	restoreStatusAnnotationValue = "true"
+	restoreSourceLabel           = "velero.io/restore-name"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -162,6 +165,16 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 		log.Info("Running reconcile for ici with bootTime set")
+	}
+
+	if iciIsBeingRestored(ici) {
+		log.Info("Waiting for status restore")
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.ensureRestoreStatusAnnotation(ctx, ici); err != nil {
+		log.Errorf("Failed to ensure restore status annotation: %s", err)
+		return ctrl.Result{}, err
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
@@ -1456,4 +1469,22 @@ func verifyIsoAndAuthExists(clusterConfigPath string) bool {
 	}
 
 	return true
+}
+
+// iciIsBeingRestored returns true if the status is completely empty and the velero restore source label is present
+func iciIsBeingRestored(ici *v1alpha1.ImageClusterInstall) bool {
+	_, hasLabel := ici.ObjectMeta.Labels[restoreSourceLabel]
+	return hasLabel &&
+		len(ici.Status.Conditions) == 0 &&
+		ici.Status.InstallRestarts == 0 &&
+		ici.Status.BareMetalHostRef == nil &&
+		ici.Status.BootTime.IsZero()
+}
+
+func (r *ImageClusterInstallReconciler) ensureRestoreStatusAnnotation(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
+	patch := client.MergeFrom(ici.DeepCopy())
+	if !setAnnotationIfNotExists(&ici.ObjectMeta, restoreStatusAnnotation, restoreStatusAnnotationValue) {
+		return nil
+	}
+	return r.Patch(ctx, ici, patch)
 }
