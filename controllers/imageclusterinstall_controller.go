@@ -774,6 +774,7 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
 	if err != nil {
 		return dataImage, ctrl.Result{}, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
+	setBackupLabel(dataImage)
 
 	err = r.Create(ctx, dataImage)
 	if err != nil {
@@ -905,6 +906,32 @@ func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context
 	return nil
 }
 
+func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	bmh, err := r.getBMH(ctx, bmhRef)
+	if err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(bmh.DeepCopy())
+	if setBackupLabel(bmh) {
+		return r.Patch(ctx, bmh, patch)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	dataImage, err := r.getDataImage(ctx, bmhRef.Namespace, bmhRef.Name)
+	if err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(dataImage.DeepCopy())
+	if setBackupLabel(dataImage) {
+		return r.Patch(ctx, dataImage, patch)
+	}
+	return nil
+}
+
 func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) {
 	if ici.Spec.ClusterMetadata != nil {
 		kubeconfigKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name, Namespace: ici.Namespace}
@@ -937,6 +964,16 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 		psKey := types.NamespacedName{Name: cd.Spec.PullSecretRef.Name, Namespace: cd.Namespace}
 		if err := r.labelSecretForBackup(ctx, psKey); err != nil {
 			log.WithError(err).Errorf("failed to label Secret %s for backup", psKey)
+		}
+	}
+
+	if ici.Spec.BareMetalHostRef != nil {
+		if err := r.labelBMHForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
+			log.WithError(err).Errorf("failed to label BMH %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		}
+
+		if err := r.labelDataImageForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
+			log.WithError(err).Errorf("failed to label DataImage %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
 		}
 	}
 }
