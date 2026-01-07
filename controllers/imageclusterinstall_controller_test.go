@@ -2116,6 +2116,97 @@ var _ = Describe("Reconcile", func() {
 		}
 	})
 
+	It("labels BMH and DataImage for backup", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = "test"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		// Create DataImage beforehand so it exists when backup labeling happens
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify BMH has backup label
+		bmhKey := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		testBMH := &bmh_v1alpha1.BareMetalHost{}
+		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
+		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
+
+		// Verify DataImage has backup label
+		testDataImage := &bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+	})
+
+	It("labels newly created DataImage for backup", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		clusterDeployment.Spec.ClusterName = "test"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		// First reconcile creates the DataImage
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify BMH has backup label
+		bmhKey := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		testBMH := &bmh_v1alpha1.BareMetalHost{}
+		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
+		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
+
+		// Verify newly created DataImage has backup label
+		testDataImage := &bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+	})
+
 	Context("when the cluster identity secrets exist", func() {
 		createSecret := func(name string, data map[string][]byte) {
 			s := corev1.Secret{
