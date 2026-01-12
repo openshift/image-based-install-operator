@@ -197,6 +197,7 @@ func (r *Credentials) createOrUpdateClusterCredentialSecret(ctx context.Context,
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, "hive.openshift.io/secret-type", secretType)
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, SecretResourceLabel, SecretResourceValue)
 		metav1.SetMetaDataLabel(&secret.ObjectMeta, secretPreservationLabel, secretPreservationValue)
+		metav1.SetMetaDataLabel(&secret.ObjectMeta, "cluster.open-cluster-management.io/backup", "true")
 
 		// Update the Secret object with the desired data
 		secret.Data = data
