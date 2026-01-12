@@ -269,6 +269,17 @@ var _ = Describe("Credentials", func() {
 			Expect(len(secret.OwnerReferences)).To(Equal(1))
 			Expect(secret.OwnerReferences[0].Name).To(Equal(clusterDeployment.Name))
 		})
+
+		It("sets the backup label", func() {
+			name := "test-secret"
+			data := map[string][]byte{"thing": []byte("stuff")}
+			Expect(cm.createOrUpdateClusterCredentialSecret(ctx, log, clusterDeployment, name, data, "thing")).To(Succeed())
+
+			secret := corev1.Secret{}
+			key := types.NamespacedName{Name: name, Namespace: clusterDeployment.Namespace}
+			Expect(c.Get(ctx, key, &secret)).To(Succeed())
+			Expect(secret.Labels).To(HaveKeyWithValue("cluster.open-cluster-management.io/backup", "true"))
+		})
 	})
 
 	createSecret := func(name string, data map[string][]byte) {
