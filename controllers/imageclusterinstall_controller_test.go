@@ -2207,6 +2207,124 @@ var _ = Describe("Reconcile", func() {
 		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
 	})
 
+	It("labels referenced resources for backup when cluster is already marked as installed", func() {
+		// Create BMH
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh.Spec.Online = true
+		bmh.Spec.ExternallyProvisioned = false
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		// Create DataImage
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+
+		// Create CA bundle ConfigMap
+		caBundleCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ca-bundle",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string]string{caBundleFileName: "mycabundle"},
+		}
+		Expect(c.Create(ctx, caBundleCM)).To(Succeed())
+
+		// Create extra manifests ConfigMap
+		extraManifestCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "extra-manifest",
+				Namespace: clusterInstallNamespace,
+			},
+			Data: map[string]string{
+				"manifest.yaml": "thing: stuff",
+			},
+		}
+		Expect(c.Create(ctx, extraManifestCM)).To(Succeed())
+
+		// Set up ImageClusterInstall with InstallationCompleted condition set to True
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Spec.CABundleRef = &corev1.LocalObjectReference{
+			Name: "ca-bundle",
+		}
+		clusterInstall.Spec.ExtraManifestsRefs = []corev1.LocalObjectReference{
+			{Name: "extra-manifest"},
+		}
+		clusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{
+			{
+				Type:    hivev1.ClusterInstallCompleted,
+				Status:  corev1.ConditionTrue,
+				Reason:  v1alpha1.InstallSucceededReason,
+				Message: v1alpha1.InstallSucceededMessage,
+			},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		// Set up ClusterDeployment with pull secret reference
+		clusterDeployment.Spec.ClusterName = "test"
+		clusterDeployment.Spec.BaseDomain = "example.com"
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		// Reconcile - should label resources even though InstallationCompleted is True
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		// Verify BMH has backup label
+		bmhKey := types.NamespacedName{
+			Namespace: bmh.Namespace,
+			Name:      bmh.Name,
+		}
+		testBMH := &bmh_v1alpha1.BareMetalHost{}
+		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
+		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
+
+		// Verify DataImage has backup label
+		testDataImage := &bmh_v1alpha1.DataImage{}
+		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+
+		// Verify CA bundle ConfigMap has backup label
+		caBundleKey := types.NamespacedName{
+			Name:      caBundleCM.Name,
+			Namespace: caBundleCM.Namespace,
+		}
+		testCABundleCM := &corev1.ConfigMap{}
+		Expect(c.Get(ctx, caBundleKey, testCABundleCM)).To(Succeed())
+		Expect(testCABundleCM.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "ConfigMap %s/%s missing backup label", testCABundleCM.Namespace, testCABundleCM.Name)
+
+		// Verify extra manifest ConfigMap has backup label
+		extraManifestKey := types.NamespacedName{
+			Name:      extraManifestCM.Name,
+			Namespace: extraManifestCM.Namespace,
+		}
+		testExtraManifestCM := &corev1.ConfigMap{}
+		Expect(c.Get(ctx, extraManifestKey, testExtraManifestCM)).To(Succeed())
+		Expect(testExtraManifestCM.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "ConfigMap %s/%s missing backup label", testExtraManifestCM.Namespace, testExtraManifestCM.Name)
+
+		// Verify pull secret has backup label
+		pullSecretKey := types.NamespacedName{
+			Name:      pullSecret.Name,
+			Namespace: pullSecret.Namespace,
+		}
+		testPullSecret := &corev1.Secret{}
+		Expect(c.Get(ctx, pullSecretKey, testPullSecret)).To(Succeed())
+		Expect(testPullSecret.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "Secret %s/%s missing backup label", testPullSecret.Namespace, testPullSecret.Name)
+	})
+
 	Context("when the cluster identity secrets exist", func() {
 		createSecret := func(name string, data map[string][]byte) {
 			s := corev1.Secret{
