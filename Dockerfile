@@ -19,12 +19,12 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o bu
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
 
 
-FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
 
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
-RUN dnf install -y nmstate-libs-2.2.48-1.el9_4.x86_64 nmstate-2.2.48-1.el9_4.x86_64 && dnf clean all && rm -rf /var/cache/dnf/*
+RUN microdnf install -y nmstate-libs nmstate && microdnf clean all
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
