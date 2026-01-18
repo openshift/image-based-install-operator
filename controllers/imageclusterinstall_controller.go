@@ -91,28 +91,31 @@ type imagePullSecret struct {
 }
 
 const (
-	detachedAnnotation          = "baremetalhost.metal3.io/detached"
-	detachedAnnotationValue     = "imageclusterinstall-controller"
-	inspectAnnotation           = "inspect.metal3.io"
-	rebootAnnotation            = "reboot.metal3.io"
-	rebootAnnotationValue       = ""
-	ibioManagedBMH              = "image-based-install-managed"
-	ClusterConfigDir            = "cluster-configuration"
-	extraManifestsDir           = "extra-manifests"
-	nmstateSecretKey            = "nmstate"
-	clusterInstallFinalizerName = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
-	caBundleFileName            = "tls-ca-bundle.pem"
-	imageBasedInstallInvoker    = "image-based-install"
-	invokerCMFileName           = "invoker-cm.yaml"
-	installTimeoutAnnotation    = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
-	backupLabel                 = "cluster.open-cluster-management.io/backup"
-	backupLabelValue            = "true"
-	imageBasedConfigFilename    = "image-based-config.yaml"
-	installConfigFilename       = "install-config.yaml"
-	authDir                     = "auth"
-	kubeAdminFile               = "kubeadmin-password"
-	FilesDir                    = "files"
-	IsoName                     = "imagebasedconfig.iso"
+	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	detachedAnnotationValue      = "imageclusterinstall-controller"
+	inspectAnnotation            = "inspect.metal3.io"
+	rebootAnnotation             = "reboot.metal3.io"
+	rebootAnnotationValue        = ""
+	ibioManagedBMH               = "image-based-install-managed"
+	ClusterConfigDir             = "cluster-configuration"
+	extraManifestsDir            = "extra-manifests"
+	nmstateSecretKey             = "nmstate"
+	clusterInstallFinalizerName  = "imageclusterinstall." + v1alpha1.Group + "/deprovision"
+	caBundleFileName             = "tls-ca-bundle.pem"
+	imageBasedInstallInvoker     = "image-based-install"
+	invokerCMFileName            = "invoker-cm.yaml"
+	installTimeoutAnnotation     = "imageclusterinstall." + v1alpha1.Group + "/install-timeout"
+	backupLabel                  = "cluster.open-cluster-management.io/backup"
+	backupLabelValue             = "true"
+	imageBasedConfigFilename     = "image-based-config.yaml"
+	installConfigFilename        = "install-config.yaml"
+	authDir                      = "auth"
+	kubeAdminFile                = "kubeadmin-password"
+	FilesDir                     = "files"
+	IsoName                      = "imagebasedconfig.iso"
+	restoreStatusAnnotation      = "velero.io/restore-status"
+	restoreStatusAnnotationValue = "true"
+	restoreSourceLabel           = "velero.io/restore-name"
 )
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -144,6 +147,17 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
+	var cd *hivev1.ClusterDeployment
+	if ici.Spec.ClusterDeploymentRef != nil && ici.Spec.ClusterDeploymentRef.Name != "" {
+		var err error
+		cd, err = r.getCD(ctx, ici)
+		if err != nil {
+			log.Error(err)
+		}
+	}
+
+	r.labelReferencedObjectsForBackup(ctx, log, ici, cd)
+
 	// Nothing to do if the installation is complete
 	if InstallationCompleted(ici) {
 		return ctrl.Result{}, nil
@@ -162,6 +176,16 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 		log.Info("Running reconcile for ici with bootTime set")
+	}
+
+	if iciIsBeingRestored(ici) {
+		log.Info("Waiting for status restore")
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.ensureRestoreStatusAnnotation(ctx, ici); err != nil {
+		log.Errorf("Failed to ensure restore status annotation: %s", err)
+		return ctrl.Result{}, err
 	}
 
 	if err := r.initializeConditions(ctx, ici); err != nil {
@@ -186,7 +210,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 	//   when the problem is resolved.
 	// - ConfigurationFailed: sets this reason when AutomatedCleaningMode cannot be modified in BMH.
 	cond.Reason = v1alpha1.ConfigurationPendingReason
-	cd, bmh, err := r.validateConfiguration(ctx, ici, &cond, log)
+	bmh, err := r.validateConfiguration(ctx, ici, cd, &cond, log)
 	if cd == nil || bmh == nil || err != nil {
 		return ctrl.Result{}, err
 	}
@@ -218,8 +242,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	r.labelReferencedObjectsForBackup(ctx, log, ici, cd)
-
 	// 4. Host configuration phase
 	// Possible reasons for not meeting requirements and exiting reconcile:
 	// - HostConfigurationPending: sets this reason in following scenarios:
@@ -248,34 +270,33 @@ func GetClusterConfigDir(namespacesDir, namespace, uid string) string {
 func (r *ImageClusterInstallReconciler) validateConfiguration(
 	ctx context.Context,
 	ici *v1alpha1.ImageClusterInstall,
+	cd *hivev1.ClusterDeployment,
 	cond *hivev1.ClusterInstallCondition,
 	log logrus.FieldLogger,
-) (*hivev1.ClusterDeployment, *bmh_v1alpha1.BareMetalHost, error) {
+) (*bmh_v1alpha1.BareMetalHost, error) {
+	if cd == nil {
+		if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
+			cond.Message = "ClusterDeploymentRef is unset"
+			log.Error(errors.New(cond.Message))
+			return nil, nil
+		}
 
-	if ici.Spec.ClusterDeploymentRef == nil || ici.Spec.ClusterDeploymentRef.Name == "" {
-		cond.Message = "ClusterDeploymentRef is unset"
-		log.Error(errors.New(cond.Message))
-		return nil, nil, nil
-	}
-
-	cd, err := r.getCD(ctx, ici)
-	if err != nil {
+		// in this case error would have been logged when cd couldn't be queried earlier in Reconcile so just set the Message here
 		cond.Message = fmt.Sprintf("failed to get ClusterDeployment %s/%s", ici.Namespace, ici.Spec.ClusterDeploymentRef.Name)
-		log.Error(err)
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	if ici.Spec.BareMetalHostRef == nil || ici.Spec.BareMetalHostRef.Name == "" {
 		cond.Message = "BareMetalHostRef is unset"
 		log.Error(errors.New(cond.Message))
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
 	if err != nil {
 		cond.Message = fmt.Sprintf("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
 		log.Error(err)
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	// AutomatedCleaningMode is set at the beginning of this flow because we don't want ironic to format the disk
@@ -287,11 +308,11 @@ func (r *ImageClusterInstallReconciler) validateConfiguration(
 			cond.Reason = v1alpha1.ConfigurationFailedReason
 			cond.Message = fmt.Sprintf("failed to disable automated cleaning mode for BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
 			log.WithError(err).Error(cond.Message)
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
-	return cd, bmh, nil
+	return bmh, nil
 }
 
 func (r *ImageClusterInstallReconciler) validateHost(
@@ -761,6 +782,7 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
 	if err != nil {
 		return dataImage, ctrl.Result{}, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
+	setBackupLabel(dataImage)
 
 	err = r.Create(ctx, dataImage)
 	if err != nil {
@@ -892,20 +914,33 @@ func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) {
-	if ici.Spec.ClusterMetadata != nil {
-		kubeconfigKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name, Namespace: ici.Namespace}
-		if err := r.labelSecretForBackup(ctx, kubeconfigKey); err != nil {
-			log.WithError(err).Errorf("failed to label Secret %s for backup", kubeconfigKey)
-		}
-		if ici.Spec.ClusterMetadata.AdminPasswordSecretRef != nil {
-			passwordKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminPasswordSecretRef.Name, Namespace: ici.Namespace}
-			if err := r.labelSecretForBackup(ctx, passwordKey); err != nil {
-				log.WithError(err).Errorf("failed to label Secret %s for backup", passwordKey)
-			}
-		}
+func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	bmh, err := r.getBMH(ctx, bmhRef)
+	if err != nil {
+		return err
 	}
 
+	patch := client.MergeFrom(bmh.DeepCopy())
+	if setBackupLabel(bmh) {
+		return r.Patch(ctx, bmh, patch)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	dataImage, err := r.getDataImage(ctx, bmhRef.Namespace, bmhRef.Name)
+	if err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(dataImage.DeepCopy())
+	if setBackupLabel(dataImage) {
+		return r.Patch(ctx, dataImage, patch)
+	}
+	return nil
+}
+
+func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) {
 	if ici.Spec.CABundleRef != nil {
 		caBundleKey := types.NamespacedName{Name: ici.Spec.CABundleRef.Name, Namespace: ici.Namespace}
 		if err := r.labelConfigMapForBackup(ctx, caBundleKey); err != nil {
@@ -920,10 +955,40 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 		}
 	}
 
-	if cd.Spec.PullSecretRef != nil {
-		psKey := types.NamespacedName{Name: cd.Spec.PullSecretRef.Name, Namespace: cd.Namespace}
-		if err := r.labelSecretForBackup(ctx, psKey); err != nil {
-			log.WithError(err).Errorf("failed to label Secret %s for backup", psKey)
+	if cd != nil {
+		reconfigKey := types.NamespacedName{Name: credentials.SeedReconfigurationSecretName(cd.Name), Namespace: cd.Namespace}
+		if err := r.labelSecretForBackup(ctx, reconfigKey); err != nil {
+			log.WithError(err).Errorf("failed to label Secret %s for backup", reconfigKey)
+		}
+
+		if cd.Spec.PullSecretRef != nil {
+			psKey := types.NamespacedName{Name: cd.Spec.PullSecretRef.Name, Namespace: cd.Namespace}
+			if err := r.labelSecretForBackup(ctx, psKey); err != nil {
+				log.WithError(err).Errorf("failed to label Secret %s for backup", psKey)
+			}
+		}
+	}
+
+	if ici.Spec.BareMetalHostRef != nil {
+		if err := r.labelBMHForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
+			log.WithError(err).Errorf("failed to label BMH %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		}
+
+		if err := r.labelDataImageForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
+			log.WithError(err).Errorf("failed to label DataImage %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		}
+	}
+
+	if ici.Spec.ClusterMetadata != nil {
+		kubeconfigKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name, Namespace: ici.Namespace}
+		if err := r.labelSecretForBackup(ctx, kubeconfigKey); err != nil {
+			log.WithError(err).Errorf("failed to label Secret %s for backup", kubeconfigKey)
+		}
+		if ici.Spec.ClusterMetadata.AdminPasswordSecretRef != nil {
+			passwordKey := types.NamespacedName{Name: ici.Spec.ClusterMetadata.AdminPasswordSecretRef.Name, Namespace: ici.Namespace}
+			if err := r.labelSecretForBackup(ctx, passwordKey); err != nil {
+				log.WithError(err).Errorf("failed to label Secret %s for backup", passwordKey)
+			}
 		}
 	}
 }
@@ -1456,4 +1521,22 @@ func verifyIsoAndAuthExists(clusterConfigPath string) bool {
 	}
 
 	return true
+}
+
+// iciIsBeingRestored returns true if the status is completely empty and the velero restore source label is present
+func iciIsBeingRestored(ici *v1alpha1.ImageClusterInstall) bool {
+	_, hasLabel := ici.ObjectMeta.Labels[restoreSourceLabel]
+	return hasLabel &&
+		len(ici.Status.Conditions) == 0 &&
+		ici.Status.InstallRestarts == 0 &&
+		ici.Status.BareMetalHostRef == nil &&
+		ici.Status.BootTime.IsZero()
+}
+
+func (r *ImageClusterInstallReconciler) ensureRestoreStatusAnnotation(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
+	patch := client.MergeFrom(ici.DeepCopy())
+	if !setAnnotationIfNotExists(&ici.ObjectMeta, restoreStatusAnnotation, restoreStatusAnnotationValue) {
+		return nil
+	}
+	return r.Patch(ctx, ici, patch)
 }
