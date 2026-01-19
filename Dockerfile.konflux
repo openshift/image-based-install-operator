@@ -24,7 +24,8 @@ ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster i
 
 ARG version=2.8
 
-LABEL name="image-based-install-operator" \
+LABEL name="multicluster-engine/image-based-install-rhel9" \
+      cpe="cpe:/a:redhat:multicluster_engine:2.8::el9" \
       summary="${SUMMARY}" \
       description="${DESCRIPTION}" \
       com.redhat.component="image-based-install-operator" \
@@ -39,6 +40,8 @@ LABEL name="image-based-install-operator" \
 
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
+
+RUN microdnf install -y nmstate-libs nmstate && microdnf clean all && rm -rf /var/cache/dnf/*
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
