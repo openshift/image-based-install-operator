@@ -164,7 +164,7 @@ var _ = Describe("Reconcile", func() {
 		clusterDeployment       *hivev1.ClusterDeployment
 		pullSecret              *corev1.Secret
 		installerMock           *installer.MockInstaller
-		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}` //nolint:gosec // G101: fake credentials for testing
 	)
 
 	BeforeEach(func() {
@@ -426,7 +426,7 @@ var _ = Describe("Reconcile", func() {
 		clusterInstall.Spec.Hostname = "thing"
 		clusterInstall.Spec.SSHKey = "my ssh key"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
-		r.initializeConditions(ctx, clusterInstall)
+		Expect(r.initializeConditions(ctx, clusterInstall)).To(Succeed())
 		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
 		cond.Status = corev1.ConditionTrue
 		setClusterInstallCondition(&clusterInstall.Status.Conditions, *cond)
@@ -1855,7 +1855,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		clusterDeployment       *hivev1.ClusterDeployment
 		pullSecret              *corev1.Secret
 		installerMock           *installer.MockInstaller
-		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}` //nolint:gosec // G101: fake credentials for testing
 	)
 
 	installerSuccess := func() {

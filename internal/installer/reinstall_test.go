@@ -46,6 +46,7 @@ platform:
 pullSecret: '{"auths":{"quay.io":{"auth":"dXNlcjpwYXNzCg=="}}}'
 `
 
+//nolint:gosec // G101: fake credentials for testing
 const secretSeedReconfig = `
 {
   "api_version": 1,
@@ -178,7 +179,7 @@ var _ = Describe("WriteReinstallData", func() {
 			idData := credentials.IdentityData{
 				Kubeconfig:        []byte("kubeconfig"),
 				KubeadminPassword: []byte("password"),
-				SeedReconfig:      []byte(data),
+				SeedReconfig:      []byte(data), //nolint:unconvert
 			}
 
 			err = inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)
