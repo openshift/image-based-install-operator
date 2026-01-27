@@ -23,6 +23,7 @@ cluster_id: e6a68c95-ee5c-4edd-9bb1-8141ac3eb348
 infra_id: test-sktvm
 `
 
+//nolint:gosec // fake credentials for testing
 const validInstallConfig = `
 apiVersion: v1
 baseDomain: example.com
@@ -46,6 +47,7 @@ platform:
 pullSecret: '{"auths":{"quay.io":{"auth":"dXNlcjpwYXNzCg=="}}}'
 `
 
+//nolint:gosec //fake credentials for testing
 const secretSeedReconfig = `
 {
   "api_version": 1,
@@ -178,7 +180,7 @@ var _ = Describe("WriteReinstallData", func() {
 			idData := credentials.IdentityData{
 				Kubeconfig:        []byte("kubeconfig"),
 				KubeadminPassword: []byte("password"),
-				SeedReconfig:      []byte(data),
+				SeedReconfig:      []byte(data), //nolint:unconvert
 			}
 
 			err = inst.WriteReinstallData(context.Background(), tmpWorkDir, isoWorkDir, idData)
