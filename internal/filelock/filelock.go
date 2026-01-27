@@ -13,7 +13,7 @@ func lockForDir(dir string) (*flock.Flock, error) {
 	p := filepath.Join(dir, lockFileName)
 	_, err := os.Stat(p)
 	if os.IsNotExist(err) {
-		if err := os.WriteFile(p, []byte{}, 0600); err != nil {
+		if err := os.WriteFile(p, []byte{}, 0600); err != nil { //nolint:govet // shadow: err in if scope
 			return nil, err
 		}
 	} else if err != nil {
@@ -38,7 +38,7 @@ func WithWriteLock(dir string, f func() error) (bool, error, error) {
 	if !locked {
 		return false, nil, nil
 	}
-	defer lock.Unlock()
+	defer lock.Unlock() //nolint:errcheck
 
 	return true, nil, f()
 }
@@ -58,7 +58,7 @@ func WithReadLock(dir string, f func() error) (bool, error, error) {
 	if !locked {
 		return false, nil, nil
 	}
-	defer lock.Unlock()
+	defer lock.Unlock() //nolint:errcheck
 
 	return true, nil, f()
 }

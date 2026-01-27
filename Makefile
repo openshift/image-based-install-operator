@@ -62,6 +62,9 @@ endif
 
 PROJECT_DIR := $(shell dirname $(abspath $(firstword $(MAKEFILE_LIST))))
 
+# Get the list of packages which have test files
+TEST ?= $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -113,7 +116,7 @@ golangci-lint: ## Run golangci-lint against code.
 
 .PHONY: test
 test: manifests generate fmt vet ## Run tests.
-	go test ./... -coverprofile cover.out
+	go test $(TEST) -coverprofile cover.out
 
 .PHONY: deploy-integration-test
 deploy-integration-test:
@@ -185,7 +188,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.16.2
+CONTROLLER_TOOLS_VERSION ?= v0.17.0
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -207,7 +210,6 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 mock-gen: ## Download mockgen locally if necessary.
 	test -s $(MOCK_GEN) || \
     GOBIN=$(LOCALBIN) GOFLAGS="" go install go.uber.org/mock/mockgen@v0.4.0
-
 
 .PHONY: operator-sdk
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
