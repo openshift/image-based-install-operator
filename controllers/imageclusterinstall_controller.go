@@ -709,7 +709,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
 		return nil
 	}
-	log.Infof("BareMetalHost %s/%s PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
+	log.Infof("BareMetalHost %s/%s PoweredOn status is: %t", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if !bmh.Spec.Online {
 		bmh.Spec.Online = true
 		log.Infof("Setting BareMetalHost (%s/%s) spec.Online to true", bmh.Namespace, bmh.Name)
@@ -1143,6 +1143,9 @@ func (r *ImageClusterInstallReconciler) writeImageBaseConfig(ctx context.Context
 		return err
 	}
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
+	if err != nil {
+		return err
+	}
 
 	return installer.WriteImageBaseConfig(ctx, ici, releaseRegistry, nmstate, file)
 }
