@@ -60,6 +60,9 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# Get the list of packages which have test files
+TEST ?= $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
+
 PROJECT_DIR := $(shell dirname $(abspath $(firstword $(MAKEFILE_LIST))))
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
@@ -113,7 +116,7 @@ golangci-lint: ## Run golangci-lint against code.
 
 .PHONY: test
 test: manifests generate fmt vet ## Run tests.
-	go test ./... -coverprofile cover.out
+	go test $(TEST) -coverprofile cover.out
 
 .PHONY: deploy-integration-test
 deploy-integration-test:
@@ -185,7 +188,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
-CONTROLLER_TOOLS_VERSION ?= v0.16.2
+CONTROLLER_TOOLS_VERSION ?= v0.17.0
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
