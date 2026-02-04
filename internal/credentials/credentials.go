@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	SecretResourceLabel         = "image-based-installed.openshift.io/created"
+	SecretResourceLabel         = "image-based-installed.openshift.io/created" //nolint:gosec
 	SecretResourceValue         = "true"
 	DefaultUser                 = "kubeadmin"
 	Kubeconfig                  = "kubeconfig"
@@ -31,7 +31,7 @@ const (
 	kubeAdminKey                = "password"
 	SeedReconfigurationFileName = "manifest.json"
 
-	secretPreservationLabel = "siteconfig.open-cluster-management.io/preserve"
+	secretPreservationLabel = "siteconfig.open-cluster-management.io/preserve" //nolint:gosec
 	secretPreservationValue = "cluster-identity"
 )
 

@@ -164,7 +164,7 @@ var _ = Describe("Reconcile", func() {
 		clusterDeployment       *hivev1.ClusterDeployment
 		pullSecret              *corev1.Secret
 		installerMock           *installer.MockInstaller
-		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}` //nolint:gosec
 	)
 
 	BeforeEach(func() {
@@ -1807,7 +1807,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		clusterDeployment       *hivev1.ClusterDeployment
 		pullSecret              *corev1.Secret
 		installerMock           *installer.MockInstaller
-		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}` //nolint:gosec
 	)
 
 	installerSuccess := func() {
