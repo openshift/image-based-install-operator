@@ -56,6 +56,7 @@ var _ = Describe("KubeConfigCertManager", func() {
 		Expect(block).NotTo(Equal(nil))
 		// Parse the CA certificate
 		ingressCert, err := x509.ParseCertificate(block.Bytes)
+		Expect(err).NotTo(HaveOccurred())
 		checkCertValidity(ingressCert, time.Duration(validityTwoYearsInDays)*24*time.Hour)
 		// verify ingress cert in certificateAuthData
 		Expect(cm.certificateAuthData).ToNot(BeNil())
@@ -67,6 +68,7 @@ var _ = Describe("KubeConfigCertManager", func() {
 
 	It("generateAdminUserCertificate success", func() {
 		ca, err := generateSelfSignedCACertificate("admin-kubeconfig-signer", validityTenYearsInDays)
+		Expect(err).NotTo(HaveOccurred())
 		userCert, _, err := generateAdminUserCertificate(ca)
 		Expect(err).NotTo(HaveOccurred())
 
