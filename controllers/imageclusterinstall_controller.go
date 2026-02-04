@@ -19,6 +19,7 @@ package controllers
 import (
 	"bytes"
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -190,7 +191,7 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	if ici.Spec.BareMetalHostRef == nil {
 		msg := "No BareMetalHostRef set, nothing to do without provided bmh"
-		log.Infof(msg)
+		log.Info(msg)
 		if updateErr := r.setRequirementsMetCondition(ctx, ici, corev1.ConditionFalse, v1alpha1.HostValidationPending, msg); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageClusterInstall status")
 		}
@@ -499,7 +500,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
 		return nil
 	}
-	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
+	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %t", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
 		if !bmh.Spec.ExternallyProvisioned {
 			log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
@@ -849,7 +850,7 @@ func (r *ImageClusterInstallReconciler) getClusterInfoFromFile(log logrus.FieldL
 	clusterInfo := lca_api.SeedReconfiguration{}
 	err = json.Unmarshal(data, &clusterInfo)
 	if err != nil {
-		log.Warnf("failed to marshal cluster info: %w", err)
+		log.Warnf("failed to marshal cluster info: %s", err)
 		return nil
 	}
 	return &clusterInfo

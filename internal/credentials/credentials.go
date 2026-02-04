@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	SecretResourceLabel = "image-based-installed.openshift.io/created"
+	SecretResourceLabel = "image-based-installed.openshift.io/created" //nolint:gosec
 	SecretResourceValue = "true"
 	DefaultUser         = "kubeadmin"
 	kubeconfig          = "kubeconfig"
