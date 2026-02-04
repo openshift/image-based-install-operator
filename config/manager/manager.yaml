@@ -88,6 +88,8 @@ spec:
           value: /certs/tls.crt
         - name: PORT
           value: "8000"
+        - name: TMPDIR
+          value: /data
         ports:
         - name: config-server
           containerPort: 8000

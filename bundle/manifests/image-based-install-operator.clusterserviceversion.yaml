@@ -28,7 +28,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-02-18T20:07:47Z"
+    createdAt: "2026-02-05T08:05:54Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
@@ -227,6 +227,8 @@ spec:
                   value: /certs/tls.crt
                 - name: PORT
                   value: "8000"
+                - name: TMPDIR
+                  value: /data
                 image: controller:latest
                 name: server
                 ports:
