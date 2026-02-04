@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/openshift/image-based-install-operator/internal/imageserver"
@@ -42,7 +43,8 @@ func main() {
 	}
 	http.Handle("/images/", s)
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%s", Options.Port),
+		Addr:              fmt.Sprintf(":%s", Options.Port),
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {

@@ -39,7 +39,7 @@ var _ = Describe("Monitor", func() {
 		clusterDeployment       *hivev1.ClusterDeployment
 		bmh                     *bmh_v1alpha1.BareMetalHost
 		pullSecret              *corev1.Secret
-		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}`
+		testPullSecretVal       = `{"auths":{"cloud.openshift.com":{"auth":"dXNlcjpwYXNzd29yZAo=","email":"r@r.com"}}}` //nolint:gosec //fake credentials for testing
 	)
 
 	BeforeEach(func() {
