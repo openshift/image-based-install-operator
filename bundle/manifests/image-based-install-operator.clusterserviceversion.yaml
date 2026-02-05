@@ -36,7 +36,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2026-01-07T19:57:51Z"
+    createdAt: "2026-02-05T10:59:19Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1
