@@ -3,7 +3,7 @@ package manifests
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -13,7 +13,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
-	gcpcfg "github.com/openshift/installer/pkg/asset/installconfig/gcp"
 	externalinfra "github.com/openshift/installer/pkg/asset/manifests/external"
 	gcpmanifests "github.com/openshift/installer/pkg/asset/manifests/gcp"
 	nutanixinfra "github.com/openshift/installer/pkg/asset/manifests/nutanix"
@@ -30,13 +29,14 @@ import (
 	"github.com/openshift/installer/pkg/types/nutanix"
 	"github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/ovirt"
+	"github.com/openshift/installer/pkg/types/powervc"
 	"github.com/openshift/installer/pkg/types/powervs"
 	"github.com/openshift/installer/pkg/types/vsphere"
 )
 
 var (
-	infraCfgFilename           = filepath.Join(manifestDir, "cluster-infrastructure-02-config.yml")
-	cloudControllerUIDFilename = filepath.Join(manifestDir, "cloud-controller-uid-config.yml")
+	infraCfgFilename           = path.Join(manifestDir, "cluster-infrastructure-02-config.yml")
+	cloudControllerUIDFilename = path.Join(manifestDir, "cloud-controller-uid-config.yml")
 )
 
 // Infrastructure generates the cluster-infrastructure-*.yml files.
@@ -161,6 +161,15 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 			}
 			config.Status.PlatformStatus.Azure.ResourceTags = resourceTags
 		}
+		// If the user has requested the use of a DNS provisioned by them, then OpenShift needs to
+		// start an in-cluster DNS for the installation to succeed. The user can then configure their
+		// DNS post-install.
+		config.Status.PlatformStatus.Azure.CloudLoadBalancerConfig = &configv1.CloudLoadBalancerConfig{
+			DNSType: configv1.PlatformDefaultDNSType,
+		}
+		if installConfig.Config.Azure.UserProvisionedDNS == dns.UserProvisionedDNSEnabled {
+			config.Status.PlatformStatus.Azure.CloudLoadBalancerConfig.DNSType = configv1.ClusterHostedDNSType
+		}
 	case baremetal.Name:
 		config.Spec.PlatformSpec.Type = configv1.BareMetalPlatformType
 		config.Spec.PlatformSpec.BareMetal = &configv1.BareMetalPlatformSpec{}
@@ -170,6 +179,7 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 			APIServerInternalIPs: installConfig.Config.Platform.BareMetal.APIVIPs,
 			IngressIPs:           installConfig.Config.Platform.BareMetal.IngressVIPs,
 			LoadBalancer:         installConfig.Config.Platform.BareMetal.LoadBalancer,
+			DNSRecordsType:       installConfig.Config.Platform.BareMetal.DNSRecordsType,
 		}
 		config.Spec.PlatformSpec.BareMetal.APIServerInternalIPs = types.StringsToIPs(installConfig.Config.Platform.BareMetal.APIVIPs)
 		config.Spec.PlatformSpec.BareMetal.IngressIPs = types.StringsToIPs(installConfig.Config.Platform.BareMetal.IngressVIPs)
@@ -204,10 +214,6 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 			}
 			config.Status.PlatformStatus.GCP.ResourceTags = resourceTags
 		}
-
-		// The endpoints must not include any path. The path will be added by the users in other packages.
-		modifiedEndpoints := gcpcfg.FormatGCPEndpointList(installConfig.Config.Platform.GCP.ServiceEndpoints, gcpcfg.FormatGCPEndpointInput{SkipPath: true})
-		config.Status.PlatformStatus.GCP.ServiceEndpoints = modifiedEndpoints
 
 		// If the user has requested the use of a DNS provisioned by them, then OpenShift needs to
 		// start an in-cluster DNS for the installation to succeed. The user can then configure their
@@ -248,7 +254,7 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 		config.Status.PlatformStatus.External = externalinfra.GetInfraPlatformStatus(installConfig)
 	case none.Name:
 		config.Spec.PlatformSpec.Type = configv1.NonePlatformType
-	case openstack.Name:
+	case openstack.Name, powervc.Name:
 		config.Spec.PlatformSpec.Type = configv1.OpenStackPlatformType
 		config.Spec.PlatformSpec.OpenStack = &configv1.OpenStackPlatformSpec{}
 		config.Status.PlatformStatus.OpenStack = &configv1.OpenStackPlatformStatus{
@@ -257,6 +263,7 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 			APIServerInternalIPs: installConfig.Config.OpenStack.APIVIPs,
 			IngressIPs:           installConfig.Config.OpenStack.IngressVIPs,
 			LoadBalancer:         installConfig.Config.OpenStack.LoadBalancer,
+			DNSRecordsType:       installConfig.Config.OpenStack.DNSRecordsType,
 		}
 		config.Spec.PlatformSpec.OpenStack.APIServerInternalIPs = types.StringsToIPs(installConfig.Config.Platform.OpenStack.APIVIPs)
 		config.Spec.PlatformSpec.OpenStack.IngressIPs = types.StringsToIPs(installConfig.Config.Platform.OpenStack.IngressVIPs)
@@ -270,6 +277,7 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 				APIServerInternalIPs: installConfig.Config.VSphere.APIVIPs,
 				IngressIPs:           installConfig.Config.VSphere.IngressVIPs,
 				LoadBalancer:         installConfig.Config.VSphere.LoadBalancer,
+				DNSRecordsType:       installConfig.Config.VSphere.DNSRecordsType,
 			}
 		} else {
 			config.Status.PlatformStatus.VSphere = &configv1.VSpherePlatformStatus{}
@@ -353,6 +361,7 @@ func (i *Infrastructure) Generate(ctx context.Context, dependencies asset.Parent
 				APIServerInternalIPs: installConfig.Config.Nutanix.APIVIPs,
 				IngressIPs:           installConfig.Config.Nutanix.IngressVIPs,
 				LoadBalancer:         installConfig.Config.Nutanix.LoadBalancer,
+				DNSRecordsType:       installConfig.Config.Nutanix.DNSRecordsType,
 			}
 		}
 	default:
