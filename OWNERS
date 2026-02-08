@@ -21,6 +21,7 @@ filters:
     - sudomakeinstall2
     - tsorya
     - eliorerz
+    - giladravid16
     approvers:
     - browsell
     - carbonin
@@ -33,3 +34,4 @@ filters:
     - romfreiman
     - tsorya
     - eliorerz
+    - giladravid16
