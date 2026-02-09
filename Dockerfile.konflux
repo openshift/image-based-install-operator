@@ -17,7 +17,7 @@ COPY vendor/ vendor/
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/manager cmd/manager/main.go
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
 
-FROM registry.redhat.io/rhel9-4-els/rhel:9.4
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
 
 ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
     DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
@@ -41,7 +41,7 @@ LABEL name="multicluster-engine/image-based-install-rhel9" \
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
-RUN dnf install -y nmstate-libs nmstate && dnf clean all && rm -rf /var/cache/dnf/*
+RUN microdnf install -y nmstate-libs nmstate && microdnf clean all && rm -rf /var/cache/microdnf/*
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
