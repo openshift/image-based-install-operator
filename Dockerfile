@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.21 as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.21 as builder
 ARG TARGETOS
 ARG TARGETARCH
 
