@@ -38,7 +38,7 @@ func WithWriteLock(dir string, f func() error) (bool, error, error) {
 	if !locked {
 		return false, nil, nil
 	}
-	defer lock.Unlock()
+	defer lock.Unlock() //nolint:errcheck
 
 	return true, nil, f()
 }
@@ -58,7 +58,7 @@ func WithReadLock(dir string, f func() error) (bool, error, error) {
 	if !locked {
 		return false, nil, nil
 	}
-	defer lock.Unlock()
+	defer lock.Unlock() //nolint:errcheck
 
 	return true, nil, f()
 }

@@ -368,7 +368,7 @@ var _ = Describe("Credentials", func() {
 			createSecret(secretName, map[string][]byte{key: val})
 
 			ref := types.NamespacedName{Name: secretName, Namespace: clusterDeployment.Namespace}
-			val, exists, err := cm.getSecretContent(ctx, ref, key)
+			_, exists, err := cm.getSecretContent(ctx, ref, key)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exists).To(BeFalse())
