@@ -1,7 +1,42 @@
 {
-    "schedule": ["on Saturday"],
-    "groupName": "Konflux build pipeline",
-    "includePaths": [".tekton/*"],
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "commitMessagePrefix": "NO-ISSUE: ",
-    "labels": ["lgtm", "approved"]
+    "labels": [
+        "lgtm",
+        "approved"
+    ],
+    "prHourlyLimit": 0,
+    "prConcurrentLimit": 0,
+    "enabledManagers": [
+        "tekton",
+        "gomod"
+    ],
+    "packageRules": [
+        {
+            "schedule": [
+                "on Saturday"
+            ],
+            "groupName": "Konflux build pipeline",
+            "includePaths": [
+                ".tekton/*"
+            ],
+            "matchManagers": [
+                "tekton"
+            ]
+        },
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchPackageNames": [
+                "github.com/openshift/hive/apis"
+            ],
+            "groupName": "Hive API Synchronization",
+            "addLabels": [
+                "hive-api",
+                "api-sync"
+            ],
+            "enabled": true
+        }
+    ]
 }
