@@ -8,21 +8,61 @@
     "prHourlyLimit": 0,
     "prConcurrentLimit": 0,
     "enabledManagers": [
+        "custom.regex",
         "tekton",
         "gomod"
     ],
+    "tekton": {
+        "managerFilePatterns": [
+            "/^.tekton/*/"
+        ]
+    },
+    "customManagers": [
+        {
+            "customType": "regex",
+            "managerFilePatterns": [
+                "/^Dockerfile$/"
+            ],
+            "matchStrings": [
+                "FROM registry.access.redhat.com/ubi9/ubi-minimal:(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)\\n"
+            ],
+            "depNameTemplate": "registry.access.redhat.com/ubi9/ubi-minimal",
+            "datasourceTemplate": "docker"
+        }
+    ],
     "packageRules": [
         {
+            "groupName": "Konflux build pipeline",
+            "addLabels": [
+                "konflux"
+            ],
             "schedule": [
                 "on Saturday"
-            ],
-            "groupName": "Konflux build pipeline",
-            "includePaths": [
-                ".tekton/*"
             ],
             "matchManagers": [
                 "tekton"
             ]
+        },
+        {
+            "matchPackageNames": [
+                "registry.access.redhat.com/ubi9/ubi-minimal"
+            ],
+            "groupName": "UBI Runtime Images",
+            "addLabels": [
+                "ubi"
+            ]
+        },
+        {
+            "matchUpdateTypes": [
+                "major"
+            ],
+            "matchDatasources": [
+                "docker"
+            ],
+            "matchPackageNames": [
+                "registry.access.redhat.com/ubi9/ubi-minimal"
+            ],
+            "enabled": false
         },
         {
             "matchManagers": [
