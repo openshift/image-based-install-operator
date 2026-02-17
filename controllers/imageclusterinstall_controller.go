@@ -19,6 +19,7 @@ package controllers
 import (
 	"bytes"
 	"context"
+
 	// These are required for image parsing to work correctly with digest-based pull specs
 	// See: https://github.com/opencontainers/go-digest/blob/v1.0.0/README.md#usage
 	_ "crypto/sha256"
@@ -510,7 +511,7 @@ func (r *ImageClusterInstallReconciler) updateBMHProvisioningState(ctx context.C
 	if bmh.Status.Provisioning.State != bmh_v1alpha1.StateAvailable && bmh.Status.Provisioning.State != bmh_v1alpha1.StateExternallyProvisioned {
 		return nil
 	}
-	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %s", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
+	log.Infof("Updating BareMetalHost %s/%s provisioning state, current PoweredOn status is: %t", bmh.Namespace, bmh.Name, bmh.Status.PoweredOn)
 	if bmh.Status.Provisioning.State == bmh_v1alpha1.StateAvailable {
 		if !bmh.Spec.ExternallyProvisioned {
 			log.Infof("Setting BareMetalHost (%s/%s) ExternallyProvisioned spec", bmh.Namespace, bmh.Name)
@@ -934,7 +935,9 @@ func (r *ImageClusterInstallReconciler) writeImageBaseConfig(ctx context.Context
 		return err
 	}
 	releaseRegistry, err := r.imageSetRegistry(ctx, ici)
-
+	if err != nil {
+		return err
+	}
 	return installer.WriteImageBaseConfig(ctx, ici, releaseRegistry, nmstate, file)
 }
 

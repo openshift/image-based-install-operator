@@ -20,7 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: pprof only enabled via --start-pprof and bound to localhost:6060
 	"net/url"
 	"os"
 	"time"

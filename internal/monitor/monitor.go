@@ -85,7 +85,7 @@ func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.
 	for _, cond := range cv.Status.Conditions {
 		if cond.Type == configv1.OperatorAvailable {
 			if !didCVOStarted(log, cv, reconfigurationStartTime) {
-				log.Infof(clusterVersionNotAvailableMessage)
+				log.Info(clusterVersionNotAvailableMessage)
 				return false, clusterVersionNotAvailableMessage, nil
 			}
 			if cond.Status == configv1.ConditionTrue {
@@ -93,7 +93,7 @@ func clusterVersionStatus(ctx context.Context, log logrus.FieldLogger, c client.
 			}
 			if cond.Type == configv1.OperatorAvailable {
 				message := fmt.Sprintf("ClusterVersion is not yet available because %s: %s", cond.Reason, cond.Message)
-				log.Infof(message)
+				log.Info(message)
 				return false, message, nil
 			}
 		}
@@ -134,7 +134,7 @@ func nodesStatus(ctx context.Context, log logrus.FieldLogger, c client.Client) (
 			if cond.Type == corev1.NodeReady {
 				if cond.Status != corev1.ConditionTrue {
 					message := fmt.Sprintf("Node %s is not yet ready because %s: %s", node.Name, cond.Reason, cond.Message)
-					log.Infof(message)
+					log.Info(message)
 					messages = append(messages, message)
 					nodesReady = false
 				}
