@@ -1,8 +1,6 @@
 module github.com/openshift/image-based-install-operator
 
-go 1.22
-
-toolchain go1.22.5
+go 1.23
 
 require (
 	github.com/containers/image/v5 v5.29.0
@@ -24,7 +22,7 @@ require (
 	k8s.io/apimachinery v0.28.3
 	k8s.io/apiserver v0.28.2
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.16.1
 )
 
