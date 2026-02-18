@@ -19,7 +19,7 @@ require (
 	github.com/openshift/installer v1.4.18-0.20250124162330-ed9225756bb3
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	go.uber.org/mock v0.5.0
-	golang.org/x/crypto v0.42.0
+	golang.org/x/crypto v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
@@ -76,7 +76,7 @@ require (
 	github.com/coreos/stream-metadata-go v0.1.8 // indirect
 	github.com/coreos/vcontext v0.0.0-20230201181013-d72178a18687 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/digitalocean/go-libvirt v0.0.0-20240220204746-fcabe97a6eed // indirect
+	github.com/digitalocean/go-libvirt v0.0.0-20260217163227-273eaa321819 // indirect
 	github.com/diskfs/go-diskfs v1.4.1 // indirect
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/elliotwutingfeng/asciiset v0.0.0-20230602022725-51bbb787efab // indirect
@@ -206,14 +206,14 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/term v0.35.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
-	golang.org/x/tools v0.37.0 // indirect
+	golang.org/x/tools v0.42.0 // indirect
 	golang.org/x/tools/godoc v0.1.0-deprecated // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/api v0.189.0 // indirect
