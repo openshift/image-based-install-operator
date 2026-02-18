@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.10
 	github.com/openshift-kni/lifecycle-agent v0.0.0-20240417121006-bafba676db66
-	github.com/openshift/api v0.0.0-20231123212421-7955d3da79e8
+	github.com/openshift/api d34f11c515b3
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
 	github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
 	github.com/sirupsen/logrus v1.9.3
