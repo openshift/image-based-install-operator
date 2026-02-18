@@ -7,7 +7,7 @@ toolchain go1.25.5
 require (
 	github.com/containers/image/v5 v5.31.0
 	github.com/go-openapi/swag v0.23.1
-	github.com/gofrs/flock v0.8.1
+	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/metal3-io/baremetal-operator/apis v0.6.1
@@ -213,12 +213,12 @@ require (
 	github.com/openshift/assisted-service/models v0.0.0 // indirect
 	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
 	github.com/openshift/cloud-credential-operator v0.0.0-20240404165937-5e8812d64187 // indirect
-	github.com/openshift/cluster-api-provider-baremetal v0.0.0-20220408122422-7a548effc26e // indirect
+	github.com/openshift/cluster-api-provider-baremetal v0.0.0-20251222173019-650cb6f37e52 // indirect
 	github.com/openshift/cluster-api-provider-libvirt v0.2.1-0.20230308152226-83c0473d4429 // indirect
 	github.com/openshift/cluster-api-provider-ovirt v0.1.1-0.20220323121149-e3f2850dd519 // indirect
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87 // indirect
 	github.com/openshift/library-go v0.0.0-20251107090138-0de9712313a5 // indirect
-	github.com/openshift/machine-api-operator v0.2.1-0.20240930121047-57b7917e6140 // indirect
+	github.com/openshift/machine-api-operator v0.2.1-0.20250122132849-b397e885dafb // indirect
 	github.com/openshift/machine-api-provider-gcp v0.0.1-0.20241021180644-0eca0846914a // indirect
 	github.com/openshift/machine-api-provider-ibmcloud v0.0.0-20231207164151-6b0b8ea7b16d // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
@@ -288,7 +288,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.34.1 // indirect
 	k8s.io/apiserver v0.34.1 // indirect
 	k8s.io/cli-runtime v0.33.6 // indirect
-	k8s.io/cloud-provider-vsphere v1.31.0 // indirect
+	k8s.io/cloud-provider-vsphere v1.31.1-0.20241023084500-cfc4c525856d // indirect
 	k8s.io/component-base v0.34.1 // indirect
 	k8s.io/klog v1.0.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
