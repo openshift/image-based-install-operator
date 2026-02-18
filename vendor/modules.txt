@@ -190,8 +190,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0
 ## explicit; go 1.23.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
-# github.com/IBM-Cloud/bluemix-go v0.0.0-20211102075456-ffc4e11dfb16
-## explicit; go 1.13
+# github.com/IBM-Cloud/bluemix-go v0.0.0-20251202072808-6f9778680861
+## explicit; go 1.24.0
 github.com/IBM-Cloud/bluemix-go/crn
 # github.com/IBM-Cloud/power-go-client v1.12.0
 ## explicit; go 1.24.0
