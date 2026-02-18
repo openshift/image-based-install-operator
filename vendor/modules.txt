@@ -1469,8 +1469,8 @@ github.com/russross/blackfriday/v2
 # github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 ## explicit
 github.com/shurcooL/httpfs/vfsutil
-# github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
-## explicit
+# github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92
+## explicit; go 1.19
 github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 ## explicit; go 1.13
