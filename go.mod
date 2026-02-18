@@ -16,7 +16,7 @@ require (
 	github.com/openshift-kni/lifecycle-agent v0.0.0-20240417121006-bafba676db66
 	github.com/openshift/api v0.0.0-20231123212421-7955d3da79e8
 	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
-	github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
+	github.com/openshift/library-go 03f1709971c5
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/crypto v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
