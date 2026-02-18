@@ -1142,7 +1142,7 @@ github.com/onsi/gomega/types
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42
+# github.com/openshift/api v0.0.0-20260212193555-c06ab675261f
 ## explicit; go 1.24.0
 github.com/openshift/api/annotations
 github.com/openshift/api/config/v1
@@ -1170,7 +1170,7 @@ github.com/openshift/assisted-service/api/v1beta1
 ## explicit; go 1.21
 github.com/openshift/assisted-service/models
 github.com/openshift/assisted-service/models/validations
-# github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 => github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235
+# github.com/openshift/client-go v0.0.0-20260108185524-48f4ccfc4e13 => github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235
 ## explicit; go 1.24.0
 github.com/openshift/client-go/config/applyconfigurations/config/v1
 github.com/openshift/client-go/config/applyconfigurations/config/v1alpha1
@@ -1382,7 +1382,7 @@ github.com/openshift/installer/pkg/types/vsphere/validation
 github.com/openshift/installer/pkg/utils
 github.com/openshift/installer/pkg/validate
 github.com/openshift/installer/pkg/version
-# github.com/openshift/library-go v0.0.0-20251107090138-0de9712313a5
+# github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5
 ## explicit; go 1.24.0
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
 github.com/openshift/library-go/pkg/config/clusterstatus
