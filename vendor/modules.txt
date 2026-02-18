@@ -822,8 +822,8 @@ github.com/go-playground/validator/v10
 # github.com/go-task/slim-sprig/v3 v3.0.0
 ## explicit; go 1.20
 github.com/go-task/slim-sprig/v3
-# github.com/gofrs/flock v0.8.1
-## explicit
+# github.com/gofrs/flock v0.12.1
+## explicit; go 1.21.0
 github.com/gofrs/flock
 # github.com/gofrs/uuid/v5 v5.3.0
 ## explicit; go 1.19
@@ -1224,8 +1224,8 @@ github.com/openshift/client-go/route/clientset/versioned/typed/route/v1
 github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1
 github.com/openshift/cloud-credential-operator/pkg/aws
 github.com/openshift/cloud-credential-operator/pkg/version
-# github.com/openshift/cluster-api-provider-baremetal v0.0.0-20220408122422-7a548effc26e
-## explicit; go 1.17
+# github.com/openshift/cluster-api-provider-baremetal v0.0.0-20251222173019-650cb6f37e52
+## explicit; go 1.23.0
 github.com/openshift/cluster-api-provider-baremetal/pkg/apis
 github.com/openshift/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1
 # github.com/openshift/cluster-api-provider-libvirt v0.2.1-0.20230308152226-83c0473d4429
@@ -1389,8 +1389,8 @@ github.com/openshift/library-go/pkg/config/clusterstatus
 github.com/openshift/library-go/pkg/config/leaderelection
 github.com/openshift/library-go/pkg/crypto
 github.com/openshift/library-go/pkg/route/routeapihelpers
-# github.com/openshift/machine-api-operator v0.2.1-0.20240930121047-57b7917e6140
-## explicit; go 1.22.0
+# github.com/openshift/machine-api-operator v0.2.1-0.20250122132849-b397e885dafb
+## explicit; go 1.22.5
 github.com/openshift/machine-api-operator/pkg/controller/machine
 github.com/openshift/machine-api-operator/pkg/metrics
 github.com/openshift/machine-api-operator/pkg/util
@@ -2478,8 +2478,8 @@ k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/cloud-provider-vsphere v1.31.0
-## explicit; go 1.22.0
+# k8s.io/cloud-provider-vsphere v1.31.1-0.20241023084500-cfc4c525856d
+## explicit; go 1.22.5
 k8s.io/cloud-provider-vsphere/pkg/common/config
 # k8s.io/component-base v0.34.1
 ## explicit; go 1.24.0
