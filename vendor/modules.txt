@@ -201,7 +201,7 @@ github.com/openshift/hive/apis/scheme
 # github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
 ## explicit; go 1.20
 github.com/openshift/library-go/pkg/crypto
-# github.com/pierrec/lz4 v2.3.0+incompatible
+# github.com/pierrec/lz4 v2.6.1+incompatible
 ## explicit
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
