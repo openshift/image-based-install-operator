@@ -96,7 +96,7 @@ require (
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20230703131026-7338252ff820
+	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis dd478a9dca16
 	golang.org/x/crypto => github.com/openshift/golang-crypto v0.33.1-0.20250310193910-9003f682e581
 	k8s.io/client-go => k8s.io/client-go v0.28.2
 )
