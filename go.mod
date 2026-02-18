@@ -63,7 +63,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.53.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0 // indirect
-	github.com/IBM-Cloud/bluemix-go v0.0.0-20211102075456-ffc4e11dfb16 // indirect
+	github.com/IBM-Cloud/bluemix-go v0.0.0-20251202072808-6f9778680861 // indirect
 	github.com/IBM-Cloud/power-go-client v1.12.0 // indirect
 	github.com/IBM/go-sdk-core/v5 v5.21.0 // indirect
 	github.com/IBM/ibm-cos-sdk-go v1.12.3 // indirect
