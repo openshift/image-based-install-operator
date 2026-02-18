@@ -3,10 +3,10 @@
 package internal
 
 import (
-	"fmt"
-	"sync"
+	fmt "fmt"
+	sync "sync"
 
-	typed "sigs.k8s.io/structured-merge-diff/v4/typed"
+	typed "sigs.k8s.io/structured-merge-diff/v6/typed"
 )
 
 func Parser() *typed.Parser {
@@ -176,6 +176,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: machineType
       type:
         scalar: string
+      default: ""
     - name: machines_v1beta1_machine_openshift_io
       type:
         namedType: com.github.openshift.api.machine.v1.OpenShiftMachineV1Beta1MachineTemplate
@@ -547,6 +548,9 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: numeric
       default: 0
+    - name: synchronizedAPI
+      type:
+        scalar: string
     - name: synchronizedGeneration
       type:
         scalar: numeric
@@ -619,6 +623,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: providerStatus
       type:
         namedType: __untyped_atomic_
+    - name: synchronizedAPI
+      type:
+        scalar: string
     - name: synchronizedGeneration
       type:
         scalar: numeric
