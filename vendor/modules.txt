@@ -1170,7 +1170,7 @@ github.com/openshift/assisted-service/api/v1beta1
 ## explicit; go 1.21
 github.com/openshift/assisted-service/models
 github.com/openshift/assisted-service/models/validations
-# github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 => github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235
+# github.com/openshift/client-go v0.0.0-20260213141500-06efc6dce93b => github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235
 ## explicit; go 1.24.0
 github.com/openshift/client-go/config/applyconfigurations/config/v1
 github.com/openshift/client-go/config/applyconfigurations/config/v1alpha1
