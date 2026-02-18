@@ -13,7 +13,7 @@ require (
 	github.com/metal3-io/baremetal-operator/apis v0.6.1
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
-	github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42
+	github.com/openshift/api v0.0.0-20260212193555-c06ab675261f
 	github.com/openshift/assisted-service/api v0.0.0
 	github.com/openshift/hive/apis v0.0.0-20260127213836-e33d70397d57
 	github.com/openshift/installer v1.4.21-rc2
@@ -211,13 +211,13 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/openshift/assisted-image-service v0.0.0-20240607085136-02df2e56dde6 // indirect
 	github.com/openshift/assisted-service/models v0.0.0 // indirect
-	github.com/openshift/client-go v0.0.0-20251015124057-db0dee36e235 // indirect
+	github.com/openshift/client-go v0.0.0-20260108185524-48f4ccfc4e13 // indirect
 	github.com/openshift/cloud-credential-operator v0.0.0-20240404165937-5e8812d64187 // indirect
 	github.com/openshift/cluster-api-provider-baremetal v0.0.0-20220408122422-7a548effc26e // indirect
 	github.com/openshift/cluster-api-provider-libvirt v0.2.1-0.20230308152226-83c0473d4429 // indirect
 	github.com/openshift/cluster-api-provider-ovirt v0.1.1-0.20220323121149-e3f2850dd519 // indirect
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87 // indirect
-	github.com/openshift/library-go v0.0.0-20251107090138-0de9712313a5 // indirect
+	github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5 // indirect
 	github.com/openshift/machine-api-operator v0.2.1-0.20240930121047-57b7917e6140 // indirect
 	github.com/openshift/machine-api-provider-gcp v0.0.1-0.20241021180644-0eca0846914a // indirect
 	github.com/openshift/machine-api-provider-ibmcloud v0.0.0-20231207164151-6b0b8ea7b16d // indirect

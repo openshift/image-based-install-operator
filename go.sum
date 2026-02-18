@@ -670,8 +670,8 @@ github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQ
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
 github.com/opencontainers/runtime-spec v1.2.0 h1:z97+pHb3uELt/yiAWD691HNHQIF07bE7dzrbT927iTk=
 github.com/opencontainers/runtime-spec v1.2.0/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
-github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42 h1:Mo2FlDdoCZ+BE2W4C0lNcxEDeIIhfsYFP6vj4Sggp8w=
-github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42/go.mod h1:d5uzF0YN2nQQFA0jIEWzzOZ+edmo6wzlGLvx5Fhz4uY=
+github.com/openshift/api v0.0.0-20260212193555-c06ab675261f h1:l1IgsK48Ym/nED30yfaCTF4MtswO1eOoyfXgh2rEmdw=
+github.com/openshift/api v0.0.0-20260212193555-c06ab675261f/go.mod h1:d5uzF0YN2nQQFA0jIEWzzOZ+edmo6wzlGLvx5Fhz4uY=
 github.com/openshift/assisted-image-service v0.0.0-20240607085136-02df2e56dde6 h1:U6ve+dnHlHhAELoxX+rdFOHVhoaYl0l9qtxwYtsO6C0=
 github.com/openshift/assisted-image-service v0.0.0-20240607085136-02df2e56dde6/go.mod h1:o2H5VwQhUD8P6XsK6dRmKpCCJqVvv12KJQZBXmcCXCU=
 github.com/openshift/assisted-service/api v0.0.0-20250922204150-a52b83145bea h1:YhJ9iHKKT5ooAdVr8qq3BdudhTxP/WF0XYDT5gzi1ak=
@@ -704,8 +704,8 @@ github.com/openshift/hive/apis v0.0.0-20260127213836-e33d70397d57 h1:Jk9HVqFTkNN
 github.com/openshift/hive/apis v0.0.0-20260127213836-e33d70397d57/go.mod h1:20tnfMYPSXqVDypUaO2vmxOtFzWj5l2KdZ+zYENpycI=
 github.com/openshift/installer v1.4.21-rc2 h1:KHTw3O/fXRA3H5p2ZK7vu3HcPmdxYuUbCdByx3DB7tw=
 github.com/openshift/installer v1.4.21-rc2/go.mod h1:3ATaLOa+jMDvA30gkrTskppvkggXmtKHtMWQ1Sog6kA=
-github.com/openshift/library-go v0.0.0-20251107090138-0de9712313a5 h1:Gq8jCFgSrilZ2ZHjQleFZWlblikc1aaRZ0hqs+yvrP4=
-github.com/openshift/library-go v0.0.0-20251107090138-0de9712313a5/go.mod h1:OlFFws1AO51uzfc48MsStGE4SFMWlMZD0+f5a/zCtKI=
+github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5 h1:9Pe6iVOMjt9CdA/vaKBNUSoEIjIe1po5Ha3ABRYXLJI=
+github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5/go.mod h1:K3FoNLgNBFYbFuG+Kr8usAnQxj1w84XogyUp2M8rK8k=
 github.com/openshift/machine-api-operator v0.2.1-0.20240930121047-57b7917e6140 h1:VKn644y4Ra94L8YZ3JT8ZuOZMEspZt8yoIjHeaRM3pA=
 github.com/openshift/machine-api-operator v0.2.1-0.20240930121047-57b7917e6140/go.mod h1:JEUa45hXYbC6tDpLjJCRuLXIKs7pdcawDkodqfZuQEE=
 github.com/openshift/machine-api-provider-gcp v0.0.1-0.20241021180644-0eca0846914a h1:2/DQryD6yCabqVtYLELnsrzX8SLUuGJEABvHrd4x5/U=
