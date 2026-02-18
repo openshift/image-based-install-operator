@@ -235,7 +235,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749 // indirect
+	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c // indirect
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd // indirect
 	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
