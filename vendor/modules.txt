@@ -203,8 +203,8 @@ github.com/openshift/hive/apis/scheme
 # github.com/openshift/library-go v0.0.0-20240422143640-fad649cbbd63
 ## explicit; go 1.21
 github.com/openshift/library-go/pkg/crypto
-# github.com/pierrec/lz4/v4 v4.1.17
-## explicit; go 1.14
+# github.com/pierrec/lz4/v4 v4.1.25
+## explicit; go 1.17
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
