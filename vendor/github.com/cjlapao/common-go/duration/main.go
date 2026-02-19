@@ -8,7 +8,6 @@ import (
 	"math"
 	"regexp"
 	"strconv"
-	"text/template"
 	"time"
 )
 
@@ -19,8 +18,6 @@ var (
 	ErrWeeksNotWithYearsOrMonth = errors.New("weeks are not allowed with years or months")
 
 	ErrMonthsInDurationUseOverload = errors.New("months are not allowed with the ToDuration method, use the overload instead")
-
-	tmpl = template.Must(template.New("duration").Parse(`P{{if .Years}}{{.Years}}Y{{end}}{{if .Months}}{{.Months}}M{{end}}{{if .Weeks}}{{.Weeks}}W{{end}}{{if .Days}}{{.Days}}D{{end}}{{if .HasTimePart}}T{{end }}{{if .Hours}}{{.Hours}}H{{end}}{{if .Minutes}}{{.Minutes}}M{{end}}{{if .Seconds}}{{.Seconds}}S{{end}}`))
 
 	full = regexp.MustCompile(`P((?P<year>\d+)Y)?((?P<month>\d+)M)?((?P<day>\d+)D)?(T((?P<hour>\d+)H)?((?P<minute>\d+)M)?((?P<second>\d+(?:\.\d+))S)?)?`)
 	week = regexp.MustCompile(`P((?P<week>\d+)W)`)
@@ -102,9 +99,30 @@ func (d *Duration) String() string {
 		panic(err)
 	}
 
-	err = tmpl.Execute(&s, d)
-	if err != nil {
-		panic(err)
+	s.WriteString("P")
+	if d.Years > 0 {
+		s.WriteString(fmt.Sprintf("%dY", d.Years))
+	}
+	if d.Months > 0 {
+		s.WriteString(fmt.Sprintf("%dM", d.Months))
+	}
+	if d.Weeks > 0 {
+		s.WriteString(fmt.Sprintf("%dW", d.Weeks))
+	}
+	if d.Days > 0 {
+		s.WriteString(fmt.Sprintf("%dD", d.Days))
+	}
+	if d.HasTimePart() {
+		s.WriteString("T")
+		if d.Hours > 0 {
+			s.WriteString(fmt.Sprintf("%dH", d.Hours))
+		}
+		if d.Minutes > 0 {
+			s.WriteString(fmt.Sprintf("%dM", d.Minutes))
+		}
+		if d.Seconds > 0 {
+			s.WriteString(fmt.Sprintf("%dS", d.Seconds))
+		}
 	}
 
 	return s.String()
