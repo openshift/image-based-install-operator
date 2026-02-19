@@ -15,7 +15,7 @@ require (
 	github.com/onsi/gomega v1.30.0
 	github.com/openshift-kni/lifecycle-agent v0.0.0-20240830194832-3f35535374a6
 	github.com/openshift/api v0.0.0-20240423014330-2cb60a113ad1
-	github.com/openshift/hive/apis v0.0.0-20231220215202-ad99b9e52d27
+	github.com/openshift/hive/apis 7aec45f1717d
 	github.com/openshift/library-go v0.0.0-20240422143640-fad649cbbd63
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/crypto v0.32.0
