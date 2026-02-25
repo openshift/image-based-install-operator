@@ -16,7 +16,7 @@ require (
 	github.com/onsi/gomega v1.39.0
 	github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42
 	github.com/openshift/assisted-service/api v0.0.0
-	github.com/openshift/hive/apis v0.0.0-20260224222343-3d002bd27069
+	github.com/openshift/hive/apis v0.0.0-20260225033240-afd410177cb1
 	github.com/openshift/installer v1.4.21-rc2
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 	go.uber.org/mock v0.6.0
