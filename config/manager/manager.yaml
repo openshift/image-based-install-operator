@@ -49,6 +49,8 @@ spec:
           value: "1"
         - name: TMPDIR
           value: /data
+        - name: KUBE_FEATURE_WatchListClient
+          value: "false"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
