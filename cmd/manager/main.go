@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
@@ -26,11 +27,13 @@ import (
 	"os"
 	"time"
 
+	crtls "github.com/openshift/controller-runtime-common/pkg/tls"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,6 +57,7 @@ import (
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/installer"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
+	"github.com/openshift/image-based-install-operator/internal/tlsconfig"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -67,15 +71,14 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(bmh_v1alpha1.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
+	utilruntime.Must(configv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
 func main() {
-	var metricsAddr string
 	var enableLeaderElection bool
 	var runWithPPROF bool
 	var probeAddr string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -96,10 +99,20 @@ func main() {
 		go startPPROF(logger)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	defer cancel()
+
+	restCfg := ctrl.GetConfigOrDie()
+	tlsResult, err := tlsconfig.ResolveTLSConfig(context.Background(), restCfg)
+	if err != nil {
+		setupLog.Error(err, "unable to resolve TLS config")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: metricsAddr,
+			BindAddress: "0",
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -107,6 +120,7 @@ func main() {
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:    9443,
 			CertDir: "/webhook-certs",
+			TLSOpts: []func(*tls.Config){tlsResult.TLSConfig},
 		}),
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
@@ -179,6 +193,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&crtls.SecurityProfileWatcher{
+		Client:                    mgr.GetClient(),
+		InitialTLSAdherencePolicy: tlsResult.TLSAdherencePolicy,
+		InitialTLSProfileSpec:     tlsResult.TLSProfileSpec,
+		OnAdherencePolicyChange: func(_ context.Context, oldPolicy, newPolicy configv1.TLSAdherencePolicy) {
+			logger.Infof("TLS adherence policy has changed, shutting down to reload, oldPolicy: %v, newPolicy: %v",
+				oldPolicy, newPolicy)
+			cancel()
+		},
+		OnProfileChange: func(_ context.Context, oldProfile, newProfile configv1.TLSProfileSpec) {
+			logger.Infof("TLS profile has changed, shutting down to reload, oldProfile: %v, newProfile: %v",
+				oldProfile, newProfile)
+			cancel()
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create TLS security profile watcher")
+		os.Exit(1)
+	}
+
 	if err = (&v1alpha1.ImageClusterInstall{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "ImageClusterInstall")
 		os.Exit(1)
@@ -197,7 +230,7 @@ func main() {
 	go EnqueueExistingImageClusterInstall(mgr)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
