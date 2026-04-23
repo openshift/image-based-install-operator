@@ -253,6 +253,9 @@ func (m *Master) Generate(ctx context.Context, dependencies asset.Parents) error
 			if err != nil {
 				logrus.Warn(errors.Wrap(err, "failed to filter zone list"))
 			}
+			// Sort the zones by lexical order to ensure CAPI and MAPI machines
+			// are distributed to zones in the same order.
+			slices.Sort(mpool.Zones)
 		}
 
 		pool.Platform.AWS = &mpool
@@ -615,7 +618,7 @@ func (m *Master) Generate(ctx context.Context, dependencies asset.Parents) error
 		machineConfigs = append(machineConfigs, ignIPv6)
 	}
 
-	if installConfig.Config.EnabledFeatureGates().Enabled(features.FeatureGateMultiDiskSetup) {
+	if installConfig.Config.Enabled(features.FeatureGateMultiDiskSetup) {
 		for i, diskSetup := range installConfig.Config.ControlPlane.DiskSetup {
 			var dataDisk any
 			var diskName string
