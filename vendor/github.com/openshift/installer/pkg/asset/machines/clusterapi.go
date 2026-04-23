@@ -159,6 +159,9 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 			if err != nil {
 				logrus.Warn(errors.Wrap(err, "failed to filter zone list"))
 			}
+			// Sort the zones by lexical order to ensure CAPI and MAPI machines
+			// are distributed to zones in the same order.
+			slices.Sort(mpool.Zones)
 		}
 
 		tags, err := aws.CapaTagsFromUserTags(clusterID.InfraID, installConfig.Config.Platform.AWS.UserTags)
@@ -175,6 +178,7 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 			Subnets:  subnets,
 			Tags:     tags,
 			PublicIP: publicOnlySubnets,
+			IPFamily: ic.AWS.IPFamily,
 			Ignition: &v1beta2.Ignition{
 				Version: "3.2",
 				// master machines should get ignition from the MCS on the bootstrap node
@@ -209,6 +213,7 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 			Subnets:        bootstrapSubnets,
 			Pool:           &pool,
 			Tags:           tags,
+			IPFamily:       ic.AWS.IPFamily,
 			PublicIP:       publicOnlySubnets || (installConfig.Config.Publish == types.ExternalPublishingStrategy),
 			PublicIpv4Pool: ic.Platform.AWS.PublicIpv4Pool,
 			Ignition:       ignition,
