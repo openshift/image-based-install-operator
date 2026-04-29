@@ -101,9 +101,8 @@ var _ = Describe("ValidateUpdate", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid hostname"))
 	})
 	It("update fail when installation started", func() {
-		bareMetalHostRef := &BareMetalHostReference{
-			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
+		bareMetalHostRef := &corev1.LocalObjectReference{
+			Name: "test-bmh",
 		}
 
 		oldClusterInstall := &ImageClusterInstall{
@@ -285,9 +284,8 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.BareMetalHostRef = &BareMetalHostReference{
-			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
+		newClusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: "test-bmh",
 		}
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
@@ -296,9 +294,8 @@ var _ = Describe("ValidateUpdate", func() {
 	})
 
 	It("update fails BMH ref update when installation started", func() {
-		bareMetalHostRef := &BareMetalHostReference{
-			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
+		bareMetalHostRef := &corev1.LocalObjectReference{
+			Name: "test-bmh",
 		}
 		oldClusterInstall := &ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
@@ -329,16 +326,14 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "test-bmh",
 				},
 			},
 		}
 		newClusterInstall := oldClusterInstall.DeepCopy()
-		newClusterInstall.Spec.BareMetalHostRef = &BareMetalHostReference{
-			Name:      "other-bmh",
-			Namespace: "test-bmh-namespace",
+		newClusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: "other-bmh",
 		}
 
 		warns, err := newClusterInstall.ValidateUpdate(oldClusterInstall)
@@ -354,9 +349,8 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "test-bmh",
 				},
 			},
 			Status: ImageClusterInstallStatus{
@@ -384,9 +378,8 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "test-bmh",
 				},
 			},
 			Status: ImageClusterInstallStatus{
@@ -402,9 +395,8 @@ var _ = Describe("ValidateUpdate", func() {
 	})
 
 	It("fail status and spec update when installation started", func() {
-		bareMetalHostRef := &BareMetalHostReference{
-			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
+		bareMetalHostRef := &corev1.LocalObjectReference{
+			Name: "test-bmh",
 		}
 
 		oldClusterInstall := &ImageClusterInstall{
@@ -442,9 +434,8 @@ var _ = Describe("ValidateUpdate", func() {
 			},
 			Spec: ImageClusterInstallSpec{
 				Hostname: "test",
-				BareMetalHostRef: &BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "test-bmh",
 				},
 			},
 			Status: ImageClusterInstallStatus{

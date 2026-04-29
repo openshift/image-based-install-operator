@@ -28,6 +28,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/installer"
@@ -114,11 +115,11 @@ const seedReconfigData = `{
   "pull_secret": "{\"auths\":{\"quay.io\":{\"auth\":\"cGFzc3dvcmQK\",\"email\":\"test@example.com\"}}}\n"
 }`
 
-func bmhInState(state bmh_v1alpha1.ProvisioningState) *bmh_v1alpha1.BareMetalHost {
+func bmhInState(state bmh_v1alpha1.ProvisioningState, namespace string) *bmh_v1alpha1.BareMetalHost {
 	return &bmh_v1alpha1.BareMetalHost{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-bmh",
-			Namespace: "test-bmh-namespace",
+			Namespace: namespace,
 		},
 		Status: bmh_v1alpha1.BareMetalHostStatus{
 			Provisioning: bmh_v1alpha1.ProvisionStatus{
@@ -220,7 +221,7 @@ var _ = Describe("Reconcile", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-1",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 			Status: bmh_v1alpha1.BareMetalHostStatus{
 				Provisioning: bmh_v1alpha1.ProvisionStatus{
@@ -247,9 +248,8 @@ var _ = Describe("Reconcile", func() {
 					Name: imageSet.Name,
 				},
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 			},
 		}
@@ -706,7 +706,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("copies the nmstate config bmh preprovisioningNetworkDataName", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "netconfig",
@@ -719,9 +719,8 @@ var _ = Describe("Reconcile", func() {
 		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -748,7 +747,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails if nmstate config is bad yaml", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		invalidNmstateString := "some\nnmstate\nstring"
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -762,9 +761,8 @@ var _ = Describe("Reconcile", func() {
 		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -784,13 +782,12 @@ var _ = Describe("Reconcile", func() {
 
 	It("fails when a referenced nmstate secret is missing", func() {
 		// note that we don't create the netconfig secret.
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -810,7 +807,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails when the referenced nmstate secret is missing the required key", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "netconfig",
@@ -822,9 +819,8 @@ var _ = Describe("Reconcile", func() {
 		bmh.Spec.PreprovisioningNetworkDataName = "netconfig"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -968,13 +964,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("Set status condition in case dataImage exists and being deleted", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1022,13 +1017,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH with state registering and ExternallyProvisioned true", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateRegistering)
+		bmh := bmhInState(bmh_v1alpha1.StateRegistering, clusterInstall.Namespace)
 		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1060,14 +1054,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH with state available, ExternallyProvisioned false and online true", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1101,14 +1094,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH with state available, ExternallyProvisioned false and online false", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = false
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1142,14 +1134,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH with state externally provisioned and online false", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstall.Namespace)
 		bmh.Spec.ExternallyProvisioned = true
 		bmh.Status.PoweredOn = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1182,13 +1173,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("configures a referenced BMH with status externally provisioned and online true", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstall.Namespace)
 		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1221,13 +1211,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("don't set reboot annotation in case data image was attached already", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstall.Namespace)
 		bmh.Spec.ExternallyProvisioned = true
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1271,12 +1260,11 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the BMH ref in the cluster install status", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1300,12 +1288,11 @@ var _ = Describe("Reconcile", func() {
 		Expect(clusterInstall.Status.BareMetalHostRef).To(HaveValue(Equal(*clusterInstall.Spec.BareMetalHostRef)))
 	})
 	It("sets disables AutomatedCleaningMode", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstall.Namespace)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -1379,10 +1366,8 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("Set ClusterInstallRequirementsMet to false in case there is not actual bmh under the reference", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      "doesntExist",
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: "doesntExist",
 		}
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1402,16 +1387,15 @@ var _ = Describe("Reconcile", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
 		Expect(cond.Reason).To(Equal(v1alpha1.ConfigurationPendingReason))
-		Expect(cond.Message).To(Equal("failed to get BareMetalHost test-bmh-namespace/doesntExist"))
+		Expect(cond.Message).To(Equal(fmt.Sprintf("failed to get BareMetalHost %s/doesntExist", clusterInstallNamespace)))
 	})
 
 	It("updates the cluster install and cluster deployment metadata", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1446,12 +1430,11 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("sets the cluster install metadata to the ids from the reconfig secret when it exists", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.Hostname = "thing"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1493,13 +1476,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds in case bmh has ip in provided machine network", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1526,7 +1508,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds in case bmh has disabled inspection and no hw details", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails = nil
 		if bmh.ObjectMeta.Annotations == nil {
 			bmh.ObjectMeta.Annotations = make(map[string]string)
@@ -1534,9 +1516,8 @@ var _ = Describe("Reconcile", func() {
 		bmh.ObjectMeta.Annotations[inspectAnnotation] = "disabled"
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1563,10 +1544,9 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("in case there is no actual bmh under the reference we should not return error", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1583,13 +1563,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("requeue in case bmh has no hw details but after adding them it succeeds", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails = nil
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetwork = "192.168.1.0/24"
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1644,13 +1623,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails in case bmh has no ip in provided machine network but after changing machine network it succeeds", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		// bad machine network
 		clusterInstall.Spec.MachineNetwork = "192.168.5.0/24"
@@ -1699,13 +1677,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds when no machine networks are specified", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		// No machine networks specified - should be valid
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -1729,13 +1706,12 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds with single network using new MachineNetworks field", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"}}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1763,16 +1739,15 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails with dual-stack when BMH has IPv4 but no IPv6 in networks", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		// Only IPv4 address, missing IPv6
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1799,16 +1774,15 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails with dual-stack when BMH has IPv6 but no IPv4 in networks", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		// Only IPv6 address, missing IPv4
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1835,15 +1809,14 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails with dual-stack when all networks are IPv4", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1870,7 +1843,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("fails with dual-stack when BMH has different MACs for IPv4 and IPv6", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		// Different MACs for IPv4 and IPv6 (different physical interfaces)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
@@ -1878,9 +1851,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1907,7 +1879,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("succeeds with dual-stack when BMH reports multiple NIC with correct IPv4/IPv6 IPs", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"}, // IPv4 in machine network
 			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"}, // IPv6 in machine network
@@ -1916,9 +1888,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1945,7 +1916,7 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("ignores NICs with empty IP or MAC addresses", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "", MAC: "aa:bb:cc:dd:ee:ff"},             // Empty IP
 			{IP: "192.168.1.30", MAC: ""},                  // Empty MAC
@@ -1954,9 +1925,8 @@ var _ = Describe("Reconcile", func() {
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.MachineNetworks = []v1alpha1.MachineNetworkEntry{
 			{CIDR: "192.168.1.0/24"},
@@ -1983,16 +1953,15 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("returns error when legacy MachineNetwork mismatches first MachineNetworks entry", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Status.HardwareDetails.NIC = []bmh_v1alpha1.NIC{
 			{IP: "192.168.1.30", MAC: "aa:bb:cc:dd:ee:ff"},
 			{IP: "2001:db8::30", MAC: "aa:bb:cc:dd:ee:ff"},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		// Set both legacy and new fields - mismatch should now error
 		clusterInstall.Spec.MachineNetwork = "10.0.0.0/8" // Wrong network
@@ -2117,14 +2086,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("labels BMH and DataImage for backup", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		clusterDeployment.Spec.ClusterName = "test"
@@ -2168,14 +2136,13 @@ var _ = Describe("Reconcile", func() {
 	})
 
 	It("labels newly created DataImage for backup", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		clusterDeployment.Spec.ClusterName = "test"
@@ -2209,7 +2176,7 @@ var _ = Describe("Reconcile", func() {
 
 	It("labels referenced resources for backup when cluster is already marked as installed", func() {
 		// Create BMH
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -2249,9 +2216,8 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Create(ctx, extraManifestCM)).To(Succeed())
 
 		// Set up ImageClusterInstall with InstallationCompleted condition set to True
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Spec.CABundleRef = &corev1.LocalObjectReference{
 			Name: "ca-bundle",
@@ -2344,12 +2310,11 @@ var _ = Describe("Reconcile", func() {
 		})
 
 		It("runs the reinstall logic", func() {
-			bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+			bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 			Expect(c.Create(ctx, bmh)).To(Succeed())
 
-			clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-				Name:      bmh.Name,
-				Namespace: bmh.Namespace,
+			clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+				Name: bmh.Name,
 			}
 			clusterInstall.Spec.Hostname = "thing"
 			Expect(c.Create(ctx, clusterInstall)).To(Succeed())
@@ -2371,12 +2336,11 @@ var _ = Describe("Reconcile", func() {
 	// Generated by Cursor
 	It("ensures RequirementsMet condition is True when BootTime is set after reconcile", func() {
 		// Create BMH in the correct state (StateExternallyProvisioned)
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstall.Namespace)
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 
 		// Simulate the bug scenario: Set a stale condition that shows False status
@@ -2500,7 +2464,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-1",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 			Status: bmh_v1alpha1.BareMetalHostStatus{
 				Provisioning: bmh_v1alpha1.ProvisionStatus{
@@ -2527,9 +2491,8 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 					Name: imageSet.Name,
 				},
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 			},
 		}
@@ -2562,14 +2525,13 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 	}
 
 	It("configures a referenced BMH", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -2606,14 +2568,13 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
 	})
 	It("configures a referenced BMH when dataImage already exists", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
+		bmh := bmhInState(bmh_v1alpha1.StateAvailable, clusterInstall.Namespace)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
 		Expect(c.Create(ctx, bmh)).To(Succeed())
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -2628,7 +2589,7 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		dataImage := bmh_v1alpha1.DataImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 			Spec: bmh_v1alpha1.DataImageSpec{
 				URL: fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID),
@@ -2681,13 +2642,6 @@ var _ = Describe("mapBMHToICI", func() {
 				}
 				return []string{ici.Spec.BareMetalHostRef.Name}
 			}).
-			WithIndex(&v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.namespace", func(rawObj client.Object) []string {
-				ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
-				if !ok || ici.Spec.BareMetalHostRef == nil {
-					return nil
-				}
-				return []string{ici.Spec.BareMetalHostRef.Namespace}
-			}).
 			Build()
 		c = FakeClientWithTimestamp{Client: fc}
 
@@ -2702,7 +2656,7 @@ var _ = Describe("mapBMHToICI", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -2713,9 +2667,8 @@ var _ = Describe("mapBMHToICI", func() {
 				Namespace: clusterInstallNamespace,
 			},
 			Spec: v1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 			},
 		}
@@ -2741,7 +2694,7 @@ var _ = Describe("mapBMHToICI", func() {
 		bmh := &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 		}
 		Expect(c.Create(ctx, bmh)).To(Succeed())
@@ -2752,9 +2705,8 @@ var _ = Describe("mapBMHToICI", func() {
 				Namespace: clusterInstallNamespace,
 			},
 			Spec: v1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      "other-bmh",
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "other-bmh",
 				},
 			},
 		}
@@ -2969,9 +2921,8 @@ var _ = Describe("handleFinalizer", func() {
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
 			Spec: v1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      "test-bmh",
-					Namespace: "test-bmh-namespace",
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: "test-bmh",
 				},
 			},
 		}
@@ -2980,7 +2931,7 @@ var _ = Describe("handleFinalizer", func() {
 		dataImage := bmh_v1alpha1.DataImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bmh",
-				Namespace: "test-bmh-namespace",
+				Namespace: clusterInstallNamespace,
 			},
 			Spec: bmh_v1alpha1.DataImageSpec{
 				URL: fmt.Sprintf("https://images-namespace.cluster.example.com/images/%s/%s.iso", clusterInstallNamespace, clusterInstall.ObjectMeta.UID),
@@ -3013,7 +2964,7 @@ var _ = Describe("handleFinalizer", func() {
 	})
 
 	It("removes dataimage on ici delete", func() {
-		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned, clusterInstallNamespace)
 		bmh.Spec.Online = true
 		setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue)
 
@@ -3024,9 +2975,8 @@ var _ = Describe("handleFinalizer", func() {
 				Finalizers: []string{clusterInstallFinalizerName},
 			},
 			Spec: v1alpha1.ImageClusterInstallSpec{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 			},
 		}

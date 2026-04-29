@@ -18,10 +18,11 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
+
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/sirupsen/logrus"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -84,7 +85,7 @@ var _ = Describe("Monitor", func() {
 		bmh = &bmh_v1alpha1.BareMetalHost{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        "test-1",
-				Namespace:   "test-bmh-namespace",
+				Namespace:   clusterInstallNamespace,
 				Annotations: map[string]string{ibioManagedBMH: ""},
 			},
 			Status: bmh_v1alpha1.BareMetalHostStatus{
@@ -112,9 +113,8 @@ var _ = Describe("Monitor", func() {
 					Name: imageSet.Name,
 				},
 				ClusterDeploymentRef: &corev1.LocalObjectReference{Name: clusterInstallName},
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 				ClusterMetadata: &hivev1.ClusterMetadata{
 					AdminKubeconfigSecretRef: corev1.LocalObjectReference{
@@ -123,9 +123,8 @@ var _ = Describe("Monitor", func() {
 				},
 			},
 			Status: v1alpha1.ImageClusterInstallStatus{
-				BareMetalHostRef: &v1alpha1.BareMetalHostReference{
-					Name:      bmh.Name,
-					Namespace: bmh.Namespace,
+				BareMetalHostRef: &corev1.LocalObjectReference{
+					Name: bmh.Name,
 				},
 				BootTime: metav1.Now(),
 			},
@@ -258,9 +257,8 @@ var _ = Describe("Monitor", func() {
 		r.DefaultInstallTimeout = -time.Minute
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -293,9 +291,8 @@ var _ = Describe("Monitor", func() {
 		r.DefaultInstallTimeout = -time.Minute
 		r.GetSpokeClusterInstallStatus = monitor.FailureMonitor
 
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
@@ -455,9 +452,8 @@ var _ = Describe("Monitor", func() {
 	It("does not set timeout when the default timeout has passed but the cluster is already installed", func() {
 		// set negative timeout to ensure it triggers and so that no time is wasted in tests
 		r.DefaultInstallTimeout = -time.Minute
-		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
-			Name:      bmh.Name,
-			Namespace: bmh.Namespace,
+		clusterInstall.Spec.BareMetalHostRef = &corev1.LocalObjectReference{
+			Name: bmh.Name,
 		}
 		clusterInstall.Status = v1alpha1.ImageClusterInstallStatus{
 			Conditions: []hivev1.ClusterInstallCondition{

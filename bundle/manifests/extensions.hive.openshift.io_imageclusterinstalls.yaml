@@ -66,16 +66,16 @@ spec:
                   be used to attach the configuration to the host.
                 properties:
                   name:
-                    description: Name identifies the BareMetalHost within a namespace
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
-                  namespace:
-                    description: Namespace identifies the namespace containing the
-                      referenced BareMetalHost
-                    type: string
-                required:
-                - name
-                - namespace
                 type: object
+                x-kubernetes-map-type: atomic
               caBundleRef:
                 description: |-
                   CABundle is a reference to a config map containing the new bundle of trusted certificates for the host.
@@ -365,18 +365,21 @@ spec:
             description: ImageClusterInstallStatus defines the observed state of ImageClusterInstall
             properties:
               bareMetalHostRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
                 properties:
                   name:
-                    description: Name identifies the BareMetalHost within a namespace
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
-                  namespace:
-                    description: Namespace identifies the namespace containing the
-                      referenced BareMetalHost
-                    type: string
-                required:
-                - name
-                - namespace
                 type: object
+                x-kubernetes-map-type: atomic
               bootTime:
                 description: BootTime indicates the time at which the host was requested
                   to boot. Used to determine install timeouts.

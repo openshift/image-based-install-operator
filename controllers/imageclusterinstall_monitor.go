@@ -38,9 +38,10 @@ import (
 
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	apicfgv1 "github.com/openshift/api/config/v1"
+	"github.com/sirupsen/logrus"
+
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/sirupsen/logrus"
 )
 
 // ImageClusterInstallMonitor reconciles a ImageClusterInstall object
@@ -85,7 +86,7 @@ func (r *ImageClusterInstallMonitor) monitorInstallationProgress(
 	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall) (ctrl.Result, error) {
 
-	bmh, err := r.getBMH(ctx, ici.Status.BareMetalHostRef)
+	bmh, err := r.getBMH(ctx, ici)
 	if err != nil {
 		log.WithError(err).Error("failed to get BareMetalHost")
 		return ctrl.Result{}, err
@@ -255,11 +256,11 @@ func (r *ImageClusterInstallMonitor) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ImageClusterInstallMonitor) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
+func (r *ImageClusterInstallMonitor) getBMH(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (*bmh_v1alpha1.BareMetalHost, error) {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
+		Name:      ici.Status.BareMetalHostRef.Name,
+		Namespace: ici.Namespace,
 	}
 	if err := r.Get(ctx, key, bmh); err != nil {
 		return nil, err

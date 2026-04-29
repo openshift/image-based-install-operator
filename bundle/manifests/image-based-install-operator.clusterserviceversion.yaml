@@ -12,8 +12,7 @@ metadata:
           },
           "spec": {
             "bareMetalHostRef": {
-              "name": "host-0",
-              "namespace": "test-sno"
+              "name": "host-0"
             },
             "clusterDeploymentRef": {
               "name": "test-sno"
@@ -36,7 +35,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2026-04-26T07:25:00Z"
+    createdAt: "2026-04-30T14:01:51Z"
     operators.operatorframework.io/builder: operator-sdk-v1.30.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: image-based-install-operator.v0.0.1

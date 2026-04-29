@@ -89,7 +89,7 @@ type ImageClusterInstallSpec struct {
 
 	// BareMetalHostRef identifies a BareMetalHost object to be used to attach the configuration to the host.
 	// +optional
-	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+	BareMetalHostRef *corev1.LocalObjectReference `json:"bareMetalHostRef,omitempty"`
 
 	// MachineNetwork is the subnet provided by user for the ocp cluster.
 	// This will be used to create the node network and choose ip address for the node.
@@ -125,17 +125,10 @@ type ImageClusterInstallStatus struct {
 	// InstallRestarts is the total count of container restarts on the clusters install job.
 	InstallRestarts int `json:"installRestarts,omitempty"`
 
-	BareMetalHostRef *BareMetalHostReference `json:"bareMetalHostRef,omitempty"`
+	BareMetalHostRef *corev1.LocalObjectReference `json:"bareMetalHostRef,omitempty"`
 
 	// BootTime indicates the time at which the host was requested to boot. Used to determine install timeouts.
 	BootTime metav1.Time `json:"bootTime,omitempty"`
-}
-
-type BareMetalHostReference struct {
-	// Name identifies the BareMetalHost within a namespace
-	Name string `json:"name"`
-	// Namespace identifies the namespace containing the referenced BareMetalHost
-	Namespace string `json:"namespace"`
 }
 
 //+kubebuilder:object:root=true

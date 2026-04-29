@@ -292,9 +292,9 @@ func (r *ImageClusterInstallReconciler) validateConfiguration(
 		return nil, nil
 	}
 
-	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
+	bmh, err := r.getBMH(ctx, ici)
 	if err != nil {
-		cond.Message = fmt.Sprintf("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		cond.Message = fmt.Sprintf("failed to get BareMetalHost %s/%s", ici.Namespace, ici.Spec.BareMetalHostRef.Name)
 		log.Error(err)
 		return nil, nil
 	}
@@ -609,8 +609,7 @@ func (r *ImageClusterInstallReconciler) mapBMHToICI(ctx context.Context, obj cli
 	}
 	listOptions := []client.ListOption{
 		client.MatchingFields{
-			".spec.bareMetalHostRef.name":      bmhName,
-			".spec.bareMetalHostRef.namespace": bmhNamespace},
+			".spec.bareMetalHostRef.name": bmhName},
 	}
 	iciList := &v1alpha1.ImageClusterInstallList{}
 	if err := r.List(ctx, iciList, listOptions...); err != nil {
@@ -687,15 +686,6 @@ func (r *ImageClusterInstallReconciler) addIndexforBaremetalHostRef(mgr ctrl.Man
 			return nil
 		}
 		return []string{ici.Spec.BareMetalHostRef.Name}
-	}); err != nil {
-		return err
-	}
-	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.ImageClusterInstall{}, ".spec.bareMetalHostRef.namespace", func(rawObj client.Object) []string {
-		ici, ok := rawObj.(*v1alpha1.ImageClusterInstall)
-		if !ok || ici.Spec.BareMetalHostRef == nil {
-			return nil
-		}
-		return []string{ici.Spec.BareMetalHostRef.Namespace}
 	}); err != nil {
 		return err
 	}
@@ -805,11 +795,11 @@ func (r *ImageClusterInstallReconciler) getCD(ctx context.Context, ici *v1alpha1
 	return clusterDeployment, nil
 }
 
-func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
+func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (*bmh_v1alpha1.BareMetalHost, error) {
 	bmh := &bmh_v1alpha1.BareMetalHost{}
 	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
+		Name:      ici.Spec.BareMetalHostRef.Name,
+		Namespace: ici.Namespace,
 	}
 	if err := r.Get(ctx, key, bmh); err != nil {
 		return nil, err
@@ -914,8 +904,8 @@ func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
-	bmh, err := r.getBMH(ctx, bmhRef)
+func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
+	bmh, err := r.getBMH(ctx, ici)
 	if err != nil {
 		return err
 	}
@@ -927,8 +917,8 @@ func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, b
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
-	dataImage, err := r.getDataImage(ctx, bmhRef.Namespace, bmhRef.Name)
+func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
+	dataImage, err := r.getDataImage(ctx, ici.Namespace, ici.Spec.BareMetalHostRef.Name)
 	if err != nil {
 		return err
 	}
@@ -970,12 +960,12 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 	}
 
 	if ici.Spec.BareMetalHostRef != nil {
-		if err := r.labelBMHForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
-			log.WithError(err).Errorf("failed to label BMH %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		if err := r.labelBMHForBackup(ctx, ici); err != nil {
+			log.WithError(err).Errorf("failed to label BMH %s/%s for backup", ici.Namespace, ici.Spec.BareMetalHostRef.Name)
 		}
 
-		if err := r.labelDataImageForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
-			log.WithError(err).Errorf("failed to label DataImage %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		if err := r.labelDataImageForBackup(ctx, ici); err != nil {
+			log.WithError(err).Errorf("failed to label DataImage %s/%s for backup", ici.Namespace, ici.Spec.BareMetalHostRef.Name)
 		}
 	}
 
@@ -1415,7 +1405,7 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 	if ici.Spec.BareMetalHostRef != nil {
 		key := types.NamespacedName{
 			Name:      ici.Spec.BareMetalHostRef.Name,
-			Namespace: ici.Spec.BareMetalHostRef.Namespace,
+			Namespace: ici.Namespace,
 		}
 
 		dataImage, err := r.removeBMHDataImage(ctx, log, key)
