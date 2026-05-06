@@ -5,6 +5,16 @@
         "lgtm",
         "approved"
     ],
+    "baseBranchPatterns": [
+        "main",
+        "backplane-2.6",
+        "backplane-2.7",
+        "backplane-2.8",
+        "backplane-2.9",
+        "backplane-2.10",
+        "backplane-2.11",
+        "backplane-2.17"
+    ],
     "prHourlyLimit": 0,
     "prConcurrentLimit": 0,
     "enabledManagers": [
