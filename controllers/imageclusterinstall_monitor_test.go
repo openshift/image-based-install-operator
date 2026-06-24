@@ -18,10 +18,11 @@ import (
 	bmh_v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	"github.com/sirupsen/logrus"
+
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/monitor"
-	"github.com/sirupsen/logrus"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -163,6 +164,16 @@ var _ = Describe("Monitor", func() {
 
 	It("sets conditions to cluster installed when the BMH is managed and cluster is ready", func() {
 		r.GetSpokeClusterInstallStatus = monitor.SuccessMonitor
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: "https://example.com/config.iso",
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
@@ -186,9 +197,12 @@ var _ = Describe("Monitor", func() {
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Status).To(Equal(corev1.ConditionTrue))
 
-		By("Verify BMH was detached")
+		By("Verify DataImage was removed")
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, &bmh_v1alpha1.DataImage{})).NotTo(Succeed())
+
+		By("Verify BMH was rebooted to complete DataImage removal")
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, bmh)).To(Succeed())
-		Expect(bmh.Annotations[detachedAnnotation]).To(Equal(detachedAnnotationValue))
+		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 
 		By("Verify that clusterInstall was not updated on second run")
 		resourceVersion := clusterInstall.ResourceVersion
@@ -206,6 +220,82 @@ var _ = Describe("Monitor", func() {
 		resourceVersion = bmh.ResourceVersion
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, bmh)).To(Succeed())
 		Expect(bmh.ObjectMeta.ResourceVersion).To(Equal(resourceVersion))
+	})
+
+	It("waits for DataImage deletion before reporting cluster installed", func() {
+		r.GetSpokeClusterInstallStatus = monitor.SuccessMonitor
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       bmh.Name,
+				Namespace:  bmh.Namespace,
+				Finalizers: []string{bmh_v1alpha1.DataImageFinalizer},
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: "https://example.com/config.iso",
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+		Expect(c.Delete(ctx, dataImage)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: time.Minute}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal(dataImageRemovalPendingMessage))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+
+		By("Verify DataImage still exists while deletion is in progress")
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, dataImage)).To(Succeed())
+	})
+
+	It("reports DataImage removal while waiting for deletion after cluster install", func() {
+		r.GetSpokeClusterInstallStatus = monitor.SuccessMonitor
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       bmh.Name,
+				Namespace:  bmh.Namespace,
+				Finalizers: []string{bmh_v1alpha1.DataImageFinalizer},
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: "https://example.com/config.iso",
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{RequeueAfter: time.Minute}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		cond := findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallStopped)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+		Expect(cond.Message).To(Equal(dataImageRemovalPendingMessage))
+		cond = findCondition(clusterInstall.Status.Conditions, hivev1.ClusterInstallCompleted)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+
+		By("Verify DataImage deletion was initiated")
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, dataImage)).To(Succeed())
+		Expect(dataImage.DeletionTimestamp).NotTo(BeNil())
 	})
 
 	It("requeues and sets conditions when spoke cluster is not ready yet", func() {
