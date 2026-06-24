@@ -28,6 +28,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"github.com/openshift/image-based-install-operator/api/v1alpha1"
 	"github.com/openshift/image-based-install-operator/internal/credentials"
 	"github.com/openshift/image-based-install-operator/internal/installer"
@@ -1052,7 +1053,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Image).To(BeNil())
 		// We don't update the power state of a BMH with registering provisioning state
 		Expect(bmh.Spec.Online).To(BeFalse())
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -1093,7 +1093,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -1134,7 +1133,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -1174,7 +1172,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -1213,7 +1210,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -1263,7 +1259,6 @@ var _ = Describe("Reconcile", func() {
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).ToNot(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		Expect(c.Get(ctx, key, dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
@@ -2116,7 +2111,7 @@ var _ = Describe("Reconcile", func() {
 		}
 	})
 
-	It("labels BMH and DataImage for backup", func() {
+	It("labels BMH for backup but not DataImage", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
@@ -2131,7 +2126,7 @@ var _ = Describe("Reconcile", func() {
 		clusterDeployment.Spec.BaseDomain = "example.com"
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
-		// Create DataImage beforehand so it exists when backup labeling happens
+		// Create DataImage beforehand
 		dataImage := &bmh_v1alpha1.DataImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bmh.Name,
@@ -2161,13 +2156,13 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify DataImage has backup label
+		// Verify DataImage is not labeled for backup
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
 	})
 
-	It("labels newly created DataImage for backup", func() {
+	It("does not label newly created DataImage for backup", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
@@ -2201,10 +2196,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify newly created DataImage has backup label
+		// Verify newly created DataImage is not labeled for backup
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
 	})
 
 	It("labels referenced resources for backup when cluster is already marked as installed", func() {
@@ -2292,10 +2287,14 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify DataImage has backup label
+		// Verify DataImage is not labeled for backup and is left in place for unannotated completed ICIs
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
+
+		// Verify completed ICI did not get the cleanup annotation
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.Annotations).ToNot(HaveKey(postCleanupAnnotation))
 
 		// Verify CA bundle ConfigMap has backup label
 		caBundleKey := types.NamespacedName{
@@ -2323,6 +2322,128 @@ var _ = Describe("Reconcile", func() {
 		testPullSecret := &corev1.Secret{}
 		Expect(c.Get(ctx, pullSecretKey, testPullSecret)).To(Succeed())
 		Expect(testPullSecret.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "Secret %s/%s missing backup label", testPullSecret.Namespace, testPullSecret.Name)
+	})
+
+	It("adds cleanup annotation to new ImageClusterInstalls", func() {
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		installerSuccess()
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.Annotations).To(HaveKeyWithValue(postCleanupAnnotation, postCleanupAnnotationValue), "ICI %s/%s missing post-cleanup annotation", clusterInstall.Namespace, clusterInstall.Name)
+	})
+
+	It("does not add cleanup annotation while status is being restored", func() {
+		clusterInstall.ObjectMeta.Labels = map[string]string{
+			restoreSourceLabel: "test-restore",
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.Annotations).ToNot(HaveKey(postCleanupAnnotation), "ICI %s/%s should not have post-cleanup annotation", clusterInstall.Namespace, clusterInstall.Name)
+	})
+
+	It("deletes DataImage for completed ImageClusterInstall with cleanup annotation", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.Online = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Annotations = map[string]string{
+			postCleanupAnnotation: postCleanupAnnotationValue,
+		}
+		clusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{
+			{
+				Type:    hivev1.ClusterInstallCompleted,
+				Status:  corev1.ConditionTrue,
+				Reason:  v1alpha1.InstallSucceededReason,
+				Message: v1alpha1.InstallSucceededMessage,
+			},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.IsZero()).To(BeTrue())
+
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, &bmh_v1alpha1.DataImage{})).NotTo(Succeed(), "DataImage %s/%s should be deleted", bmh.Namespace, bmh.Name)
+	})
+
+	It("leaves DataImage for completed ImageClusterInstall without cleanup annotation", func() {
+		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
+		bmh.Spec.Online = true
+		Expect(c.Create(ctx, bmh)).To(Succeed())
+
+		dataImage := &bmh_v1alpha1.DataImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bmh.Name,
+				Namespace: bmh.Namespace,
+			},
+			Spec: bmh_v1alpha1.DataImageSpec{
+				URL: imageURL(),
+			},
+		}
+		Expect(c.Create(ctx, dataImage)).To(Succeed())
+
+		clusterInstall.Spec.BareMetalHostRef = &v1alpha1.BareMetalHostReference{
+			Name:      bmh.Name,
+			Namespace: bmh.Namespace,
+		}
+		clusterInstall.Status.Conditions = []hivev1.ClusterInstallCondition{
+			{
+				Type:    hivev1.ClusterInstallCompleted,
+				Status:  corev1.ConditionTrue,
+				Reason:  v1alpha1.InstallSucceededReason,
+				Message: v1alpha1.InstallSucceededMessage,
+			},
+		}
+		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
+
+		key := types.NamespacedName{
+			Namespace: clusterInstallNamespace,
+			Name:      clusterInstallName,
+		}
+		res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).To(Equal(ctrl.Result{}))
+
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: bmh.Namespace, Name: bmh.Name}, &bmh_v1alpha1.DataImage{})).To(Succeed(), "DataImage %s/%s should exist", bmh.Namespace, bmh.Name)
+		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
+		Expect(clusterInstall.Annotations).ToNot(HaveKey(postCleanupAnnotation), "ICI %s/%s should not have post-cleanup annotation", clusterInstall.Namespace, clusterInstall.Name)
 	})
 
 	Context("when the cluster identity secrets exist", func() {
@@ -2599,7 +2720,6 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		dataImage := bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
@@ -2653,7 +2773,6 @@ var _ = Describe("Reconcile with DataImageCoolDownPeriod set to 1 second", func(
 		Expect(bmh.Spec.Online).To(BeTrue())
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(ibioManagedBMH))
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 
 		Expect(c.Get(ctx, key, &dataImage)).To(Succeed())
 		Expect(dataImage.Spec.URL).To(Equal(imageURL()))
@@ -3015,7 +3134,6 @@ var _ = Describe("handleFinalizer", func() {
 	It("removes dataimage on ici delete", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateExternallyProvisioned)
 		bmh.Spec.Online = true
-		setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue)
 
 		clusterInstall := &v1alpha1.ImageClusterInstall{
 			ObjectMeta: metav1.ObjectMeta{
@@ -3067,10 +3185,9 @@ var _ = Describe("handleFinalizer", func() {
 			Name:      bmh.Name,
 		}
 
-		// Validate the bmh is now attached and got the reboot annotation
+		// Validate the bmh got the reboot annotation
 		bmh = &bmh_v1alpha1.BareMetalHost{}
 		Expect(c.Get(ctx, key, bmh)).To(Succeed())
-		Expect(bmh.Annotations).ToNot(HaveKey(detachedAnnotation))
 		Expect(bmh.Annotations).To(HaveKey(rebootAnnotation))
 
 		dataImage = bmh_v1alpha1.DataImage{}
