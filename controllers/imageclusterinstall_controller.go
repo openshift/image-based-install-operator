@@ -292,7 +292,7 @@ func (r *ImageClusterInstallReconciler) validateConfiguration(
 		return nil, nil
 	}
 
-	bmh, err := r.getBMH(ctx, ici.Spec.BareMetalHostRef)
+	bmh, err := getBMH(ctx, r.Client, ici.Spec.BareMetalHostRef)
 	if err != nil {
 		cond.Message = fmt.Sprintf("failed to get BareMetalHost %s/%s", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
 		log.Error(err)
@@ -702,16 +702,6 @@ func (r *ImageClusterInstallReconciler) addIndexforBaremetalHostRef(mgr ctrl.Man
 	return nil
 }
 
-func (r *ImageClusterInstallReconciler) getDataImage(ctx context.Context, namespace, name string) (*bmh_v1alpha1.DataImage, error) {
-	dataImage := bmh_v1alpha1.DataImage{}
-	key := client.ObjectKey{
-		Name:      name,
-		Namespace: namespace,
-	}
-	err := r.Get(ctx, key, &dataImage)
-	return &dataImage, err
-}
-
 func isInspectionEnabled(bmh *bmh_v1alpha1.BareMetalHost) bool {
 	if bmh.ObjectMeta.Annotations != nil && bmh.ObjectMeta.Annotations[inspectAnnotation] != "disabled" {
 		return true
@@ -755,7 +745,7 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
 	log logrus.FieldLogger,
 	bmh *bmh_v1alpha1.BareMetalHost,
 	url string) (*bmh_v1alpha1.DataImage, ctrl.Result, error) {
-	dataImage, err := r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	dataImage, err := getDataImage(ctx, r.Client, bmh.Namespace, bmh.Name)
 	if err == nil {
 		if !dataImage.ObjectMeta.DeletionTimestamp.IsZero() {
 			log.Errorf("dataImage %s/%s already exists but is being deleted, probably leftover from previous installation", bmh.Namespace, bmh.Name)
@@ -789,7 +779,7 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
 		return dataImage, ctrl.Result{}, fmt.Errorf("failed to create dataImage due to %w", err)
 	}
 
-	dataImage, err = r.getDataImage(ctx, bmh.Namespace, bmh.Name)
+	dataImage, err = getDataImage(ctx, r.Client, bmh.Namespace, bmh.Name)
 	return dataImage, ctrl.Result{}, err
 }
 
@@ -803,75 +793,6 @@ func (r *ImageClusterInstallReconciler) getCD(ctx context.Context, ici *v1alpha1
 		return nil, err
 	}
 	return clusterDeployment, nil
-}
-
-func (r *ImageClusterInstallReconciler) getBMH(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) (*bmh_v1alpha1.BareMetalHost, error) {
-	bmh := &bmh_v1alpha1.BareMetalHost{}
-	key := types.NamespacedName{
-		Name:      bmhRef.Name,
-		Namespace: bmhRef.Namespace,
-	}
-	if err := r.Get(ctx, key, bmh); err != nil {
-		return nil, err
-	}
-
-	return bmh, nil
-}
-
-func (r *ImageClusterInstallReconciler) removeBMHDataImage(ctx context.Context, log logrus.FieldLogger, bmhRef types.NamespacedName) (*bmh_v1alpha1.DataImage, error) {
-	dataImage, err := r.deleteDataImage(ctx, log, bmhRef)
-	if err != nil || dataImage == nil {
-		return dataImage, err
-	}
-
-	bmh := &bmh_v1alpha1.BareMetalHost{}
-	if err := r.Get(ctx, bmhRef, bmh); err != nil {
-		if k8sapierrors.IsNotFound(err) {
-			log.Warnf("Referenced BareMetalHost %s/%s does not exist, not waiting for dataImage deletion", bmhRef.Namespace, bmhRef.Name)
-			return nil, nil
-		} else {
-			return dataImage, fmt.Errorf("failed to get BareMetalHost %s/%s: %w", bmhRef.Namespace, bmhRef.Name, err)
-		}
-	}
-	return dataImage, r.attachAndRebootBMH(ctx, log, bmh)
-}
-
-func (r *ImageClusterInstallReconciler) attachAndRebootBMH(ctx context.Context, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
-	patch := client.MergeFrom(bmh.DeepCopy())
-	dirty := false
-	if annotationExists(&bmh.ObjectMeta, detachedAnnotation) {
-		log.Infof("Removing Detached annotation if exists on BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
-		delete(bmh.ObjectMeta.Annotations, detachedAnnotation)
-		dirty = true
-	}
-
-	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, rebootAnnotationValue) {
-		log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
-		dirty = true
-	}
-	if dirty {
-		return r.Patch(ctx, bmh, patch)
-
-	}
-	return nil
-}
-
-func (r *ImageClusterInstallReconciler) deleteDataImage(ctx context.Context, log logrus.FieldLogger, dataImageRef types.NamespacedName) (*bmh_v1alpha1.DataImage, error) {
-	dataImage := &bmh_v1alpha1.DataImage{}
-
-	if err := r.Get(ctx, dataImageRef, dataImage); err != nil {
-		if k8sapierrors.IsNotFound(err) {
-			log.Infof("Can't find DataImage from BareMetalHost %s/%s, Nothing to remove", dataImageRef.Namespace, dataImageRef.Name)
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get DataImage %s/%s: %w", dataImageRef.Namespace, dataImageRef.Name, err)
-	}
-
-	log.Infof("Deleting DataImage %s/%s, deletion may take some time since a BMH restart is required", dataImageRef.Namespace, dataImageRef.Name)
-	if err := r.Client.Delete(ctx, dataImage); err != nil {
-		return dataImage, err
-	}
-	return dataImage, nil
 }
 
 func setBackupLabel(obj client.Object) bool {
@@ -915,7 +836,7 @@ func (r *ImageClusterInstallReconciler) labelSecretForBackup(ctx context.Context
 }
 
 func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
-	bmh, err := r.getBMH(ctx, bmhRef)
+	bmh, err := getBMH(ctx, r.Client, bmhRef)
 	if err != nil {
 		return err
 	}
@@ -928,7 +849,7 @@ func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, b
 }
 
 func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
-	dataImage, err := r.getDataImage(ctx, bmhRef.Namespace, bmhRef.Name)
+	dataImage, err := getDataImage(ctx, r.Client, bmhRef.Namespace, bmhRef.Name)
 	if err != nil {
 		return err
 	}
@@ -1418,7 +1339,7 @@ func (r *ImageClusterInstallReconciler) handleFinalizer(ctx context.Context, log
 			Namespace: ici.Spec.BareMetalHostRef.Namespace,
 		}
 
-		dataImage, err := r.removeBMHDataImage(ctx, log, key)
+		dataImage, err := removeBMHDataImage(ctx, r.Client, log, key)
 		if err != nil {
 			return ctrl.Result{}, true, fmt.Errorf("failed to delete DataImage %s/%s: %w", key.Namespace, key.Name, err)
 		}
@@ -1474,25 +1395,6 @@ func (r *ImageClusterInstallReconciler) writeIBIOStartTimeCM(filePath string) er
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	return nil
-}
-
-func setAnnotationIfNotExists(meta *metav1.ObjectMeta, key string, value string) bool {
-	if meta.Annotations == nil {
-		meta.Annotations = make(map[string]string)
-	}
-	if _, ok := meta.Annotations[key]; !ok {
-		meta.Annotations[key] = value
-		return true
-	}
-	return false
-}
-
-func annotationExists(meta *metav1.ObjectMeta, key string) bool {
-	if meta.Annotations == nil {
-		return false
-	}
-	_, ok := meta.Annotations[key]
-	return ok
 }
 
 func ipInCidr(ipAddr, cidr string) (bool, error) {
