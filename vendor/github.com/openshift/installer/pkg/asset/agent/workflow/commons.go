@@ -1,6 +1,8 @@
 package workflow
 
-import wr "github.com/openshift/installer/pkg/asset/agent/workflow/report"
+import (
+	wr "github.com/openshift/installer/pkg/asset/agent/workflow/report"
+)
 
 // AgentWorkflowType defines the supported
 // agent workflows.
@@ -14,6 +16,12 @@ const (
 
 	agentWorkflowFilename = ".agentworkflow"
 )
+
+// ContextKey is used as a type for storing a context value.
+type ContextKey string
+
+// WorkflowTypeKey is used as a context key to store a value.
+const WorkflowTypeKey ContextKey = "workflow"
 
 var (
 	// StageClusterInspection represents cluster inspection stage.

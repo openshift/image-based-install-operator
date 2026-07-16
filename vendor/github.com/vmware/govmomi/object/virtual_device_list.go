@@ -1,18 +1,6 @@
-/*
-Copyright (c) 2015-2017 VMware, Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// © Broadcom. All Rights Reserved.
+// The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: Apache-2.0
 
 package object
 
@@ -402,6 +390,10 @@ func (l VirtualDeviceList) FindSATAController(name string) (types.BaseVirtualCon
 func (l VirtualDeviceList) CreateSATAController() (types.BaseVirtualDevice, error) {
 	sata := &types.VirtualAHCIController{}
 	sata.BusNumber = l.newSATABusNumber()
+	if sata.BusNumber == -1 {
+		return nil, errors.New("no bus numbers available")
+	}
+
 	sata.Key = l.NewKey()
 
 	return sata, nil
@@ -545,6 +537,8 @@ func (l VirtualDeviceList) AssignController(device types.BaseVirtualDevice, c ty
 	if d.Key == 0 {
 		d.Key = l.newRandomKey()
 	}
+
+	c.GetVirtualController().Device = append(c.GetVirtualController().Device, d.Key)
 }
 
 // newRandomKey returns a random negative device key.
@@ -567,15 +561,20 @@ func (l VirtualDeviceList) CreateDisk(c types.BaseVirtualController, ds types.Ma
 		name += ".vmdk"
 	}
 
+	bi := types.VirtualDeviceFileBackingInfo{
+		FileName: name,
+	}
+
+	if ds.Value != "" {
+		bi.Datastore = &ds
+	}
+
 	device := &types.VirtualDisk{
 		VirtualDevice: types.VirtualDevice{
 			Backing: &types.VirtualDiskFlatVer2BackingInfo{
-				DiskMode:        string(types.VirtualDiskModePersistent),
-				ThinProvisioned: types.NewBool(true),
-				VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{
-					FileName:  name,
-					Datastore: &ds,
-				},
+				DiskMode:                     string(types.VirtualDiskModePersistent),
+				ThinProvisioned:              types.NewBool(true),
+				VirtualDeviceFileBackingInfo: bi,
 			},
 		},
 	}
@@ -650,7 +649,7 @@ func (l VirtualDeviceList) FindCdrom(name string) (*types.VirtualCdrom, error) {
 }
 
 // CreateCdrom creates a new VirtualCdrom device which can be added to a VM.
-func (l VirtualDeviceList) CreateCdrom(c *types.VirtualIDEController) (*types.VirtualCdrom, error) {
+func (l VirtualDeviceList) CreateCdrom(c types.BaseVirtualController) (*types.VirtualCdrom, error) {
 	device := &types.VirtualCdrom{}
 
 	l.AssignController(device, c)
