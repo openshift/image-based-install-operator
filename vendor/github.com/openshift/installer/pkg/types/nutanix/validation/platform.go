@@ -13,7 +13,8 @@ import (
 )
 
 // ValidatePlatform checks that the specified platform is valid.
-func ValidatePlatform(p *nutanix.Platform, fldPath *field.Path, c *types.InstallConfig) field.ErrorList {
+// nolint:gocyclo
+func ValidatePlatform(p *nutanix.Platform, fldPath *field.Path, c *types.InstallConfig, usingAgentMethod bool) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	if len(p.PrismCentral.Endpoint.Address) == 0 {
@@ -73,10 +74,19 @@ func ValidatePlatform(p *nutanix.Platform, fldPath *field.Path, c *types.Install
 		allErrs = append(allErrs, errs...)
 	}
 
+	// For the agent-installer, the below fields are ignored. So we do not need to validate them.
+	if usingAgentMethod {
+		return allErrs
+	}
+
 	if c.Nutanix.LoadBalancer != nil {
 		if !validateLoadBalancer(c.Nutanix.LoadBalancer.Type) {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("loadBalancer", "type"), c.Nutanix.LoadBalancer.Type, "invalid load balancer type"))
 		}
+	}
+
+	if c.Nutanix.DNSRecordsType == configv1.DNSRecordsTypeExternal && (c.Nutanix.LoadBalancer == nil || c.Nutanix.LoadBalancer.Type != configv1.LoadBalancerTypeUserManaged) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("dnsRecordsType"), c.Nutanix.DNSRecordsType, "external DNS records can only be configured with user-managed loadbalancers"))
 	}
 
 	// validate prismAPICallTimeout if configured

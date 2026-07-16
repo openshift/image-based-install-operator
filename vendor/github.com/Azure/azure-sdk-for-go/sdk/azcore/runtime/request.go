@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -15,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
 	"net/url"
 	"path"
@@ -43,6 +41,11 @@ const (
 // The endpoint MUST be properly encoded before calling this function.
 func NewRequest(ctx context.Context, httpMethod string, endpoint string) (*policy.Request, error) {
 	return exported.NewRequest(ctx, httpMethod, endpoint)
+}
+
+// NewRequestFromRequest creates a new policy.Request with an existing *http.Request
+func NewRequestFromRequest(req *http.Request) (*policy.Request, error) {
+	return exported.NewRequestFromRequest(req)
 }
 
 // EncodeQueryParams will parse and encode any query parameters in the specified URL.

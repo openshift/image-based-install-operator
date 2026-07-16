@@ -1,18 +1,6 @@
-/*
-Copyright (c) 2015-2024 VMware, Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// © Broadcom. All Rights Reserved.
+// The term “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: Apache-2.0
 
 package object
 
@@ -20,6 +8,7 @@ import (
 	"context"
 	"path"
 
+	"github.com/vmware/govmomi/fault"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -121,10 +110,8 @@ func (d Datacenter) PowerOnVM(ctx context.Context, vm []types.ManagedObjectRefer
 		err = task.Wait(ctx)
 		if err != nil {
 			// Ignore any InvalidPowerState fault, as it indicates the VM is already powered on
-			if f, ok := err.(types.HasFault); ok {
-				if _, ok = f.Fault().(*types.InvalidPowerState); !ok {
-					return nil, err
-				}
+			if !fault.Is(err, &types.InvalidPowerState{}) {
+				return nil, err
 			}
 		}
 	}

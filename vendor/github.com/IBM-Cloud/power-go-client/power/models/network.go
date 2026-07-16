@@ -24,6 +24,14 @@ type Network struct {
 	// access config
 	AccessConfig AccessConfig `json:"accessConfig,omitempty"`
 
+	// Indicates if the network is advertised externally of the workspace to PER and\or peer networks.
+	// Enum: ["enable","disable"]
+	Advertise string `json:"advertise,omitempty"`
+
+	// Indicates if the ARP broadcast is enabled
+	// Enum: ["enable","disable"]
+	ArpBroadcast string `json:"arpBroadcast,omitempty"`
+
 	// Network in CIDR notation (192.168.0.0/24)
 	// Required: true
 	Cidr *string `json:"cidr"`
@@ -64,9 +72,15 @@ type Network struct {
 	// Required: true
 	Name *string `json:"name"`
 
+	// network address translation
+	NetworkAddressTranslation *NetworkAddressTranslation `json:"networkAddressTranslation,omitempty"`
+
 	// Unique Network ID
 	// Required: true
 	NetworkID *string `json:"networkID"`
+
+	// Network Peer ID
+	PeerID string `json:"peerID,omitempty"`
 
 	// Public IP Address Ranges (for pub-vlan networks)
 	PublicIPAddressRanges []*IPAddressRange `json:"publicIPAddressRanges,omitempty"`
@@ -89,6 +103,14 @@ func (m *Network) Validate(formats strfmt.Registry) error {
 	var res []error
 
 	if err := m.validateAccessConfig(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateAdvertise(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateArpBroadcast(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -117,6 +139,10 @@ func (m *Network) Validate(formats strfmt.Registry) error {
 	}
 
 	if err := m.validateName(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateNetworkAddressTranslation(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -153,6 +179,90 @@ func (m *Network) validateAccessConfig(formats strfmt.Registry) error {
 		} else if ce, ok := err.(*errors.CompositeError); ok {
 			return ce.ValidateName("accessConfig")
 		}
+		return err
+	}
+
+	return nil
+}
+
+var networkTypeAdvertisePropEnum []interface{}
+
+func init() {
+	var res []string
+	if err := json.Unmarshal([]byte(`["enable","disable"]`), &res); err != nil {
+		panic(err)
+	}
+	for _, v := range res {
+		networkTypeAdvertisePropEnum = append(networkTypeAdvertisePropEnum, v)
+	}
+}
+
+const (
+
+	// NetworkAdvertiseEnable captures enum value "enable"
+	NetworkAdvertiseEnable string = "enable"
+
+	// NetworkAdvertiseDisable captures enum value "disable"
+	NetworkAdvertiseDisable string = "disable"
+)
+
+// prop value enum
+func (m *Network) validateAdvertiseEnum(path, location string, value string) error {
+	if err := validate.EnumCase(path, location, value, networkTypeAdvertisePropEnum, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *Network) validateAdvertise(formats strfmt.Registry) error {
+	if swag.IsZero(m.Advertise) { // not required
+		return nil
+	}
+
+	// value enum
+	if err := m.validateAdvertiseEnum("advertise", "body", m.Advertise); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+var networkTypeArpBroadcastPropEnum []interface{}
+
+func init() {
+	var res []string
+	if err := json.Unmarshal([]byte(`["enable","disable"]`), &res); err != nil {
+		panic(err)
+	}
+	for _, v := range res {
+		networkTypeArpBroadcastPropEnum = append(networkTypeArpBroadcastPropEnum, v)
+	}
+}
+
+const (
+
+	// NetworkArpBroadcastEnable captures enum value "enable"
+	NetworkArpBroadcastEnable string = "enable"
+
+	// NetworkArpBroadcastDisable captures enum value "disable"
+	NetworkArpBroadcastDisable string = "disable"
+)
+
+// prop value enum
+func (m *Network) validateArpBroadcastEnum(path, location string, value string) error {
+	if err := validate.EnumCase(path, location, value, networkTypeArpBroadcastPropEnum, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *Network) validateArpBroadcast(formats strfmt.Registry) error {
+	if swag.IsZero(m.ArpBroadcast) { // not required
+		return nil
+	}
+
+	// value enum
+	if err := m.validateArpBroadcastEnum("arpBroadcast", "body", m.ArpBroadcast); err != nil {
 		return err
 	}
 
@@ -275,6 +385,25 @@ func (m *Network) validateName(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *Network) validateNetworkAddressTranslation(formats strfmt.Registry) error {
+	if swag.IsZero(m.NetworkAddressTranslation) { // not required
+		return nil
+	}
+
+	if m.NetworkAddressTranslation != nil {
+		if err := m.NetworkAddressTranslation.Validate(formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("networkAddressTranslation")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("networkAddressTranslation")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m *Network) validateNetworkID(formats strfmt.Registry) error {
 
 	if err := validate.Required("networkID", "body", m.NetworkID); err != nil {
@@ -385,6 +514,10 @@ func (m *Network) ContextValidate(ctx context.Context, formats strfmt.Registry) 
 		res = append(res, err)
 	}
 
+	if err := m.contextValidateNetworkAddressTranslation(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
 	if err := m.contextValidatePublicIPAddressRanges(ctx, formats); err != nil {
 		res = append(res, err)
 	}
@@ -475,6 +608,27 @@ func (m *Network) contextValidateIPAddressRanges(ctx context.Context, formats st
 			}
 		}
 
+	}
+
+	return nil
+}
+
+func (m *Network) contextValidateNetworkAddressTranslation(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.NetworkAddressTranslation != nil {
+
+		if swag.IsZero(m.NetworkAddressTranslation) { // not required
+			return nil
+		}
+
+		if err := m.NetworkAddressTranslation.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("networkAddressTranslation")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("networkAddressTranslation")
+			}
+			return err
+		}
 	}
 
 	return nil
