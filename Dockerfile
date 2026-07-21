@@ -24,7 +24,7 @@ FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
-RUN dnf install -y nmstate-libs-2.2.48-1.el9_4.x86_64 nmstate-2.2.48-1.el9_4.x86_64 && dnf clean all && rm -rf /var/cache/dnf/*
+RUN dnf install -y nmstate-libs nmstate && dnf clean all && rm -rf /var/cache/dnf/*
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
