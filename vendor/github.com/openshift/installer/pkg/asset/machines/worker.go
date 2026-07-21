@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	capz "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
-	ipamv1 "sigs.k8s.io/cluster-api/exp/ipam/api/v1beta1"
+	ipamv1 "sigs.k8s.io/cluster-api/api/ipam/v1beta1" //nolint:staticcheck //CORS-3563
 	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -61,6 +61,7 @@ import (
 	nutanixtypes "github.com/openshift/installer/pkg/types/nutanix"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
+	powervctypes "github.com/openshift/installer/pkg/types/powervc"
 	powervstypes "github.com/openshift/installer/pkg/types/powervs"
 	powervsdefaults "github.com/openshift/installer/pkg/types/powervs/defaults"
 	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
@@ -191,6 +192,19 @@ func defaultPowerVSMachinePoolPlatform(ic *types.InstallConfig) powervstypes.Mac
 		sysType  = "s922"
 		err      error
 	)
+
+	// Update the saved session storage with the install config since the session
+	// storage is used as the defaults.
+	err = powervsconfig.UpdateSessionStoreToAuthFile(&powervsconfig.SessionStore{
+		ID:                   ic.PowerVS.UserID,
+		DefaultRegion:        ic.PowerVS.Region,
+		DefaultZone:          ic.PowerVS.Zone,
+		PowerVSResourceGroup: ic.PowerVS.PowerVSResourceGroup,
+	})
+	if err != nil {
+		fallback = true
+		logrus.Warnf("could not UpdateSessionStoreToAuthFile in defaultPowerVSMachinePoolPlatform")
+	}
 
 	client, err = powervsconfig.NewClient()
 	if err != nil {
@@ -377,11 +391,36 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 		if installConfig.Config.EnabledFeatureGates().Enabled(features.FeatureGateMultiDiskSetup) {
 			for i, diskSetup := range pool.DiskSetup {
 				var dataDisk any
+				var diskName string
+
+				switch diskSetup.Type {
+				case types.Etcd:
+					diskName = diskSetup.Etcd.PlatformDiskID
+				case types.Swap:
+					diskName = diskSetup.Etcd.PlatformDiskID
+				case types.UserDefined:
+					diskName = diskSetup.UserDefined.PlatformDiskID
+				default:
+					// We shouldn't get here, but just in case
+					return errors.Errorf("disk setup type %s is not supported", diskSetup.Type)
+				}
+
 				switch ic.Platform.Name() {
 				// Each platform has their unique dataDisk type
 				case azuretypes.Name:
 					if i < len(pool.Platform.Azure.DataDisks) {
 						dataDisk = pool.Platform.Azure.DataDisks[i]
+					}
+				case vspheretypes.Name:
+					vsphereMachinePool := pool.Platform.VSphere
+					for index, disk := range vsphereMachinePool.DataDisks {
+						if disk.Name == diskName {
+							dataDisk = vsphere.DiskInfo{
+								Index: index,
+								Disk:  disk,
+							}
+							break
+						}
 					}
 				default:
 					return errors.Errorf("disk setup for %s is not supported", ic.Platform.Name())
@@ -399,8 +438,7 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 		// The maximum number of networks supported on ServiceNetwork is two, one IPv4 and one IPv6 network.
 		// The cluster-network-operator handles the validation of this field.
 		// Reference: https://github.com/openshift/cluster-network-operator/blob/fc3e0e25b4cfa43e14122bdcdd6d7f2585017d75/pkg/network/cluster_config.go#L45-L52
-		if ic.Networking != nil && len(ic.Networking.ServiceNetwork) == 2 &&
-			(ic.Platform.Name() == openstacktypes.Name || ic.Platform.Name() == vspheretypes.Name) {
+		if ic.Networking != nil && len(ic.Networking.ServiceNetwork) == 2 {
 			// Only configure kernel args for dual-stack clusters.
 			ignIPv6, err := machineconfig.ForDualStackAddresses("worker")
 			if err != nil {
@@ -534,7 +572,7 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 			}
 
 			if len(mpool.Zones) == 0 {
-				azs, err := client.GetAvailabilityZones(ctx, ic.Platform.Azure.Region, mpool.InstanceType)
+				azs, err := installConfig.Azure.VMAvailabilityZones(ctx, mpool.InstanceType)
 				if err != nil {
 					return errors.Wrap(err, "failed to fetch availability zones")
 				}
@@ -543,6 +581,18 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 					// if no azs are given we set to []string{""} for convenience over later operations.
 					// It means no-zoned for the machine API
 					mpool.Zones = []string{""}
+				}
+			}
+			subnetZones := []string{}
+			if ic.Azure.OutboundType == azuretypes.NATGatewayMultiZoneOutboundType {
+				subnetZones, err = installConfig.Azure.AvailabilityZones(ctx)
+				if err != nil {
+					return errors.Wrap(err, "failed to fetch availability zones")
+				}
+				computeSubnet := installConfig.Config.Azure.ComputeSubnetName(clusterID.InfraID)
+				_, err := installConfig.Azure.GenerateZonesSubnetMap(installConfig.Config.Azure.Subnets, computeSubnet)
+				if err != nil {
+					return err
 				}
 			}
 
@@ -560,13 +610,12 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 			}
 			pool.Platform.Azure = &mpool
 
-			capabilities, err := client.GetVMCapabilities(ctx, mpool.InstanceType, installConfig.Config.Platform.Azure.Region)
+			capabilities, err := installConfig.Azure.ComputeCapabilities()
 			if err != nil {
 				return err
 			}
 
-			useImageGallery := ic.Platform.Azure.CloudName != azuretypes.StackCloud
-			sets, err := azure.MachineSets(clusterID.InfraID, ic, &pool, rhcosImage.Compute, "worker", workerUserDataSecretName, capabilities, useImageGallery, session)
+			sets, err := azure.MachineSets(clusterID.InfraID, installConfig, &pool, rhcosImage.Compute, "worker", workerUserDataSecretName, capabilities, subnetZones, session)
 			if err != nil {
 				return errors.Wrap(err, "failed to create worker machine objects")
 			}
@@ -597,7 +646,7 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 			mpool.Set(ic.Platform.GCP.DefaultMachinePlatform)
 			mpool.Set(pool.Platform.GCP)
 			if len(mpool.Zones) == 0 {
-				azs, err := gcp.ZonesForInstanceType(ic.Platform.GCP.ProjectID, ic.Platform.GCP.Region, mpool.InstanceType, ic.Platform.GCP.ServiceEndpoints)
+				azs, err := gcp.ZonesForInstanceType(ic.Platform.GCP.ProjectID, ic.Platform.GCP.Region, mpool.InstanceType, ic.Platform.GCP.Endpoint)
 				if err != nil {
 					return errors.Wrap(err, "failed to fetch availability zones")
 				}
@@ -640,7 +689,7 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 			for _, set := range sets {
 				machineSets = append(machineSets, set)
 			}
-		case openstacktypes.Name:
+		case openstacktypes.Name, powervctypes.Name:
 			mpool := defaultOpenStackMachinePoolPlatform()
 			mpool.Set(ic.Platform.OpenStack.DefaultMachinePlatform)
 			mpool.Set(pool.Platform.OpenStack)

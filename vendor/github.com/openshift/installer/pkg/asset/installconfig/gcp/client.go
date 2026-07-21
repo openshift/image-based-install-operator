@@ -20,7 +20,6 @@ import (
 	serviceusage "google.golang.org/api/serviceusage/v1beta1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	configv1 "github.com/openshift/api/config/v1"
 	gcpconsts "github.com/openshift/installer/pkg/constants/gcp"
 	gcptypes "github.com/openshift/installer/pkg/types/gcp"
 )
@@ -42,6 +41,7 @@ type API interface {
 	GetMachineTypeWithZones(ctx context.Context, project, region, machineType string) (*compute.MachineType, sets.Set[string], error)
 	GetPublicDomains(ctx context.Context, project string) ([]string, error)
 	GetDNSZone(ctx context.Context, project, baseDomain string, isPublic bool) (*dns.ManagedZone, error)
+	GetDNSZoneFromParams(ctx context.Context, params gcptypes.DNSZoneParams) (*dns.ManagedZone, error)
 	GetDNSZoneByName(ctx context.Context, project, zoneName string) (*dns.ManagedZone, error)
 	GetSubnetworks(ctx context.Context, network, project, region string) ([]*compute.Subnetwork, error)
 	GetProjects(ctx context.Context) (map[string]string, error)
@@ -58,32 +58,41 @@ type API interface {
 	GetProjectTags(ctx context.Context, projectID string) (sets.Set[string], error)
 	GetNamespacedTagValue(ctx context.Context, tagNamespacedName string) (*cloudresourcemanager.TagValue, error)
 	GetKeyRing(ctx context.Context, kmsKeyRef *gcptypes.KMSKeyReference) (*kmspb.KeyRing, error)
+	UpdateDNSPrivateZoneLabels(ctx context.Context, baseDomain, project, zoneName string, labels map[string]string) error
+	GetPrivateServiceConnectEndpoint(ctx context.Context, project string, endpoint *gcptypes.PSCEndpoint) (*compute.ForwardingRule, error)
 }
 
 // Client makes calls to the GCP API.
 type Client struct {
-	ssn       *Session
-	endpoints []configv1.GCPServiceEndpoint
+	ssn          *Session
+	endpointName string
 }
 
 // NewClient initializes a client with a session.
-func NewClient(ctx context.Context, endpoints []configv1.GCPServiceEndpoint) (*Client, error) {
+func NewClient(ctx context.Context, endpoint *gcptypes.PSCEndpoint) (*Client, error) {
 	ssn, err := GetSession(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get session")
 	}
 
-	modifiedEndpoints := FormatGCPEndpointList(endpoints, FormatGCPEndpointInput{SkipPath: false})
+	endpointName := ""
+	if gcptypes.ShouldUseEndpointForInstaller(endpoint) {
+		endpointName = endpoint.Name
+	}
 
 	client := &Client{
-		ssn:       ssn,
-		endpoints: modifiedEndpoints,
+		ssn:          ssn,
+		endpointName: endpointName,
 	}
 	return client, nil
 }
 
 func (c *Client) getComputeService(ctx context.Context) (*compute.Service, error) {
-	svc, err := GetComputeService(ctx, c.endpoints)
+	opts := []option.ClientOption{}
+	if c.endpointName != "" {
+		opts = append(opts, CreateEndpointOption(c.endpointName, ServiceNameGCPCompute))
+	}
+	svc, err := GetComputeService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("client failed to create compute service: %w", err)
 	}
@@ -91,7 +100,11 @@ func (c *Client) getComputeService(ctx context.Context) (*compute.Service, error
 }
 
 func (c *Client) getDNSService(ctx context.Context) (*dns.Service, error) {
-	svc, err := GetDNSService(ctx, c.endpoints)
+	opts := []option.ClientOption{}
+	if c.endpointName != "" {
+		opts = append(opts, CreateEndpointOption(c.endpointName, ServiceNameGCPDNS))
+	}
+	svc, err := GetDNSService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("client failed to create dns service: %w", err)
 	}
@@ -99,7 +112,11 @@ func (c *Client) getDNSService(ctx context.Context) (*dns.Service, error) {
 }
 
 func (c *Client) getCloudResourceService(ctx context.Context) (*cloudresourcemanager.Service, error) {
-	svc, err := GetCloudResourceService(ctx, c.endpoints)
+	opts := []option.ClientOption{}
+	if c.endpointName != "" {
+		opts = append(opts, CreateEndpointOption(c.endpointName, ServiceNameGCPCloudResource))
+	}
+	svc, err := GetCloudResourceService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("client failed to create cloud resource service: %w", err)
 	}
@@ -107,7 +124,11 @@ func (c *Client) getCloudResourceService(ctx context.Context) (*cloudresourceman
 }
 
 func (c *Client) getServiceUsageService(ctx context.Context) (*serviceusage.APIService, error) {
-	svc, err := GetServiceUsageService(ctx, c.endpoints)
+	opts := []option.ClientOption{}
+	if c.endpointName != "" {
+		opts = append(opts, CreateEndpointOption(c.endpointName, ServiceNameGCPServiceUsage))
+	}
+	svc, err := GetServiceUsageService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("client failed to create service usage service: %w", err)
 	}
@@ -243,41 +264,138 @@ func (c *Client) GetPublicDomains(ctx context.Context, project string) ([]string
 	return publicZones, nil
 }
 
-// GetDNSZoneByName returns a DNS zone matching the `zoneName` if the DNS zone exists
-// and can be seen (correct permissions for a private zone) in the project.
-func (c *Client) GetDNSZoneByName(ctx context.Context, project, zoneName string) (*dns.ManagedZone, error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
-
-	svc, err := c.getDNSService(ctx)
-	if err != nil {
-		return nil, err
-	}
+func getDNSZoneByName(ctx context.Context, svc *dns.Service, project, zoneName string) (*dns.ManagedZone, error) {
 	returnedZone, err := svc.ManagedZones.Get(project, zoneName).Context(ctx).Do()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get DNS Zones")
+		return nil, fmt.Errorf("failed to get DNS Zones: %w", err)
 	}
 	return returnedZone, nil
 }
 
-// GetDNSZone returns a DNS zone for a basedomain.
-func (c *Client) GetDNSZone(ctx context.Context, project, baseDomain string, isPublic bool) (*dns.ManagedZone, error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
-
+// GetDNSZoneByName returns a DNS zone matching the `zoneName` if the DNS zone exists
+// and can be seen (correct permissions for a private zone) in the project.
+func (c *Client) GetDNSZoneByName(ctx context.Context, project, zoneName string) (*dns.ManagedZone, error) {
 	svc, err := c.getDNSService(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasSuffix(baseDomain, ".") {
-		baseDomain = fmt.Sprintf("%s.", baseDomain)
+	return getDNSZoneByName(ctx, svc, project, zoneName)
+}
+
+// UpdateDNSPrivateZoneLabels will find a private DNS zone in the project with the name passed in. The labels
+// for the zone will be updated to include the provided labels. The labels that match will be overwritten
+// and all other labels will remain.
+func (c *Client) UpdateDNSPrivateZoneLabels(ctx context.Context, baseDomain, project, zoneName string, labels map[string]string) error {
+	params := gcptypes.DNSZoneParams{
+		Project:    project,
+		Name:       zoneName,
+		BaseDomain: baseDomain,
+		IsPublic:   false,
+	}
+	zone, err := c.GetDNSZoneFromParams(ctx, params)
+	if err != nil {
+		return err
+	}
+	if zone == nil {
+		return fmt.Errorf("failed to find matching DNS zone for %s in project %s", zoneName, project)
 	}
 
-	// currently, only private and public are supported. All peering zones are private.
+	if zone.Labels == nil {
+		zone.Labels = make(map[string]string)
+	}
+
+	for key, value := range labels {
+		zone.Labels[key] = value
+	}
+
+	if zone.Description == "" {
+		// It is possible to create a managed zone without a description using the GCP web console.
+		// If the description is missing the managed zone modification will fail.
+		zone.Description = "Used by OpenShift Installer"
+	}
+
+	dnsService, err := c.getDNSService(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get dns service during dns managed zone update: %w", err)
+	}
+
+	return UpdateDNSManagedZone(ctx, dnsService, project, zoneName, zone)
+}
+
+// UpdateDNSManagedZone will update a dns managed zone with the matching name and project. The new zone
+// information is contained in the zone parameter.
+func UpdateDNSManagedZone(ctx context.Context, svc *dns.Service, project, zoneName string, zone *dns.ManagedZone) error {
+	_, err := svc.ManagedZones.Update(project, zoneName, zone).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed updating DNS Zone %s in project %s: %w", zoneName, project, err)
+	}
+	return nil
+}
+
+func formatBaseDomain(domain string) string {
+	if !strings.HasSuffix(domain, ".") {
+		domain = fmt.Sprintf("%s.", domain)
+	}
+	return domain
+}
+
+func getZoneVisibility(isPublic bool) string {
 	visibility := "private"
 	if isPublic {
 		visibility = "public"
 	}
+	return visibility
+}
+
+// GetDNSZoneFromParams allows the user to enter parameters found in `DNSZoneParams` to find a
+// dns managed zone by name or by base domain.
+func GetDNSZoneFromParams(ctx context.Context, svc *dns.Service, params gcptypes.DNSZoneParams) (*dns.ManagedZone, error) {
+	switch {
+	case params.Name == "" && params.BaseDomain != "":
+		return getDNSZone(ctx, svc, params.Project, params.BaseDomain, params.IsPublic)
+	case params.Name != "":
+		managedZone, err := getDNSZoneByName(ctx, svc, params.Project, params.Name)
+		if params.BaseDomain == "" {
+			return managedZone, err
+		}
+		if err != nil {
+			if IsNotFound(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		if managedZone == nil {
+			return nil, nil
+		}
+		baseDomain := formatBaseDomain(params.BaseDomain)
+		if !strings.HasSuffix(managedZone.DnsName, baseDomain) {
+			return nil, fmt.Errorf("failed to find matching DNS zone for %s with DNS name %s", params.Name, params.BaseDomain)
+		}
+		visibility := getZoneVisibility(params.IsPublic)
+		if managedZone.Visibility != visibility {
+			return nil, fmt.Errorf("failed to find matching DNS zone for %s with visibility %s", params.Name, visibility)
+		}
+		return managedZone, nil
+	}
+	return nil, fmt.Errorf("invalid dns zone parameters, please provide a base domain or name")
+}
+
+// GetDNSZoneFromParams allows the user to enter parameters found in DNSZoneParams. The user must enter at
+// least a base domain or a zone name to make a valid request. When both fields are populated extra validation
+// steps occur to ensure that the correct zone is found.
+func (c *Client) GetDNSZoneFromParams(ctx context.Context, params gcptypes.DNSZoneParams) (*dns.ManagedZone, error) {
+	svc, err := c.getDNSService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return GetDNSZoneFromParams(ctx, svc, params)
+}
+
+func getDNSZone(ctx context.Context, svc *dns.Service, project, baseDomain string, isPublic bool) (*dns.ManagedZone, error) {
+	baseDomain = formatBaseDomain(baseDomain)
+
+	// currently, only private and public are supported. All peering zones are private.
+	visibility := getZoneVisibility(isPublic)
 
 	req := svc.ManagedZones.List(project).DnsName(baseDomain).Context(ctx)
 	var res *dns.ManagedZone
@@ -290,7 +408,7 @@ func (c *Client) GetDNSZone(ctx context.Context, project, baseDomain string, isP
 		}
 		return nil
 	}); err != nil {
-		return nil, errors.Wrap(err, "failed to list DNS Zones")
+		return nil, fmt.Errorf("failed to list DNS Zones: %w", err)
 	}
 	if res == nil {
 		if isPublic {
@@ -303,6 +421,15 @@ func (c *Client) GetDNSZone(ctx context.Context, project, baseDomain string, isP
 		return nil, nil
 	}
 	return res, nil
+}
+
+// GetDNSZone returns a DNS zone for a basedomain.
+func (c *Client) GetDNSZone(ctx context.Context, project, baseDomain string, isPublic bool) (*dns.ManagedZone, error) {
+	svc, err := c.getDNSService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return getDNSZone(ctx, svc, project, baseDomain, isPublic)
 }
 
 // GetRecordSets returns all the records for a DNS zone.
@@ -468,7 +595,11 @@ func (c *Client) GetEnabledServices(ctx context.Context, project string) ([]stri
 
 // GetServiceAccount retrieves a service account from a project if it exists.
 func (c *Client) GetServiceAccount(ctx context.Context, project, serviceAccount string) (string, error) {
-	svc, err := GetIAMService(ctx, c.endpoints)
+	opts := []option.ClientOption{}
+	if c.endpointName != "" {
+		opts = append(opts, CreateEndpointOption(c.endpointName, ServiceNameGCPIAM))
+	}
+	svc, err := GetIAMService(ctx, opts...)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed create IAM service")
 	}
@@ -598,14 +729,20 @@ func (c *Client) getKeyManagementClient(ctx context.Context) (*kms.KeyManagement
 
 // GetKeyRing returns the key ring associated with the key name (if found).
 func (c *Client) GetKeyRing(ctx context.Context, kmsKeyRef *gcptypes.KMSKeyReference) (*kmspb.KeyRing, error) {
+	if kmsKeyRef == nil {
+		return nil, fmt.Errorf("kms key reference cannot be empty")
+	}
+
 	kmsClient, err := c.getKeyManagementClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("key ring client creation failed: %w", err)
 	}
 
-	keyRingName := fmt.Sprintf("projects/%s/locations/%s/keyRings/%s", kmsKeyRef.ProjectID, kmsKeyRef.Location, kmsKeyRef.KeyRing)
+	projectID := kmsKeyRef.ProjectID
+	location := kmsKeyRef.Location
+	keyRingName := fmt.Sprintf("projects/%s/locations/%s/keyRings/%s", projectID, location, kmsKeyRef.KeyRing)
 	listReq := &kmspb.ListKeyRingsRequest{
-		Parent: fmt.Sprintf("projects/%s/locations/%s", kmsKeyRef.ProjectID, kmsKeyRef.Location),
+		Parent: fmt.Sprintf("projects/%s/locations/%s", projectID, location),
 	}
 
 	// OCPBUGS-52203:  GetKeyRingRequest{Name: keyRingName} should work but the resource name (above) is not found.
@@ -625,4 +762,41 @@ func (c *Client) GetKeyRing(ctx context.Context, kmsKeyRef *gcptypes.KMSKeyRefer
 		}
 	}
 	return nil, fmt.Errorf("failed to find kms key ring with name %s", keyRingName)
+}
+
+// GetPrivateServiceConnectEndpoint finds the GCP compute forwarding rule that is associated with the endpoint.
+func GetPrivateServiceConnectEndpoint(client *compute.Service, project string, endpoint *gcptypes.PSCEndpoint) (*compute.ForwardingRule, error) {
+	if endpoint == nil {
+		return nil, nil
+	}
+
+	var forwardingRules *compute.ForwardingRuleList
+	var forwardingRuleErr error
+	if endpoint.Region != "" {
+		forwardingRules, forwardingRuleErr = client.ForwardingRules.List(project, endpoint.Region).Do()
+	} else {
+		forwardingRules, forwardingRuleErr = client.GlobalForwardingRules.List(project).Do()
+	}
+	if forwardingRuleErr != nil {
+		return nil, fmt.Errorf("failed to list forwarding rules: %w", forwardingRuleErr)
+	}
+
+	if forwardingRules != nil {
+		// Iterate through forwarding rules to find the PSC endpoint
+		for _, rule := range forwardingRules.Items {
+			if rule.Name == endpoint.Name {
+				return rule, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("failed to find forwarding rule for private service connect endpoint %s", endpoint.Name)
+}
+
+// GetPrivateServiceConnectEndpoint will get the forwarding rule associated with a private service connect endpoint.
+func (c *Client) GetPrivateServiceConnectEndpoint(ctx context.Context, project string, endpoint *gcptypes.PSCEndpoint) (*compute.ForwardingRule, error) {
+	svc, err := c.getComputeService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Compute service: %w", err)
+	}
+	return GetPrivateServiceConnectEndpoint(svc, project, endpoint)
 }
