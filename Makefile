@@ -233,6 +233,9 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
+	cp bundle/manifests/image-based-install-operator.clusterserviceversion.yaml config/manifests/bundle-overrides/csv.yaml
+	$(KUSTOMIZE) build config/manifests/bundle-overrides -o bundle/manifests/image-based-install-operator.clusterserviceversion.yaml
+	rm config/manifests/bundle-overrides/csv.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
