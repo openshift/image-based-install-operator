@@ -3,5 +3,47 @@
     "groupName": "Konflux build pipeline",
     "includePaths": [".tekton/*"],
     "commitMessagePrefix": "NO-ISSUE: ",
-    "labels": ["lgtm", "approved"]
+    "labels": ["lgtm", "approved"],
+    "enabledManagers": [
+        "gomod"
+    ],
+    "gomod": {
+        "postUpdateOptions": [
+            "gomodUpdateImportPaths",
+            "gomodTidy"
+        ],
+        "packageRules": [
+            {
+                "matchManagers": [
+                    "gomod"
+                ],
+                "matchDepTypes": [
+                    "indirect"
+                ],
+                "enabled": false
+            }
+        ]
+    },
+    "packageRules": [
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "enabled": false
+        },
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchPackageNames": [
+                "github.com/openshift/hive/apis"
+            ],
+            "groupName": "Hive API Synchronization",
+            "addLabels": [
+                "hive-api",
+                "api-sync"
+            ],
+            "enabled": true
+        }
+    ]
 }
