@@ -1,7 +1,7 @@
 # Adds namespace to all resources.
 namespace: image-based-install-operator
 
-bases:
+resources:
 - ../crd
 - ../rbac
 - ../manager
