@@ -108,6 +108,7 @@ func main() {
 		setupLog.Error(err, "unable to resolve TLS config")
 		os.Exit(1)
 	}
+	logger.Infof("TLS adherence: %v, TLS profile: %v", tlsResult.TLSAdherencePolicy, tlsResult.TLSProfileSpec)
 
 	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
