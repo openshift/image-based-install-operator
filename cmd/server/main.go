@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -84,7 +83,9 @@ func main() {
 			tlsResult, err = tlsconfig.ResolveTLSConfig(context.Background(), restCfg)
 			if err != nil {
 				log.WithError(err).Fatal("unable to configure HTTPS TLS")
+				os.Exit(1)
 			}
+			log.Infof("TLS adherence: %v, TLS profile: %v", tlsResult.TLSAdherencePolicy, tlsResult.TLSProfileSpec)
 			go watchAndExitOnTLSChange(watchCtx, log, configclientset.NewForConfigOrDie(restCfg), tlsResult, tlsProfileChanged)
 
 			if tlsResult.TLSConfig != nil {
@@ -126,11 +127,12 @@ func main() {
 }
 
 func watchAndExitOnTLSChange(ctx context.Context, log *logrus.Logger, configClient configclientset.Interface, current tlsconfig.TLSConfigResult, requestShutdown chan<- struct{}) {
+	defer requestGracefulShutdown(requestShutdown)
 	w, err := configClient.ConfigV1().APIServers().Watch(ctx, metav1.ListOptions{
 		FieldSelector: "metadata.name=cluster",
 	})
 	if err != nil {
-		log.WithError(err).Error("failed to watch the APIServer, TLS updates will not be monitored")
+		log.WithError(err).Error("failed to watch the APIServer")
 		return
 	}
 	defer w.Stop()
@@ -147,7 +149,6 @@ func watchAndExitOnTLSChange(ctx context.Context, log *logrus.Logger, configClie
 		if current.TLSAdherencePolicy != updated.Spec.TLSAdherence {
 			log.Infof("TLS adherence policy has changed, shutting down to reload, oldPolicy: %v, newPolicy: %v",
 				current.TLSAdherencePolicy, updated.Spec.TLSAdherence)
-			requestGracefulShutdown(requestShutdown)
 			return
 		}
 
@@ -159,21 +160,13 @@ func watchAndExitOnTLSChange(ctx context.Context, log *logrus.Logger, configClie
 		if !equality.Semantic.DeepEqual(current.TLSProfileSpec, profile) {
 			log.Infof("TLS profile has changed, shutting down to reload, oldProfile: %v, newProfile: %v",
 				current.TLSProfileSpec, profile)
-			requestGracefulShutdown(requestShutdown)
 			return
 		}
 	}
 
-	if errors.Is(ctx.Err(), context.Canceled) {
-		log.Info("stopped monitoring APIServer TLS updates")
-		return
-	}
-	log.Error("watch on APIServer exited, TLS updates will not be monitored")
+	log.Info("watch on APIServer exited")
 }
 
-func requestGracefulShutdown(ch chan<- struct{}) {
-	select {
-	case ch <- struct{}{}:
-	default:
-	}
+func requestGracefulShutdown(requestShutdownChannel chan<- struct{}) {
+	requestShutdownChannel <- struct{}{}
 }
