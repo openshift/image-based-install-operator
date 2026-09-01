@@ -24,7 +24,9 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:7d4e47500f28ac3a2
 ARG DATA_DIR=/data
 RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
 
-RUN microdnf install -y nmstate-libs nmstate && microdnf clean all
+RUN microdnf install -y --disablerepo="*" --enablerepo="ubi-9-*" nmstate-libs nmstate crypto-policies-scripts && \
+    microdnf clean all && \
+    update-crypto-policies --set DEFAULT:PQ
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
