@@ -184,7 +184,9 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 				// master machines should get ignition from the MCS on the bootstrap node
 				StorageType: v1beta2.IgnitionStorageTypeOptionUnencryptedUserData,
 			},
-		})
+			Config: installConfig.Config,
+		},
+		)
 		if err != nil {
 			return errors.Wrap(err, "failed to create master machine objects")
 		}
@@ -217,7 +219,9 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 			PublicIP:       publicOnlySubnets || (installConfig.Config.Publish == types.ExternalPublishingStrategy),
 			PublicIpv4Pool: ic.Platform.AWS.PublicIpv4Pool,
 			Ignition:       ignition,
-		})
+			Config:         installConfig.Config,
+		},
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create bootstrap machine object: %w", err)
 		}
@@ -312,6 +316,7 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 				Pool:           &pool,
 				StorageSuffix:  session.Environment.StorageEndpointSuffix,
 				RHCOS:          rhcosImage.ControlPlane,
+				Config:         installConfig.Config,
 			},
 		)
 		if err != nil {
@@ -321,7 +326,7 @@ func (c *ClusterAPI) Generate(ctx context.Context, dependencies asset.Parents) e
 		c.FileList = append(c.FileList, azureMachines...)
 	case gcptypes.Name:
 		// Generate GCP master machines using ControPlane machinepool
-		mpool := defaultGCPMachinePoolPlatform(pool.Architecture)
+		mpool := defaultGCPMachinePoolPlatform(pool.Architecture, ic.Platform.GCP.ProjectID)
 		mpool.Set(ic.Platform.GCP.DefaultMachinePlatform)
 		mpool.Set(pool.Platform.GCP)
 		if len(mpool.Zones) == 0 {
