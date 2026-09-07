@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/templates/content/manifests"
 	"github.com/openshift/installer/pkg/asset/tls"
 	"github.com/openshift/installer/pkg/types"
+	"github.com/openshift/installer/pkg/version/versioninfo"
 	"github.com/openshift/library-go/pkg/crypto"
 )
 
@@ -76,6 +78,7 @@ func (m *Manifests) Dependencies() []asset.Asset {
 		&tls.RootCA{},
 		&tls.MCSCertKey{},
 		&tls.IRICertKey{},
+		&tls.IRIRegistryCredentials{},
 		&manifests.InternalReleaseImage{},
 		new(rhcos.Image),
 
@@ -87,7 +90,9 @@ func (m *Manifests) Dependencies() []asset.Asset {
 		&bootkube.MachineConfigServerTLSSecret{},
 		&bootkube.OpenshiftConfigSecretPullSecret{},
 		&bootkube.InternalReleaseImageTLSSecret{},
+		&bootkube.InternalReleaseImageRegistryAuthSecret{},
 		&BMCVerifyCAConfigMap{},
+		&PKIConfiguration{},
 	}
 }
 
@@ -105,8 +110,9 @@ func (m *Manifests) Generate(_ context.Context, dependencies asset.Parents) erro
 	imageDigestMirrorSet := &ImageDigestMirrorSet{}
 	mcoCfgTemplate := &manifests.MCO{}
 	bmcVerifyCAConfigMap := &BMCVerifyCAConfigMap{}
+	pkiConfig := &PKIConfiguration{}
 
-	dependencies.Get(installConfig, ingress, dns, network, infra, proxy, scheduler, imageContentSourcePolicy, imageDigestMirrorSet, clusterCSIDriverConfig, mcoCfgTemplate, bmcVerifyCAConfigMap)
+	dependencies.Get(installConfig, ingress, dns, network, infra, proxy, scheduler, imageContentSourcePolicy, imageDigestMirrorSet, clusterCSIDriverConfig, mcoCfgTemplate, bmcVerifyCAConfigMap, pkiConfig)
 
 	redactedConfig, err := redactedInstallConfig(*installConfig.Config)
 	if err != nil {
@@ -145,6 +151,7 @@ func (m *Manifests) Generate(_ context.Context, dependencies asset.Parents) erro
 	m.FileList = append(m.FileList, clusterCSIDriverConfig.Files()...)
 	m.FileList = append(m.FileList, imageDigestMirrorSet.Files()...)
 	m.FileList = append(m.FileList, bmcVerifyCAConfigMap.Files()...)
+	m.FileList = append(m.FileList, pkiConfig.Files()...)
 
 	asset.SortFiles(m.FileList)
 
@@ -168,8 +175,12 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 		rootCA,
 	)
 
+	versionInfo := versioninfo.GetInfo()
+	cvoChannel := fmt.Sprintf("stable-%d.%d", versionInfo.Major, versionInfo.Minor)
+
 	templateData := &bootkubeTemplateData{
 		CVOCapabilities:       installConfig.Config.Capabilities,
+		CVOChannel:            cvoChannel,
 		CVOClusterID:          clusterID.UUID,
 		McsTLSCert:            base64.StdEncoding.EncodeToString(mcsCertKey.Cert()),
 		McsTLSKey:             base64.StdEncoding.EncodeToString(mcsCertKey.Key()),
@@ -234,6 +245,7 @@ func (m *Manifests) generateBootKubeManifests(dependencies asset.Parents) []*ass
 		// Skip if InternalReleaseImage manifest wasn't found.
 		if len(iri.FileList) > 0 {
 			files = append(files, appendIRIcerts(dependencies))
+			files = append(files, appendIRIRegistryCredentials(dependencies))
 		}
 	}
 
@@ -253,6 +265,29 @@ func appendIRIcerts(dependencies asset.Parents) *asset.File {
 	}{
 		IriTLSCert: base64.StdEncoding.EncodeToString(iriCertKey.Cert()),
 		IriTLSKey:  base64.StdEncoding.EncodeToString(iriCertKey.Key()),
+	}
+	fileData := applyTemplateData(f.Data, templateData)
+
+	return &asset.File{
+		Filename: path.Join(manifestDir, strings.TrimSuffix(filepath.Base(f.Filename), ".template")),
+		Data:     fileData,
+	}
+}
+
+// appendIRIRegistryCredentials renders the IRI registry auth secret template with the generated credentials.
+func appendIRIRegistryCredentials(dependencies asset.Parents) *asset.File {
+	iriAuth := &tls.IRIRegistryCredentials{}
+	iriAuthSecret := &bootkube.InternalReleaseImageRegistryAuthSecret{}
+	dependencies.Get(iriAuth, iriAuthSecret)
+
+	f := iriAuthSecret.Files()[0]
+
+	templateData := struct {
+		IriRegistryHtpasswd string
+		IriRegistryPassword string
+	}{
+		IriRegistryHtpasswd: base64.StdEncoding.EncodeToString([]byte(iriAuth.HtpasswdContent)),
+		IriRegistryPassword: base64.StdEncoding.EncodeToString([]byte(iriAuth.Password)),
 	}
 	fileData := applyTemplateData(f.Data, templateData)
 

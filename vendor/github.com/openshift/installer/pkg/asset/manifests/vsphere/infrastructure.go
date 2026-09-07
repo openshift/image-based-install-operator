@@ -8,7 +8,6 @@ import (
 	utilsnet "k8s.io/utils/net"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/api/features"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/vsphere"
@@ -52,22 +51,18 @@ func GetInfraPlatformSpec(ic *installconfig.InstallConfig, clusterID string) *co
 				},
 			}
 
-			if ic.Config.Enabled(features.FeatureGateVSphereHostVMGroupZonal) {
-				logrus.Debug("Host VM Group based zonal feature gate enabled")
-
-				if failureDomain.ZoneType == vsphere.HostGroupFailureDomain {
-					vmGroupAndRuleName := fmt.Sprintf("%s-%s", clusterID, failureDomain.Name)
-					failureDomainSpec.RegionAffinity = &configv1.VSphereFailureDomainRegionAffinity{
-						Type: configv1.VSphereFailureDomainRegionType(failureDomain.RegionType),
-					}
-					failureDomainSpec.ZoneAffinity = &configv1.VSphereFailureDomainZoneAffinity{
-						Type: configv1.VSphereFailureDomainZoneType(failureDomain.ZoneType),
-						HostGroup: &configv1.VSphereFailureDomainHostGroup{
-							HostGroup:  failureDomain.Topology.HostGroup,
-							VMGroup:    vmGroupAndRuleName,
-							VMHostRule: vmGroupAndRuleName,
-						},
-					}
+			if failureDomain.ZoneType == vsphere.HostGroupFailureDomain {
+				vmGroupAndRuleName := fmt.Sprintf("%s-%s", clusterID, failureDomain.Name)
+				failureDomainSpec.RegionAffinity = &configv1.VSphereFailureDomainRegionAffinity{
+					Type: configv1.VSphereFailureDomainRegionType(failureDomain.RegionType),
+				}
+				failureDomainSpec.ZoneAffinity = &configv1.VSphereFailureDomainZoneAffinity{
+					Type: configv1.VSphereFailureDomainZoneType(failureDomain.ZoneType),
+					HostGroup: &configv1.VSphereFailureDomainHostGroup{
+						HostGroup:  failureDomain.Topology.HostGroup,
+						VMGroup:    vmGroupAndRuleName,
+						VMHostRule: vmGroupAndRuleName,
+					},
 				}
 			}
 
@@ -86,25 +81,22 @@ func GetInfraPlatformSpec(ic *installconfig.InstallConfig, clusterID string) *co
 		}
 	}
 
-	if ic.Config.Enabled(features.FeatureGateVSphereMultiNetworks) {
-		logrus.Debug("Multi-networks feature gate enabled")
-		if icPlatformSpec.NodeNetworking != nil {
-			logrus.Debug("Multi-networks: node networking defined, copying to infrastructure spec")
-			icPlatformSpec.NodeNetworking.DeepCopyInto(&platformSpec.NodeNetworking)
-		} else {
-			logrus.Debug("Multi-networks: node networking not defined, deriving from machineNetwork")
-			var cidrs []string
-			for _, machineNetwork := range ic.Config.MachineNetwork {
-				cidrs = append(cidrs, machineNetwork.CIDR.String())
-			}
-
-			// if NodeNetworking is not defined, use the machine cidrs. the machine cidrs
-			// should align with the VIP and should be a safe choice for inclusion in NodeNetworking.
-			platformSpec.NodeNetworking.External.NetworkSubnetCIDR = cidrs
-			platformSpec.NodeNetworking.Internal.NetworkSubnetCIDR = cidrs
-
-			logrus.Debugf("Multi-networks appending cidrs: %v", cidrs)
+	if icPlatformSpec.NodeNetworking != nil {
+		logrus.Debug("Multi-networks: node networking defined, copying to infrastructure spec")
+		icPlatformSpec.NodeNetworking.DeepCopyInto(&platformSpec.NodeNetworking)
+	} else {
+		logrus.Debug("Multi-networks: node networking not defined, deriving from machineNetwork")
+		var cidrs []string
+		for _, machineNetwork := range ic.Config.MachineNetwork {
+			cidrs = append(cidrs, machineNetwork.CIDR.String())
 		}
+
+		// if NodeNetworking is not defined, use the machine cidrs. the machine cidrs
+		// should align with the VIP and should be a safe choice for inclusion in NodeNetworking.
+		platformSpec.NodeNetworking.External.NetworkSubnetCIDR = cidrs
+		platformSpec.NodeNetworking.Internal.NetworkSubnetCIDR = cidrs
+
+		logrus.Debugf("Multi-networks appending cidrs: %v", cidrs)
 	}
 	return &platformSpec
 }
