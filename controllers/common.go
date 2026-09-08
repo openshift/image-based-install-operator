@@ -73,13 +73,22 @@ func removeBMHDataImage(ctx context.Context, c client.Client, log logrus.FieldLo
 		}
 		return dataImage, fmt.Errorf("failed to get BareMetalHost %s/%s: %w", bmhRef.Namespace, bmhRef.Name, err)
 	}
-	return dataImage, rebootBMH(ctx, c, log, bmh)
+	return dataImage, attachAndRebootBMH(ctx, c, log, bmh)
 }
 
-func rebootBMH(ctx context.Context, c client.Client, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
+func attachAndRebootBMH(ctx context.Context, c client.Client, log logrus.FieldLogger, bmh *bmh_v1alpha1.BareMetalHost) error {
 	patch := client.MergeFrom(bmh.DeepCopy())
+	dirty := false
+	if annotationExists(&bmh.ObjectMeta, detachedAnnotation) {
+		log.Infof("Removing Detached annotation if exists on BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		delete(bmh.ObjectMeta.Annotations, detachedAnnotation)
+		dirty = true
+	}
 	if setAnnotationIfNotExists(&bmh.ObjectMeta, rebootAnnotation, rebootAnnotationValue) {
 		log.Infof("Adding reboot annotation to BareMetalHost %s/%s", bmh.Namespace, bmh.Name)
+		dirty = true
+	}
+	if dirty {
 		return c.Patch(ctx, bmh, patch)
 	}
 	return nil
@@ -117,12 +126,17 @@ func annotationExists(meta *metav1.ObjectMeta, key string) bool {
 	return ok
 }
 
-// handlePostCleanup performs post-install cleanup on ICIs that have the post-cleanup annotation.
-// It deletes the DataImage for those ICIs, because restoring an ICI at a particular moment can
-// result in the main reconciler recreating a DataImage that the Monitor reconciler already deleted.
-// If an ICI doesn't have the post-cleanup annotation we don't do anything.
+func isPostCleanupEnabled(ici *v1alpha1.ImageClusterInstall) bool {
+	if ici.Annotations == nil {
+		return false
+	}
+	return ici.Annotations[postCleanupAnnotation] == postCleanupAnnotationValue
+}
+
+// handlePostCleanup deletes the DataImage for completed ICIs that have the post-cleanup annotation set to "true".
+// This is the only code path that removes the DataImage after install completion.
 func handlePostCleanup(ctx context.Context, c client.Client, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall) (ctrl.Result, error) {
-	if !annotationExists(&ici.ObjectMeta, postCleanupAnnotation) {
+	if !isPostCleanupEnabled(ici) {
 		return ctrl.Result{}, nil
 	}
 	if ici.Spec.BareMetalHostRef == nil {
