@@ -26,7 +26,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -59,7 +58,6 @@ type ImageClusterInstallMonitor struct {
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=imageclusterinstalls/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=metal3.io,resources=dataimages,verbs=get;list;watch;delete
 
 func (r *ImageClusterInstallMonitor) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithFields(logrus.Fields{"name": req.Name, "namespace": req.Namespace})
@@ -146,13 +144,6 @@ func (r *ImageClusterInstallMonitor) checkClusterStatus(ctx context.Context,
 	log logrus.FieldLogger,
 	ici *v1alpha1.ImageClusterInstall,
 	bmh *bmh_v1alpha1.BareMetalHost) (ctrl.Result, error) {
-	bmhRef := types.NamespacedName{Name: bmh.Name, Namespace: bmh.Namespace}
-
-	res, stop, err := r.handleDataImageDeletion(ctx, log, ici, bmhRef)
-	if stop || err != nil {
-		return res, err
-	}
-
 	spokeClient, err := r.spokeClient(ctx, ici)
 	if err != nil {
 		log.WithError(err).Error("failed to create spoke client")
@@ -175,15 +166,14 @@ func (r *ImageClusterInstallMonitor) checkClusterStatus(ctx context.Context,
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
-	log.Info("cluster is installed, making sure DataImage is removed")
+	log.Info("cluster is installed")
 
-	if _, err = removeBMHDataImage(ctx, r.Client, log, bmhRef); err != nil {
-		log.WithError(err).Error("failed to delete DataImage")
-		return ctrl.Result{}, err
-	}
-	res, stop, err = r.handleDataImageDeletion(ctx, log, ici, bmhRef)
-	if stop || err != nil {
-		return res, err
+	patch := client.MergeFrom(bmh.DeepCopy())
+	if setAnnotationIfNotExists(&bmh.ObjectMeta, detachedAnnotation, detachedAnnotationValue) {
+		log.Infof("Adding detached annotation to BareMetalHost (%s/%s)", bmh.Name, bmh.Namespace)
+		if err := r.Patch(ctx, bmh, patch); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if err := r.setClusterInstalledConditions(ctx, ici); err != nil {
@@ -191,22 +181,6 @@ func (r *ImageClusterInstallMonitor) checkClusterStatus(ctx context.Context,
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
-}
-
-func (r *ImageClusterInstallMonitor) handleDataImageDeletion(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, bmhRef types.NamespacedName) (ctrl.Result, bool, error) {
-	dataImage, err := getDataImage(ctx, r.Client, bmhRef.Namespace, bmhRef.Name)
-	if err != nil && !k8sapierrors.IsNotFound(err) {
-		log.WithError(err).Error("failed to get DataImage")
-		return ctrl.Result{}, true, err
-	}
-	if dataImage != nil && !dataImage.DeletionTimestamp.IsZero() {
-		log.Infof("Waiting for DataImage %s/%s to be deleted", bmhRef.Namespace, bmhRef.Name)
-		if err := r.setClusterInstallingConditions(ctx, ici, "Waiting for DataImage to be deleted"); err != nil {
-			log.WithError(err).Error("failed to set installing conditions")
-		}
-		return ctrl.Result{RequeueAfter: time.Minute}, true, nil
-	}
-	return ctrl.Result{}, false, nil
 }
 
 func (r *ImageClusterInstallMonitor) spokeClient(ctx context.Context, ici *v1alpha1.ImageClusterInstall) (client.Client, error) {
