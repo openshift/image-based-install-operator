@@ -90,6 +90,8 @@ type imagePullSecret struct {
 }
 
 const (
+	detachedAnnotation           = "baremetalhost.metal3.io/detached"
+	detachedAnnotationValue      = "imageclusterinstall-controller"
 	inspectAnnotation            = "inspect.metal3.io"
 	rebootAnnotation             = "reboot.metal3.io"
 	rebootAnnotationValue        = ""
@@ -191,11 +193,6 @@ func (r *ImageClusterInstallReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	if err := r.ensureRestoreStatusAnnotation(ctx, ici); err != nil {
 		log.Errorf("Failed to ensure restore status annotation: %s", err)
-		return ctrl.Result{}, err
-	}
-
-	if err := r.ensurePostCleanupAnnotation(ctx, ici); err != nil {
-		log.Errorf("Failed to ensure post-cleanup annotation: %s", err)
 		return ctrl.Result{}, err
 	}
 
@@ -783,6 +780,7 @@ func (r *ImageClusterInstallReconciler) ensureBMHDataImage(
 	if err != nil {
 		return dataImage, ctrl.Result{}, fmt.Errorf("failed to set controller reference for dataImage due to %w", err)
 	}
+	setBackupLabel(dataImage)
 
 	err = r.Create(ctx, dataImage)
 	if err != nil {
@@ -858,6 +856,19 @@ func (r *ImageClusterInstallReconciler) labelBMHForBackup(ctx context.Context, b
 	return nil
 }
 
+func (r *ImageClusterInstallReconciler) labelDataImageForBackup(ctx context.Context, bmhRef *v1alpha1.BareMetalHostReference) error {
+	dataImage, err := getDataImage(ctx, r.Client, bmhRef.Namespace, bmhRef.Name)
+	if err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(dataImage.DeepCopy())
+	if setBackupLabel(dataImage) {
+		return r.Patch(ctx, dataImage, patch)
+	}
+	return nil
+}
+
 func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx context.Context, log logrus.FieldLogger, ici *v1alpha1.ImageClusterInstall, cd *hivev1.ClusterDeployment) {
 	if ici.Spec.CABundleRef != nil {
 		caBundleKey := types.NamespacedName{Name: ici.Spec.CABundleRef.Name, Namespace: ici.Namespace}
@@ -890,6 +901,10 @@ func (r *ImageClusterInstallReconciler) labelReferencedObjectsForBackup(ctx cont
 	if ici.Spec.BareMetalHostRef != nil {
 		if err := r.labelBMHForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
 			log.WithError(err).Errorf("failed to label BMH %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
+		}
+
+		if err := r.labelDataImageForBackup(ctx, ici.Spec.BareMetalHostRef); err != nil {
+			log.WithError(err).Errorf("failed to label DataImage %s/%s for backup", ici.Spec.BareMetalHostRef.Namespace, ici.Spec.BareMetalHostRef.Name)
 		}
 	}
 
@@ -1433,14 +1448,6 @@ func iciIsBeingRestored(ici *v1alpha1.ImageClusterInstall) bool {
 func (r *ImageClusterInstallReconciler) ensureRestoreStatusAnnotation(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
 	patch := client.MergeFrom(ici.DeepCopy())
 	if !setAnnotationIfNotExists(&ici.ObjectMeta, restoreStatusAnnotation, restoreStatusAnnotationValue) {
-		return nil
-	}
-	return r.Patch(ctx, ici, patch)
-}
-
-func (r *ImageClusterInstallReconciler) ensurePostCleanupAnnotation(ctx context.Context, ici *v1alpha1.ImageClusterInstall) error {
-	patch := client.MergeFrom(ici.DeepCopy())
-	if !setAnnotationIfNotExists(&ici.ObjectMeta, postCleanupAnnotation, postCleanupAnnotationValue) {
 		return nil
 	}
 	return r.Patch(ctx, ici, patch)

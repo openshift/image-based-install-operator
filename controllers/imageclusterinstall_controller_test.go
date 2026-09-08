@@ -2111,7 +2111,7 @@ var _ = Describe("Reconcile", func() {
 		}
 	})
 
-	It("labels BMH for backup but not DataImage", func() {
+	It("labels BMH and DataImage for backup", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
@@ -2126,7 +2126,7 @@ var _ = Describe("Reconcile", func() {
 		clusterDeployment.Spec.BaseDomain = "example.com"
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
-		// Create DataImage beforehand
+		// Create DataImage beforehand so it exists when backup labeling happens
 		dataImage := &bmh_v1alpha1.DataImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bmh.Name,
@@ -2156,13 +2156,13 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify DataImage is not labeled for backup
+		// Verify DataImage has backup label
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
 	})
 
-	It("does not label newly created DataImage for backup", func() {
+	It("labels newly created DataImage for backup", func() {
 		bmh := bmhInState(bmh_v1alpha1.StateAvailable)
 		bmh.Spec.Online = true
 		bmh.Spec.ExternallyProvisioned = false
@@ -2196,10 +2196,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify newly created DataImage is not labeled for backup
+		// Verify newly created DataImage has backup label
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
 	})
 
 	It("labels referenced resources for backup when cluster is already marked as installed", func() {
@@ -2287,12 +2287,12 @@ var _ = Describe("Reconcile", func() {
 		Expect(c.Get(ctx, bmhKey, testBMH)).To(Succeed())
 		Expect(testBMH.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "BMH %s/%s missing backup label", testBMH.Namespace, testBMH.Name)
 
-		// Verify DataImage is not labeled for backup and is left in place for unannotated completed ICIs
+		// Verify DataImage has backup label
 		testDataImage := &bmh_v1alpha1.DataImage{}
 		Expect(c.Get(ctx, bmhKey, testDataImage)).To(Succeed())
-		Expect(testDataImage.GetLabels()).ToNot(HaveKey(backupLabel), "DataImage %s/%s should not be labeled for backup", testDataImage.Namespace, testDataImage.Name)
+		Expect(testDataImage.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "DataImage %s/%s missing backup label", testDataImage.Namespace, testDataImage.Name)
 
-		// Verify completed ICI did not get the cleanup annotation
+		// Verify completed ICI did not get the post-cleanup annotation
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
 		Expect(clusterInstall.Annotations).ToNot(HaveKey(postCleanupAnnotation))
 
@@ -2324,7 +2324,7 @@ var _ = Describe("Reconcile", func() {
 		Expect(testPullSecret.GetLabels()).To(HaveKeyWithValue(backupLabel, backupLabelValue), "Secret %s/%s missing backup label", testPullSecret.Namespace, testPullSecret.Name)
 	})
 
-	It("adds cleanup annotation to new ImageClusterInstalls", func() {
+	It("does not add post-cleanup annotation by default", func() {
 		Expect(c.Create(ctx, clusterInstall)).To(Succeed())
 		Expect(c.Create(ctx, clusterDeployment)).To(Succeed())
 
@@ -2338,10 +2338,10 @@ var _ = Describe("Reconcile", func() {
 		Expect(res).To(Equal(ctrl.Result{}))
 
 		Expect(c.Get(ctx, key, clusterInstall)).To(Succeed())
-		Expect(clusterInstall.Annotations).To(HaveKeyWithValue(postCleanupAnnotation, postCleanupAnnotationValue), "ICI %s/%s missing post-cleanup annotation", clusterInstall.Namespace, clusterInstall.Name)
+		Expect(clusterInstall.Annotations).ToNot(HaveKey(postCleanupAnnotation), "ICI %s/%s should not have post-cleanup annotation", clusterInstall.Namespace, clusterInstall.Name)
 	})
 
-	It("does not add cleanup annotation while status is being restored", func() {
+	It("does not add post-cleanup annotation while status is being restored", func() {
 		clusterInstall.ObjectMeta.Labels = map[string]string{
 			restoreSourceLabel: "test-restore",
 		}
