@@ -27,6 +27,8 @@ import (
 	"github.com/openshift/installer/pkg/types/dns"
 )
 
+const defaultInternalLBIPAddress = "10.0.0.100"
+
 // GenerateClusterAssets generates the manifests for the cluster-api.
 func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID *installconfig.ClusterID) (*capiutils.GenerateClusterAssetsOutput, error) {
 	manifests := []*asset.RuntimeFile{}
@@ -65,6 +67,17 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 			Destination:      ptr.To("*"),
 			Action:           capz.SecurityRuleActionAllow,
 		},
+		{
+			Name:             "konnectivity_in",
+			Protocol:         capz.SecurityGroupProtocolTCP,
+			Direction:        capz.SecurityRuleDirectionInbound,
+			Priority:         230,
+			SourcePorts:      ptr.To("*"),
+			DestinationPorts: ptr.To("8091"),
+			Source:           ptr.To("*"),
+			Destination:      ptr.To("*"),
+			Action:           capz.SecurityRuleActionAllow,
+		},
 	}
 
 	// If we are using Internal publishing, we need a security rule for each CIDR
@@ -97,6 +110,19 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 				Action:           capz.SecurityRuleActionAllow,
 			})
 			securityRulePriority += 10
+
+			securityRules = append(securityRules, capz.SecurityRule{
+				Name:             fmt.Sprintf("konnectivity_in_ipv4_%02d", i),
+				Protocol:         capz.SecurityGroupProtocolTCP,
+				Direction:        capz.SecurityRuleDirectionInbound,
+				SourcePorts:      ptr.To("*"),
+				DestinationPorts: ptr.To("8091"),
+				Source:           ptr.To(addressFamilySubnets.GetIPv4Subnets()[i].String()),
+				Destination:      ptr.To("*"),
+				Priority:         securityRulePriority,
+				Action:           capz.SecurityRuleActionAllow,
+			})
+			securityRulePriority += 10
 		}
 	}
 	if addressFamilySubnets.IPv6Count() > 0 && !installConfig.Config.PublicAPI() {
@@ -120,6 +146,19 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 				Direction:        capz.SecurityRuleDirectionInbound,
 				SourcePorts:      ptr.To("*"),
 				DestinationPorts: ptr.To("22"),
+				Source:           ptr.To(addressFamilySubnets.GetIPv6Subnets()[i].String()),
+				Destination:      ptr.To("*"),
+				Priority:         securityRulePriority,
+				Action:           capz.SecurityRuleActionAllow,
+			})
+			securityRulePriority += 10
+
+			securityRules = append(securityRules, capz.SecurityRule{
+				Name:             fmt.Sprintf("konnectivity_in_ipv6_%02d", i),
+				Protocol:         capz.SecurityGroupProtocolTCP,
+				Direction:        capz.SecurityRuleDirectionInbound,
+				SourcePorts:      ptr.To("*"),
+				DestinationPorts: ptr.To("8091"),
 				Source:           ptr.To(addressFamilySubnets.GetIPv6Subnets()[i].String()),
 				Destination:      ptr.To("*"),
 				Priority:         securityRulePriority,
@@ -568,7 +607,7 @@ func getSubnetSpec(installConfig *installconfig.InstallConfig, controlPlaneSubne
 }
 
 func getLBIP(subnets []*net.IPNet, installConfig *installconfig.InstallConfig) (string, error) {
-	lbip := capz.DefaultInternalLBIPAddress
+	lbip := defaultInternalLBIPAddress
 	lbip = getIPWithinCIDR(subnets, lbip)
 
 	var controlPlaneSub string
