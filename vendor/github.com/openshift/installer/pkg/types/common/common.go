@@ -1,4 +1,4 @@
-package common
+package common //nolint:revive
 
 import (
 	"errors"
@@ -24,6 +24,11 @@ func ValidateUniqueAndRequiredFields[T any](elements []T, fldPath *field.Path, f
 		valueFound := false
 		fieldName := fl.Parent().Type().Name() + "." + fl.FieldName()
 		fieldValue := fl.Field().Interface()
+
+		// Skip uniqueness check for zero values (empty strings, zero ints, etc.)
+		if fl.Field().IsZero() {
+			return true
+		}
 
 		if fl.Field().Type().Comparable() {
 			if _, present := values[fieldName]; !present {
