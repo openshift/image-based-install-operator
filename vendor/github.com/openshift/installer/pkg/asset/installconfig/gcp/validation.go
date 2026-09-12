@@ -3,12 +3,12 @@ package gcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/dns/v1"
@@ -85,21 +85,18 @@ func validateInstanceAndDiskType(fldPath *field.Path, diskType, instanceType, ar
 		return nil
 	}
 
-	family, _, _ := strings.Cut(instanceType, "-")
-	if family == "custom" {
-		family = gcp.DefaultCustomInstanceType
-	}
-	diskTypes, ok := gcp.InstanceTypeToDiskTypeMap[family]
+	family := gcp.GetGCPInstanceFamily(instanceType)
+	diskTypes, ok := gcp.GetDiskTypes(instanceType)
 	if !ok {
-		return field.NotFound(fldPath.Child("type"), family)
+		logrus.Warnf("unrecognized instance type %s with family %s", instanceType, family)
 	}
 
-	acceptedArmFamilies := sets.New("c4a", "t2a")
+	acceptedArmFamilies := sets.New("c4a", "n4a", "t2a", "a4x")
 	if arch == types.ArchitectureARM64 && !acceptedArmFamilies.Has(family) {
 		return field.NotSupported(fldPath.Child("type"), family, sets.List(acceptedArmFamilies))
 	}
 
-	if diskType != "" {
+	if diskType != "" && len(diskTypes) > 0 {
 		if !sets.New(diskTypes...).Has(diskType) {
 			return field.Invalid(
 				fldPath.Child("diskType"),
@@ -143,7 +140,8 @@ func ValidateInstanceType(client API, fieldPath *field.Path, project, region str
 
 	typeMeta, typeZones, err := client.GetMachineTypeWithZones(context.TODO(), project, region, instanceType)
 	if err != nil {
-		if _, ok := err.(*googleapi.Error); ok {
+		var gerr *googleapi.Error
+		if errors.As(err, &gerr) {
 			return append(allErrs, field.Invalid(fieldPath.Child("type"), instanceType, err.Error()))
 		}
 		return append(allErrs, field.InternalError(nil, err))
@@ -165,6 +163,9 @@ func ValidateInstanceType(client API, fieldPath *field.Path, project, region str
 	if len(userZones) == 0 {
 		userZones = typeZones
 	}
+
+	allErrs = append(allErrs, validateDiskTypeAvailability(client, fieldPath, project, region, userZones, diskType)...)
+
 	if diff := userZones.Difference(typeZones); len(diff) > 0 {
 		errMsg := fmt.Sprintf("instance type not available in zones: %v", sets.List(diff))
 		allErrs = append(allErrs, field.Invalid(fieldPath.Child("type"), instanceType, errMsg))
@@ -189,6 +190,38 @@ func ValidateInstanceType(client API, fieldPath *field.Path, project, region str
 	return allErrs
 }
 
+func validateDiskTypeAvailability(client API, fieldPath *field.Path, project, region string, zones sets.Set[string], diskType string) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if diskType == "" {
+		return allErrs
+	}
+
+	dt, dtZones, err := client.GetDiskTypeWithZones(context.TODO(), project, region, diskType)
+	if err != nil {
+		var gerr *googleapi.Error
+		if errors.As(err, &gerr) && gerr.Code < 500 {
+			return append(allErrs, field.Invalid(fieldPath.Child("diskType"), diskType, err.Error()))
+		}
+		logrus.Warnf("could not verify disk type %s availability in %s, skipping API check: %v", diskType, region, err)
+		return allErrs
+	}
+
+	if dt == nil {
+		errMsg := fmt.Sprintf("disk type %s is not available in region %s", diskType, region)
+		return append(allErrs, field.Invalid(fieldPath.Child("diskType"), diskType, errMsg))
+	}
+
+	if len(zones) > 0 {
+		if diff := zones.Difference(dtZones); len(diff) > 0 {
+			errMsg := fmt.Sprintf("disk type %s is not available in zones: %v", diskType, sets.List(diff))
+			allErrs = append(allErrs, field.Invalid(fieldPath.Child("diskType"), diskType, errMsg))
+		}
+	}
+
+	return allErrs
+}
+
 func validateServiceAccountPresent(client API, ic *types.InstallConfig) field.ErrorList {
 	allErrs := field.ErrorList{}
 
@@ -205,7 +238,22 @@ func validateServiceAccountPresent(client API, ic *types.InstallConfig) field.Er
 }
 
 // DefaultInstanceTypeForArch returns the appropriate instance type based on the target architecture.
-func DefaultInstanceTypeForArch(arch types.Architecture) string {
+func DefaultInstanceTypeForArch(arch types.Architecture, projectID string) string {
+	return DefaultInstanceTypeForArchAndProjectID(arch, projectID)
+}
+
+// DefaultInstanceTypeForArchAndProjectID returns the appropriate instance type based on the target architecture and project ID.
+// For sovereign cloud environments, it returns c3-standard-4 which is available in those regions.
+// For public GCP, it returns n2-standard-4 (x86) or t2a-standard-4 (ARM64).
+func DefaultInstanceTypeForArchAndProjectID(arch types.Architecture, projectID string) string {
+	cloudEnv := gcp.GetCloudEnvironment(projectID)
+
+	// Sovereign cloud uses c3-standard-4 for all architectures
+	if cloudEnv == gcp.CloudEnvironmentSovereign {
+		return "c3-standard-4"
+	}
+
+	// Public GCP: ARM64 uses t2a, x86 uses n2
 	if arch == types.ArchitectureARM64 {
 		return "t2a-standard-4"
 	}
@@ -234,6 +282,8 @@ func validateInstanceTypes(client API, ic *types.InstallConfig) field.ErrorList 
 		defaultInstanceType = ic.GCP.DefaultMachinePlatform.InstanceType
 		if ic.GCP.DefaultMachinePlatform.DiskType != "" {
 			defaultDiskType = ic.GCP.DefaultMachinePlatform.DiskType
+		} else {
+			defaultDiskType = gcp.DefaultDiskTypeForInstance(defaultInstanceType, ic.GCP.ProjectID)
 		}
 
 		if ic.GCP.DefaultMachinePlatform.OnHostMaintenance != "" {
@@ -271,7 +321,7 @@ func validateInstanceTypes(client API, ic *types.InstallConfig) field.ErrorList 
 	if ic.ControlPlane != nil {
 		arch = string(ic.ControlPlane.Architecture)
 		if instanceType == "" {
-			instanceType = DefaultInstanceTypeForArch(ic.ControlPlane.Architecture)
+			instanceType = DefaultInstanceTypeForArch(ic.ControlPlane.Architecture, ic.GCP.ProjectID)
 		}
 		if ic.ControlPlane.Platform.GCP != nil {
 			if ic.ControlPlane.Platform.GCP.InstanceType != "" {
@@ -282,6 +332,17 @@ func validateInstanceTypes(client API, ic *types.InstallConfig) field.ErrorList 
 			}
 			if ic.ControlPlane.Platform.GCP.DiskType != "" {
 				cpDiskType = ic.ControlPlane.Platform.GCP.DiskType
+			} else {
+				// When the user-provided instance type is not recognized and
+				// the disk type is not specified, add an error asking for disk type.
+				family := gcp.GetGCPInstanceFamily(instanceType)
+				if _, ok := gcp.InstanceTypeToDiskTypeMap[family]; !ok {
+					return append(allErrs, field.Required(
+						field.NewPath("controlPlane", "diskType"),
+						fmt.Sprintf("instance type %s requires a disk type to be set", instanceType),
+					))
+				}
+				cpDiskType = gcp.DefaultDiskTypeForInstance(instanceType, ic.GCP.ProjectID)
 			}
 			if ic.ControlPlane.Platform.GCP.OnHostMaintenance != "" {
 				cpOnHostMaintenance = ic.ControlPlane.Platform.GCP.OnHostMaintenance
@@ -324,7 +385,7 @@ func validateInstanceTypes(client API, ic *types.InstallConfig) field.ErrorList 
 		onHostMaintenance := defaultOnHostMaintenance
 		confidentialCompute := defaultConfidentialCompute
 		if instanceType == "" {
-			instanceType = DefaultInstanceTypeForArch(compute.Architecture)
+			instanceType = DefaultInstanceTypeForArch(compute.Architecture, ic.GCP.ProjectID)
 		}
 		if diskType == "" {
 			diskType = gcp.PDSSD
@@ -343,10 +404,20 @@ func validateInstanceTypes(client API, ic *types.InstallConfig) field.ErrorList 
 			if compute.Platform.GCP.ConfidentialCompute != "" {
 				confidentialCompute = compute.Platform.GCP.ConfidentialCompute
 			}
-		}
-
-		if compute.Platform.GCP != nil && compute.Platform.GCP.DiskType != "" {
-			diskType = compute.Platform.GCP.DiskType
+			if compute.Platform.GCP.DiskType != "" {
+				diskType = compute.Platform.GCP.DiskType
+			} else {
+				// When the user-provided instance type is not recognized and
+				// the disk type is not specified, add an error asking for disk type.
+				family := gcp.GetGCPInstanceFamily(instanceType)
+				if _, ok := gcp.InstanceTypeToDiskTypeMap[family]; !ok {
+					return append(allErrs, field.Required(
+						field.NewPath(fmt.Sprintf("compute[%d]", idx), "diskType"),
+						fmt.Sprintf("instance type %s requires a disk type to be set", instanceType),
+					))
+				}
+				diskType = gcp.DefaultDiskTypeForInstance(instanceType, ic.GCP.ProjectID)
+			}
 		}
 
 		allErrs = append(allErrs,
@@ -642,7 +713,7 @@ func ValidateEnabledServices(ctx context.Context, client API, project string) er
 	projectServices, err := client.GetEnabledServices(ctx, project)
 	if err != nil {
 		if IsForbidden(err) {
-			return errors.Wrap(err, "unable to fetch enabled services for project. Make sure 'serviceusage.googleapis.com' is enabled")
+			return fmt.Errorf("unable to fetch enabled services for project. Make sure 'serviceusage.googleapis.com' is enabled: %w", err)
 		}
 		return err
 	}
@@ -891,6 +962,11 @@ func validateServiceEndpointOverride(client API, ic *types.InstallConfig, fieldP
 	allErrs := field.ErrorList{}
 	if ic.GCP.Endpoint == nil {
 		return nil
+	}
+
+	if gcp.GetCloudEnvironment(ic.GCP.ProjectID) == gcp.CloudEnvironmentSovereign {
+		// Custom endpoints are not supported for sovereign clouds
+		return append(allErrs, field.Forbidden(fieldPath.Child("endpoint").Child("name"), "endpoint overrides are not supported in sovereign clouds"))
 	}
 
 	endpoint, err := client.GetPrivateServiceConnectEndpoint(context.Background(), ic.GCP.ProjectID, ic.GCP.Endpoint)

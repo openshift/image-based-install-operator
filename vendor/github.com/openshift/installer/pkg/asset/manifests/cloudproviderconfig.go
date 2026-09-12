@@ -16,6 +16,7 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	awsic "github.com/openshift/installer/pkg/asset/installconfig/aws"
+	gcpic "github.com/openshift/installer/pkg/asset/installconfig/gcp"
 	powervsconfig "github.com/openshift/installer/pkg/asset/installconfig/powervs"
 	ibmcloudmachines "github.com/openshift/installer/pkg/asset/machines/ibmcloud"
 	"github.com/openshift/installer/pkg/asset/manifests/azure"
@@ -33,6 +34,7 @@ import (
 	externaltypes "github.com/openshift/installer/pkg/types/external"
 	gcptypes "github.com/openshift/installer/pkg/types/gcp"
 	ibmcloudtypes "github.com/openshift/installer/pkg/types/ibmcloud"
+	networktypes "github.com/openshift/installer/pkg/types/network"
 	nonetypes "github.com/openshift/installer/pkg/types/none"
 	nutanixtypes "github.com/openshift/installer/pkg/types/nutanix"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
@@ -113,12 +115,27 @@ func (cpc *CloudProviderConfig) Generate(ctx context.Context, dependencies asset
 			cm.Data[cloudProviderConfigCABundleDataKey] = trustBundle
 		}
 
-		// Include a non-empty kube config to appease components--such as the kube-apiserver--that
-		// expect there to be a kube config if the cloud-provider-config ConfigMap exists. See
-		// https://bugzilla.redhat.com/show_bug.cgi?id=1926975.
-		// Note that the newline is required in order to be valid yaml.
-		cm.Data[cloudProviderConfigDataKey] = `[Global]
+		var cloudCfg string
+		switch installConfig.Config.AWS.IPFamily {
+		case networktypes.DualStackIPv4Primary:
+			cloudCfg = `[Global]
+NodeIPFamilies=ipv4
+NodeIPFamilies=ipv6
 `
+		case networktypes.DualStackIPv6Primary:
+			cloudCfg = `[Global]
+NodeIPFamilies=ipv6
+NodeIPFamilies=ipv4
+`
+		default:
+			// Include a non-empty kube config to appease components--such as the kube-apiserver--that
+			// expect there to be a kube config if the cloud-provider-config ConfigMap exists. See
+			// https://bugzilla.redhat.com/show_bug.cgi?id=1926975.
+			// Note that the newline is required in order to be valid yaml.
+			cloudCfg = `[Global]
+`
+		}
+		cm.Data[cloudProviderConfigDataKey] = cloudCfg
 	case openstacktypes.Name, powervctypes.Name:
 		cloudProviderConfigData, cloudProviderConfigCABundleData, err := openstackmanifests.GenerateCloudProviderConfig(ctx, *installConfig.Config)
 		if err != nil {
@@ -188,12 +205,30 @@ func (cpc *CloudProviderConfig) Generate(ctx context.Context, dependencies asset
 			firewallManagement = gcpmanifests.FirewallManagementDisabled
 		}
 
+		// TODO(padillon): The universe domain comparison can be removed (always set token-url = nil)
+		// when we want to switch all installs to use the credentialsrequest. Or, when
+		// https://github.com/kubernetes/cloud-provider-gcp/pull/1261 merges, we can remove this
+		// entirely from the cloud config.
+		var tokenURL string
+		session, err := gcpic.GetSession(ctx)
+		if err != nil {
+			return fmt.Errorf("could not get GCP session: %w", err)
+		}
+		ud, err := session.Credentials.GetUniverseDomain()
+		if err != nil {
+			return fmt.Errorf("could not get GCP universe domain: %w", err)
+		}
+		if ud != "" && ud != "googleapis.com" {
+			tokenURL = "nil"
+		}
+
 		gcpConfig, err := gcpmanifests.CloudProviderConfig(
 			clusterID.InfraID,
 			installConfig.Config.GCP.ProjectID,
 			subnet,
 			installConfig.Config.GCP.NetworkProjectID,
 			firewallManagement,
+			tokenURL,
 		)
 		if err != nil {
 			return errors.Wrap(err, "could not create cloud provider config")
@@ -293,6 +328,8 @@ func (cpc *CloudProviderConfig) Generate(ctx context.Context, dependencies asset
 			vpcExists = true
 		} else if vpc, err = client.GetVPCByName(ctx, vpcNameOrID); err == nil {
 			vpcExists = true
+		} else {
+			return err
 		}
 
 		vpcSubnets := installConfig.Config.PowerVS.VPCSubnets
@@ -370,7 +407,7 @@ func (cpc *CloudProviderConfig) Generate(ctx context.Context, dependencies asset
 		}
 		cm.Data[cloudProviderConfigDataKey] = powervsConfig
 	case vspheretypes.Name:
-		vsphereConfig, err := vspheremanifests.CloudProviderConfigYaml(clusterID.InfraID, installConfig.Config.Platform.VSphere)
+		vsphereConfig, err := vspheremanifests.CloudProviderConfigYaml(clusterID.InfraID, installConfig)
 
 		if err != nil {
 			return errors.Wrap(err, "could not create cloud provider config")
