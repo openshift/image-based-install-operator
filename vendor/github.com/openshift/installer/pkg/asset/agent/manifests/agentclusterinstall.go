@@ -29,6 +29,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/agent/agentconfig"
 	"github.com/openshift/installer/pkg/asset/agent/workflow"
 	"github.com/openshift/installer/pkg/ipnet"
+	"github.com/openshift/installer/pkg/rhcos"
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/baremetal"
 	"github.com/openshift/installer/pkg/types/defaults"
@@ -81,6 +82,10 @@ type agentClusterInstallOnPremPlatform struct {
 	// ProvisioningDHCPRange is used to provide DHCP services to hosts
 	// for provisioning.
 	ProvisioningDHCPRange string `json:"provisioningDHCPRange,omitempty"`
+
+	// ProvisioningNetworkGateway is the IP address of the default gateway
+	// for the provisioning network, provided to hosts via DHCP.
+	ProvisioningNetworkGateway string `json:"provisioningNetworkGateway,omitempty"`
 }
 
 type agentClusterInstallOnPremExternalPlatform struct {
@@ -127,6 +132,8 @@ type agentClusterInstallInstallConfigOverrides struct {
 	FeatureSet configv1.FeatureSet `json:"featureSet,omitempty"`
 	// Allow override of FeatureGates
 	FeatureGates []string `json:"featureGates,omitempty"`
+	// OSImageStream is the OS Image Stream to be used for all machines in the cluster
+	OSImageStream *types.OSImageStream `json:"osImageStream,omitempty"`
 }
 
 var _ asset.WritableAsset = (*AgentClusterInstall)(nil)
@@ -294,6 +301,7 @@ func (a *AgentClusterInstall) Generate(_ context.Context, dependencies asset.Par
 					baremetalPlatform.ProvisioningNetworkInterface = installConfig.Config.Platform.BareMetal.ProvisioningNetworkInterface
 					baremetalPlatform.ProvisioningNetworkCIDR = installConfig.Config.Platform.BareMetal.ProvisioningNetworkCIDR
 					baremetalPlatform.ProvisioningDHCPRange = installConfig.Config.Platform.BareMetal.ProvisioningDHCPRange
+					baremetalPlatform.ProvisioningNetworkGateway = installConfig.Config.Platform.BareMetal.ProvisioningNetworkGateway
 				}
 			}
 			if bmIcOverridden {
@@ -390,6 +398,11 @@ func (a *AgentClusterInstall) Generate(_ context.Context, dependencies asset.Par
 		if installConfig.Config.AdditionalTrustBundlePolicy != "" && installConfig.Config.AdditionalTrustBundlePolicy != types.PolicyProxyOnly {
 			icOverridden = true
 			icOverrides.AdditionalTrustBundlePolicy = installConfig.Config.AdditionalTrustBundlePolicy
+		}
+
+		if installConfig.Config.OSImageStream != rhcos.GetDefaultOSImageStream(installConfig.Config) {
+			icOverridden = true
+			icOverrides.OSImageStream = &installConfig.Config.OSImageStream
 		}
 
 		if icOverridden {
