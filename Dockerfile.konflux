@@ -17,7 +17,7 @@ COPY vendor/ vendor/
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/manager cmd/manager/main.go
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:984df0a2b8d9011d419b0ad260b25f6b74b7ce69ab0595b75522e30f8849f27f
 
 ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
     DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
