@@ -1,0 +1,24 @@
+# permissions for end users to edit imageclusterinstalls.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: imageclusterinstall-editor
+rules:
+- apiGroups:
+  - extensions.hive.openshift.io
+  resources:
+  - imageclusterinstalls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - extensions.hive.openshift.io
+  resources:
+  - imageclusterinstalls/status
+  verbs:
+  - get

@@ -1,0 +1,18 @@
+apiVersion: extensions.hive.openshift.io/v1alpha1
+kind: ImageClusterInstall
+metadata:
+  name: imageclusterinstall
+spec:
+  clusterDeploymentRef:
+    name: test-sno
+  clusterID: 3ab3ba89-108b-43a7-b358-4e45e493aba7
+  hostname: newhostname
+  nodeIP: 192.0.2.100
+  imageSetRef:
+    name: 4.14.10
+  bareMetalHostRef:
+    name: host-0
+    namespace: test-sno
+  machineNetworks:
+    - cidr: "192.0.2.0/24"
+    - cidr: "2001:db8::/64"

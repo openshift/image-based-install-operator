@@ -1,0 +1,20 @@
+# permissions for end users to view imageclusterinstalls.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: imageclusterinstall-viewer
+rules:
+- apiGroups:
+  - extensions.hive.openshift.io
+  resources:
+  - imageclusterinstalls
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions.hive.openshift.io
+  resources:
+  - imageclusterinstalls/status
+  verbs:
+  - get

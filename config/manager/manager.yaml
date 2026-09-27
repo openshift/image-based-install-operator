@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-based-install-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-based-install-operator
+  namespace: image-based-install-operator
+  labels:
+    app: image-based-install-operator
+spec:
+  selector:
+    matchLabels:
+      app: image-based-install-operator
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: image-based-install-operator
+    spec:
+      hostIPC: false
+      hostNetwork: false
+      hostPID: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /usr/local/bin/manager
+        args:
+        - --leader-elect
+        image: controller:latest
+        name: manager
+        env:
+        - name: SERVICE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_NAME
+          value: image-based-install-config
+        - name: SERVICE_PORT
+          value: "8000"
+        - name: SERVICE_SCHEME
+          value: "https"
+        - name: MAX_CONCURRENT_RECONCILES
+          value: "1"
+        - name: TMPDIR
+          value: /data
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - "ALL"
+          privileged: false
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 10m
+            memory: 250Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: webhook-certs
+          mountPath: /webhook-certs
+      - command:
+        - /usr/local/bin/server
+        image: controller:latest
+        name: server
+        env:
+        - name: HTTPS_KEY_FILE
+          value: /certs/tls.key
+        - name: HTTPS_CERT_FILE
+          value: /certs/tls.crt
+        - name: PORT
+          value: "8000"
+        - name: TMPDIR
+          value: /data
+        - name: XDG_CACHE_HOME
+          value: /data/.cache
+        ports:
+        - name: config-server
+          containerPort: 8000
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - "ALL"
+          privileged: false
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: certs
+          mountPath: /certs
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: data
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      - name: certs
+        secret:
+          secretName: ibi-config-serving-certs
+      - name: webhook-certs
+        secret:
+          secretName: ibi-webhook-serving-certs
+      serviceAccountName: image-based-install-operator
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: image-based-install-config
+  namespace: image-based-install-operator
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: ibi-config-serving-certs
+spec:
+  ports:
+  - port: 8000
+    protocol: TCP
+    name: config-server
+  selector:
+    app: image-based-install-operator

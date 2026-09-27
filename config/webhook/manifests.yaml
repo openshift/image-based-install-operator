@@ -1,0 +1,28 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: imageclusterinstalls.extensions.hive.openshift.io
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: image-based-install-webhook
+      namespace: system
+      path: /validate-extensions-hive-openshift-io-v1alpha1-imageclusterinstall
+  failurePolicy: Fail
+  name: imageclusterinstalls.extensions.hive.openshift.io
+  rules:
+  - apiGroups:
+    - extensions.hive.openshift.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - imageclusterinstalls
+  sideEffects: None

@@ -1,0 +1,54 @@
+FROM registry.redhat.io/openshift/golang-builder:golang-builder-v1.25-rhel9 as builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /opt/app-root/src
+
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+# Copy the go source
+COPY cmd/ cmd/
+COPY api/ api/
+COPY controllers/ controllers/
+COPY internal/ internal/
+COPY vendor/ vendor/
+
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/manager cmd/manager/main.go
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o build/server cmd/server/main.go
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest@sha256:984df0a2b8d9011d419b0ad260b25f6b74b7ce69ab0595b75522e30f8849f27f
+
+ENV SUMMARY="The image-based-install-operator orchestrates image-based cluster installs from a central cluster using declarative APIs" \
+    DESCRIPTION="The image-based-install operator creates the configuration ISO for image-based cluster installation and attaches that image to hosts using a BareMetalHost definition"
+
+ARG version=2.11
+
+LABEL name="multicluster-engine/image-based-install-rhel9" \
+      cpe="cpe:/a:redhat:multicluster_engine:2.11::el9" \
+      summary="${SUMMARY}" \
+      description="${DESCRIPTION}" \
+      com.redhat.component="image-based-install-operator" \
+      io.k8s.display-name="Image Based Install Operator" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.openshift.tags="install,cluster,provisioning" \
+      distribution-scope="public" \
+      release="${version}" \
+      version="${version}" \
+      url="https://github.com/openshift/image-based-install-operator" \
+      vendor="Red Hat, Inc."
+
+ARG DATA_DIR=/data
+RUN mkdir $DATA_DIR && chmod 775 $DATA_DIR
+
+RUN microdnf install -y nmstate-libs nmstate && microdnf clean all && rm -rf /var/cache/microdnf/*
+
+WORKDIR /
+COPY --from=builder /opt/app-root/src/build/manager /usr/local/bin/
+COPY --from=builder /opt/app-root/src/build/server /usr/local/bin/
+USER 65532:65532
+ENV GODEBUG=madvdontneed=1
+ENV GOGC=50
+
+ENTRYPOINT ["/usr/local/bin/manager"]
+

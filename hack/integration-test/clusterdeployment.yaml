@@ -1,0 +1,17 @@
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: ibi-test
+  namespace: ibi-test
+spec:
+  baseDomain: example.com
+  clusterName: ibiotest
+  clusterInstallRef:
+    group: extensions.hive.openshift.io
+    kind: ImageClusterInstall
+    name: ibi-test
+    version: v1alpha1
+  pullSecretRef:
+    name: pull-secret
+  platform:
+    none: {}
