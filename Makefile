@@ -1,5 +1,5 @@
-# Ensure older CI build roots honor the module's toolchain directive.
-export GOTOOLCHAIN = auto
+# Override CI's make-level GOTOOLCHAIN setting to honor go.mod.
+override export GOTOOLCHAIN = auto
 
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
