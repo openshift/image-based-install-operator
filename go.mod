@@ -2,7 +2,7 @@ module github.com/openshift/image-based-install-operator
 
 go 1.26.0
 
-toolchain go1.26.2
+toolchain go1.26.7
 
 require (
 	github.com/containers/image/v5 v5.31.0
