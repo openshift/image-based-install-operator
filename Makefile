@@ -1,3 +1,6 @@
+# Override CI's make-level GOTOOLCHAIN setting to honor go.mod.
+override export GOTOOLCHAIN = auto
+
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
