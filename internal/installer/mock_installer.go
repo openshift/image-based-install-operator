@@ -22,7 +22,6 @@ import (
 type MockInstaller struct {
 	ctrl     *gomock.Controller
 	recorder *MockInstallerMockRecorder
-	isgomock struct{}
 }
 
 // MockInstallerMockRecorder is the mock recorder for MockInstaller.
