@@ -51,9 +51,9 @@ func ResolveTLSConfig(ctx context.Context, restConfig *rest.Config) (TLSConfigRe
 	if libgocrypto.ShouldHonorClusterTLSProfile(tlsAdherencePolicy) {
 		appliedProfile = tlsProfileSpec
 	}
-	profileTLSConfig, unsupportedCiphers := crtls.NewTLSConfigFromProfile(appliedProfile)
-	if len(unsupportedCiphers) > 0 {
-		log.Info("TLS configuration contains unsupported ciphers that will be ignored", "unsupportedCiphers", unsupportedCiphers)
+	profileTLSConfig, unsupported := crtls.NewTLSConfigFromProfile(appliedProfile)
+	if len(unsupported) > 0 {
+		log.Info("TLS configuration contains unsupported ciphers and/or groups that will be ignored", "unsupported", unsupported)
 	}
 	tlsConfig := profileTLSConfig
 
