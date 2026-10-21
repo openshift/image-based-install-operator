@@ -18,10 +18,12 @@ import (
 	"github.com/openshift/installer/pkg/types/network"
 )
 
-// BootstrapSSHDescription is the description for the
-// ingress rule that provides SSH access to the bootstrap node
-// & identifies the rule for removal during bootstrap destroy.
-const BootstrapSSHDescription = "Bootstrap SSH Access"
+// Bootstrap ingress rule descriptions identify rules for removal
+// during bootstrap destroy.
+const (
+	BootstrapSSHDescription          = "Bootstrap SSH Access"
+	BootstrapKonnectivityDescription = "Bootstrap Konnectivity"
+)
 
 // GenerateClusterAssets generates the manifests for the cluster-api.
 func GenerateClusterAssets(ic *installconfig.InstallConfig, clusterID *installconfig.ClusterID) (*capiutils.GenerateClusterAssetsOutput, error) {
@@ -98,12 +100,6 @@ func GenerateClusterAssets(ic *installconfig.InstallConfig, clusterID *installco
 							ToPort:      -1,
 						},
 						{
-							Description: "Port 6441-6442 (TCP) for ovndb",
-							Protocol:    capa.SecurityGroupProtocolTCP,
-							FromPort:    6441,
-							ToPort:      6442,
-						},
-						{
 							Description: "Port 9000-9999 for node ports (TCP)",
 							Protocol:    capa.SecurityGroupProtocolTCP,
 							FromPort:    9000,
@@ -149,6 +145,13 @@ func GenerateClusterAssets(ic *installconfig.InstallConfig, clusterID *installco
 						Protocol:                 capa.SecurityGroupProtocolTCP,
 						FromPort:                 10259,
 						ToPort:                   10259,
+						SourceSecurityGroupRoles: []capa.SecurityGroupRole{"controlplane", "node"},
+					},
+					{
+						Description:              BootstrapKonnectivityDescription,
+						Protocol:                 capa.SecurityGroupProtocolTCP,
+						FromPort:                 8091,
+						ToPort:                   8091,
 						SourceSecurityGroupRoles: []capa.SecurityGroupRole{"controlplane", "node"},
 					},
 					{
