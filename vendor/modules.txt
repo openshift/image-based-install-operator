@@ -122,7 +122,7 @@ github.com/kelseyhightower/envconfig
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
-# github.com/metal3-io/baremetal-operator/apis v0.6.1 => github.com/openshift/baremetal-operator/apis v0.0.0-20240611081634-a92cc4b9ae8b
+# github.com/metal3-io/baremetal-operator/apis v0.8.1 => github.com/openshift/baremetal-operator/apis v0.0.0-20240611081634-a92cc4b9ae8b
 ## explicit; go 1.22
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
 # github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.5.1
