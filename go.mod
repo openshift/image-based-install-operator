@@ -327,4 +327,4 @@ replace (
 	sigs.k8s.io/cluster-api-provider-azure => sigs.k8s.io/cluster-api-provider-azure v1.22.0
 )
 
-replace github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.4
+replace github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.6
