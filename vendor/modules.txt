@@ -120,7 +120,7 @@ github.com/mailru/easyjson/jwriter
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/metal3-io/baremetal-operator/apis v0.3.1 => github.com/openshift/baremetal-operator/apis v0.0.0-20230703131026-7338252ff820
+# github.com/metal3-io/baremetal-operator/apis v0.8.1 => github.com/openshift/baremetal-operator/apis v0.0.0-20230703131026-7338252ff820
 ## explicit; go 1.19
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
 # github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.2.0
