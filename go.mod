@@ -19,7 +19,7 @@ require (
 	github.com/openshift/installer v1.4.21-rc2
 	github.com/sirupsen/logrus v1.9.4
 	go.uber.org/mock v0.6.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.59.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.34.2
 	k8s.io/apimachinery v0.34.2
