@@ -11,7 +11,7 @@ require (
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/metal3-io/baremetal-operator/apis v0.6.1
+	github.com/metal3-io/baremetal-operator/apis v0.8.1
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
 	github.com/openshift/api v0.0.0-20251120220512-cb382c9eaf42
