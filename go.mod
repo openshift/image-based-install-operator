@@ -5,7 +5,7 @@ go 1.25.0
 toolchain go1.26.11
 
 require (
-	github.com/containers/image/v5 v5.29.0
+	github.com/containers/image/v5 v5.29.3
 	github.com/diskfs/go-diskfs v1.3.0
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.3.1
