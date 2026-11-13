@@ -23,6 +23,7 @@ import (
 	"github.com/openshift/installer/pkg/types/openstack"
 	openstackdefaults "github.com/openshift/installer/pkg/types/openstack/defaults"
 	"github.com/openshift/installer/pkg/types/powervc"
+	"github.com/openshift/installer/pkg/utils"
 )
 
 const (
@@ -96,6 +97,7 @@ func Machines(ctx context.Context, clusterID string, config *types.InstallConfig
 				// we don't need to set Versions, because we control those via operators.
 			},
 		}
+		utils.SetMachineOSStreamLabels(&machine, config)
 		machines = append(machines, machine)
 	}
 
@@ -157,6 +159,7 @@ func Machines(ctx context.Context, clusterID string, config *types.InstallConfig
 			},
 		},
 	}
+	utils.SetCPMSOSStreamLabels(controlPlaneMachineSet, config)
 
 	if CPMSFailureDomains := pruneFailureDomains(failureDomains); CPMSFailureDomains != nil {
 		controlPlaneMachineSet.Spec.Template.OpenShiftMachineV1Beta1Machine.FailureDomains = &machinev1.FailureDomains{
@@ -261,16 +264,21 @@ func generateProviderSpec(ctx context.Context, clusterID string, config *types.I
 		PrimarySubnet:    primarySubnet,
 		AvailabilityZone: failureDomain.AvailabilityZone,
 		SecurityGroups:   securityGroups,
-		ServerGroupName:  serverGroupName,
 		Trunk:            false,
-		Tags: []string{
-			fmt.Sprintf("openshiftClusterID=%s", clusterID),
-		},
 		ServerMetadata: map[string]string{
 			"Name":               fmt.Sprintf("%s-%s", clusterID, role),
 			"openshiftClusterID": clusterID,
 		},
 		ConfigDrive: configDrive,
+	}
+	if config.Platform.Name() != powervc.Name {
+		// No server group on PowerVC: its non-admin policy forbids creating
+		// server groups, so PreProvision skips them.
+		spec.ServerGroupName = serverGroupName
+		// PowerVC's Neutron policy forbids update_ports_tags.
+		spec.Tags = []string{
+			fmt.Sprintf("openshiftClusterID=%s", clusterID),
+		}
 	}
 	if mpool.RootVolume != nil {
 		spec.RootVolume = &machinev1alpha1.RootVolume{
