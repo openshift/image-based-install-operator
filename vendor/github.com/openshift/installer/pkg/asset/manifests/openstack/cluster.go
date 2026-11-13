@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/gophercloud/utils/v2/openstack/clientconfig"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +17,7 @@ import (
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/asset/manifests/capiutils"
+	"github.com/openshift/installer/pkg/types/powervc"
 )
 
 const (
@@ -61,10 +63,14 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 			APIServerFixedIP:       &openstackInstallConfig.APIVIPs[0],
 			ExternalNetwork:        externalNetwork,
 			DisableExternalNetwork: disableExternalNetwork,
-			Tags: []string{
-				fmt.Sprintf("openshiftClusterID=%s", clusterID.InfraID),
-			},
 		},
+	}
+	// PowerVC's Neutron policy forbids update_ports_tags, and CAPO tags
+	// ports with the cluster tags.
+	if installConfig.Config.Platform.Name() != powervc.Name {
+		openStackCluster.Spec.Tags = []string{
+			fmt.Sprintf("openshiftClusterID=%s", clusterID.InfraID),
+		}
 	}
 	if cpPort := openstackInstallConfig.ControlPlanePort; cpPort != nil {
 		if networkID := cpPort.Network.ID; networkID != "" {
@@ -81,10 +87,23 @@ func GenerateClusterAssets(installConfig *installconfig.InstallConfig, clusterID
 			}
 		}
 	} else {
+		networkCIDR := capiutils.CIDRFromInstallConfig(installConfig)
+		allocationStart, err := cidr.Host(&networkCIDR.IPNet, 10)
+		if err != nil {
+			return nil, err
+		}
+		_, broadcastIP := cidr.AddressRange(&networkCIDR.IPNet)
+		allocationEnd := cidr.Dec(broadcastIP)
 		openStackCluster.Spec.ManagedSubnets = []capo.SubnetSpec{
 			{
-				CIDR:           capiutils.CIDRFromInstallConfig(installConfig).String(),
+				CIDR:           networkCIDR.String(),
 				DNSNameservers: openstackInstallConfig.ExternalDNS,
+				AllocationPools: []capo.AllocationPool{
+					{
+						Start: allocationStart.String(),
+						End:   allocationEnd.String(),
+					},
+				},
 			},
 		}
 	}
