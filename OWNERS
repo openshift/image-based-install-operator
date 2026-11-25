@@ -3,6 +3,7 @@
 filters:
   ".*":
     reviewers:
+    - alegacy
     - browsell
     - carbonin
     - donpenney
@@ -23,6 +24,7 @@ filters:
     - eliorerz
     - giladravid16
     approvers:
+    - alegacy
     - browsell
     - carbonin
     - donpenney
@@ -30,6 +32,7 @@ filters:
     - gamli75
     - imiller0
     - jc-rh
+    - Missxiaoguo
     - oourfali
     - romfreiman
     - tsorya
