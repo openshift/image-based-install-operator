@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/installer/pkg/asset/manifests/capiutils"
 	"github.com/openshift/installer/pkg/types"
 	aztypes "github.com/openshift/installer/pkg/types/azure"
+	"github.com/openshift/installer/pkg/utils"
 )
 
 const (
@@ -37,6 +38,7 @@ type MachineInput struct {
 	Platform       *aztypes.Platform
 	Pool           *types.MachinePool
 	RHCOS          string
+	Config         *types.InstallConfig
 }
 
 // GenerateMachines returns manifests and runtime objects to provision the control plane (including bootstrap, if applicable) nodes using CAPI.
@@ -97,19 +99,22 @@ func GenerateMachines(clusterID, resourceGroup, subscriptionID string, session *
 	}
 
 	machineProfile := generateSecurityProfile(mpool)
-	securityProfile := &capz.SecurityProfile{
-		EncryptionAtHost: machineProfile.EncryptionAtHost,
-		SecurityType:     capz.SecurityTypes(machineProfile.Settings.SecurityType),
-	}
-	if machineProfile.Settings.ConfidentialVM != nil {
-		securityProfile.UefiSettings = &capz.UefiSettings{
-			VTpmEnabled:       ptr.To[bool](machineProfile.Settings.ConfidentialVM.UEFISettings.VirtualizedTrustedPlatformModule == v1beta1.VirtualizedTrustedPlatformModulePolicyEnabled),
-			SecureBootEnabled: ptr.To[bool](machineProfile.Settings.ConfidentialVM.UEFISettings.SecureBoot == v1beta1.SecureBootPolicyEnabled),
+	var securityProfile *capz.SecurityProfile
+	if machineProfile != nil {
+		securityProfile = &capz.SecurityProfile{
+			EncryptionAtHost: machineProfile.EncryptionAtHost,
+			SecurityType:     capz.SecurityTypes(machineProfile.Settings.SecurityType),
 		}
-	} else if machineProfile.Settings.TrustedLaunch != nil {
-		securityProfile.UefiSettings = &capz.UefiSettings{
-			VTpmEnabled:       ptr.To(machineProfile.Settings.TrustedLaunch.UEFISettings.VirtualizedTrustedPlatformModule == v1beta1.VirtualizedTrustedPlatformModulePolicyEnabled),
-			SecureBootEnabled: ptr.To(machineProfile.Settings.TrustedLaunch.UEFISettings.SecureBoot == v1beta1.SecureBootPolicyEnabled),
+		if machineProfile.Settings.ConfidentialVM != nil {
+			securityProfile.UefiSettings = &capz.UefiSettings{
+				VTpmEnabled:       ptr.To[bool](machineProfile.Settings.ConfidentialVM.UEFISettings.VirtualizedTrustedPlatformModule == v1beta1.VirtualizedTrustedPlatformModulePolicyEnabled),
+				SecureBootEnabled: ptr.To[bool](machineProfile.Settings.ConfidentialVM.UEFISettings.SecureBoot == v1beta1.SecureBootPolicyEnabled),
+			}
+		} else if machineProfile.Settings.TrustedLaunch != nil {
+			securityProfile.UefiSettings = &capz.UefiSettings{
+				VTpmEnabled:       ptr.To(machineProfile.Settings.TrustedLaunch.UEFISettings.VirtualizedTrustedPlatformModule == v1beta1.VirtualizedTrustedPlatformModulePolicyEnabled),
+				SecureBootEnabled: ptr.To(machineProfile.Settings.TrustedLaunch.UEFISettings.SecureBoot == v1beta1.SecureBootPolicyEnabled),
+			}
 		}
 	}
 
@@ -197,6 +202,7 @@ func GenerateMachines(clusterID, resourceGroup, subscriptionID string, session *
 				DataDisks:              mpool.DataDisks,
 			},
 		}
+		utils.SetMachineOSStreamLabels(azureMachine, in.Config)
 
 		if len(zone) == 0 {
 			// FailureDomain must be nil (not empty) to trigger availability set.
@@ -243,6 +249,7 @@ func GenerateMachines(clusterID, resourceGroup, subscriptionID string, session *
 			},
 		}
 		controlPlaneMachine.SetGroupVersionKind(capi.GroupVersion.WithKind("Machine"))
+		utils.SetMachineOSStreamLabels(controlPlaneMachine, in.Config)
 
 		result = append(result, &asset.RuntimeFile{
 			File:   asset.File{Filename: fmt.Sprintf("10_machine_%s.yaml", azureMachine.Name)},
@@ -274,6 +281,7 @@ func GenerateMachines(clusterID, resourceGroup, subscriptionID string, session *
 			UserAssignedIdentities:     userAssignedIdentities,
 		},
 	}
+	utils.SetMachineOSStreamLabels(bootstrapAzureMachine, in.Config)
 
 	if len(mpool.Zones[0]) == 0 {
 		// FailureDomain must be nil (not empty) to trigger availability set.
@@ -321,6 +329,7 @@ func GenerateMachines(clusterID, resourceGroup, subscriptionID string, session *
 		},
 	}
 	bootstrapMachine.SetGroupVersionKind(capi.GroupVersion.WithKind("Machine"))
+	utils.SetMachineOSStreamLabels(bootstrapMachine, in.Config)
 
 	result = append(result, &asset.RuntimeFile{
 		File:   asset.File{Filename: fmt.Sprintf("10_machine_%s.yaml", bootstrapMachine.Name)},
@@ -393,6 +402,9 @@ func capzImage(osImage aztypes.OSImage, azEnv aztypes.CloudEnvironment, confiden
 				ThirdPartyImage: false,
 			},
 		}
+	case strings.HasPrefix(rhcosImg, "/subscriptions/"):
+		// An explicit non-marketplace resource path was supplied. Use it as is.
+		return &capz.Image{ID: &rhcosImg}
 	case rhcosImg == "" && !confidentialVM:
 		// hive calls the machines function, but may pass an empty
 		// string for rhcos. In which case, allow MAO to choose default.

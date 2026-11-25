@@ -17,6 +17,7 @@ import (
 	"github.com/openshift/installer/pkg/types"
 	"github.com/openshift/installer/pkg/types/openstack"
 	"github.com/openshift/installer/pkg/types/powervc"
+	"github.com/openshift/installer/pkg/utils"
 )
 
 // GenerateMachines returns manifests and runtime objects to provision the control plane (including bootstrap, if applicable) nodes using CAPI.
@@ -74,6 +75,7 @@ func GenerateMachines(clusterID string, config *types.InstallConfig, pool *types
 			Spec: *machineSpec,
 		}
 		openStackMachine.SetGroupVersionKind(capo.SchemeGroupVersion.WithKind("OpenStackMachine"))
+		utils.SetMachineOSStreamLabels(openStackMachine, config)
 
 		result = append(result, &asset.RuntimeFile{
 			File:   asset.File{Filename: fmt.Sprintf("10_inframachine_%s.yaml", openStackMachine.Name)},
@@ -105,6 +107,7 @@ func GenerateMachines(clusterID string, config *types.InstallConfig, pool *types
 			},
 		}
 		machine.SetGroupVersionKind(capi.GroupVersion.WithKind("Machine"))
+		utils.SetMachineOSStreamLabels(machine, config)
 
 		result = append(result, &asset.RuntimeFile{
 			File:   asset.File{Filename: fmt.Sprintf("10_machine_%s.yaml", machine.Name)},
@@ -211,14 +214,21 @@ func generateMachineSpec(clusterID string, config *types.InstallConfig, mpool *o
 				Value: clusterID,
 			},
 		},
-		Trunk: false,
-		Tags: []string{
-			fmt.Sprintf("openshiftClusterID=%s", clusterID),
-		},
+		Trunk:       false,
 		ConfigDrive: configDrive,
 	}
 
-	if role != bootstrapRole {
+	// PowerVC's Neutron policy forbids update_ports_tags, and CAPO tags
+	// ports whenever the machine (or cluster) has tags.
+	if config.Platform.Name() != powervc.Name {
+		spec.Tags = []string{
+			fmt.Sprintf("openshiftClusterID=%s", clusterID),
+		}
+	}
+
+	// No server group on PowerVC: its non-admin policy forbids creating
+	// server groups, so PreProvision skips them and a filter would never match.
+	if role != bootstrapRole && config.Platform.Name() != powervc.Name {
 		spec.ServerGroup = &capo.ServerGroupParam{Filter: &capo.ServerGroupFilter{Name: ptr.To(clusterID + "-" + role)}}
 	}
 

@@ -558,6 +558,18 @@ func validateSubnet(client API, fieldPath *field.Path, subnet *aznetwork.Subnet,
 	return allErrs
 }
 
+func subnetHasIPv6Prefix(subnet *aznetwork.Subnet) bool {
+	if subnet == nil || subnet.SubnetPropertiesFormat == nil || subnet.AddressPrefixes == nil {
+		return false
+	}
+	for _, prefix := range *subnet.AddressPrefixes {
+		if strings.Contains(prefix, ":") {
+			return true
+		}
+	}
+	return false
+}
+
 func validateMachineNetworksContainIP(fldPath *field.Path, networks []types.MachineNetworkEntry, subnetName string, ip net.IP) field.ErrorList {
 	for _, network := range networks {
 		if network.CIDR.Contains(ip) {
@@ -931,7 +943,10 @@ func validateMarketplaceImage(client API, region string, instanceHyperVGenSet se
 	if err != nil {
 		return field.Invalid(osImageFieldPath, osImage, err.Error())
 	}
-	imageHyperVGen := string(vmImage.HyperVGeneration)
+	imageHyperVGen := ""
+	if vmImage.Properties != nil && vmImage.Properties.HyperVGeneration != nil {
+		imageHyperVGen = string(*vmImage.Properties.HyperVGeneration)
+	}
 	if !instanceHyperVGenSet.Has(imageHyperVGen) {
 		errMsg := fmt.Sprintf("instance type supports HyperVGenerations %v but the specified image is for HyperVGeneration %s; to correct this issue either specify a compatible instance type or change the HyperVGeneration for the image by using a different SKU", instanceHyperVGenSet.UnsortedList(), imageHyperVGen)
 		return field.Invalid(osImageFieldPath, osImage.SKU, errMsg)
@@ -943,7 +958,7 @@ func validateMarketplaceImage(client API, region string, instanceHyperVGenSet se
 		// Use the default if not set in the install-config
 		osImagePlan = aztypes.ImageWithPurchasePlan
 	}
-	if plan := vmImage.Plan; plan != nil {
+	if vmImage.Properties != nil && vmImage.Properties.Plan != nil {
 		if osImagePlan == aztypes.ImageNoPurchasePlan {
 			return field.Invalid(osImageFieldPath, osImage, "marketplace image requires license terms to be accepted")
 		}
@@ -1096,6 +1111,10 @@ func validateCustomSubnets(client API, fldPath *field.Path, ic *types.InstallCon
 		} else {
 			allErrs = append(allErrs, validateSubnet(client, fldPath.Child("subnets"), value, subnet.Name, ic.MachineNetwork)...)
 			allErrs = append(allErrs, validateSubnetNatGateway(client, fldPath, value, ic.Azure.OutboundType, subnet.Role, networkResourceGroupName, virtualNetwork)...)
+			if ic.Azure.IPFamily.DualStackEnabled() && !subnetHasIPv6Prefix(value) {
+				allErrs = append(allErrs, field.Invalid(fldPath.Child("subnets"), subnet.Name,
+					"subnet does not have an IPv6 address prefix, which is required when ipFamily is dual-stack"))
+			}
 		}
 	}
 	if ic.Azure.OutboundType == aztypes.NATGatewayMultiZoneOutboundType {
