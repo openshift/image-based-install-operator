@@ -16,7 +16,10 @@
         "backplane-2.17"
     ],
     "prHourlyLimit": 0,
-    "prConcurrentLimit": 0,
+    "prConcurrentLimit": 10,
+    "vulnerabilityAlerts": {
+        "prConcurrentLimit": 10
+    },
     "enabledManagers": [
         "custom.regex",
         "tekton",
